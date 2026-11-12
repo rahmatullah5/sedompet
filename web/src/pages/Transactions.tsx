@@ -60,11 +60,16 @@ export function Transactions({ onOpenTx }: { onOpenTx: (t: Transaction) => void 
   const [categoryId, setCategoryId] = useState("");
   const [accountId, setAccountId] = useState("");
   const [kind, setKind] = useState<"" | Kind>("");
+  const [search, setSearch] = useState("");
+  const searching = search.trim().length > 0;
 
   const categories = q.categories(dompet.id);
   const accounts = q.accounts(dompet.id, me.id);
   const txs = q.transactions(dompet.id, me.id, {
-    month,
+    // Searching looks through every month, not just the one shown.
+    month: searching ? undefined : month,
+    search: searching ? search : undefined,
+    limit: searching ? 300 : undefined,
     paidBy: paidBy || undefined,
     categoryId: categoryId || undefined,
     accountId: accountId || undefined,
@@ -75,7 +80,7 @@ export function Transactions({ onOpenTx }: { onOpenTx: (t: Transaction) => void 
 
   const groups = new Map<string, Transaction[]>();
   for (const t of txs) groups.set(t.date, [...(groups.get(t.date) ?? []), t]);
-  const filtered = paidBy || categoryId || accountId || kind;
+  const filtered = paidBy || categoryId || accountId || kind || searching;
 
   return (
     <div className="space-y-4">
@@ -84,9 +89,43 @@ export function Transactions({ onOpenTx }: { onOpenTx: (t: Transaction) => void 
           <h1 className="text-2xl font-extrabold tracking-tight text-slate-800">Riwayat</h1>
           <p className="text-sm text-slate-500">Semua catatan keluarga, siapa pun yang mencatat.</p>
         </div>
-        <MonthNav month={month} setMonth={setMonth} />
+        {!searching && <MonthNav month={month} setMonth={setMonth} />}
       </div>
-      <div className="flex flex-wrap gap-2 text-sm">
+      <div className="relative">
+        <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden>
+          🔍
+        </span>
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Cari catatan, kategori, akun, nama, atau jumlah…"
+          aria-label="Cari transaksi"
+          className="w-full rounded-full border-2 border-transparent bg-white py-3 pl-11 pr-11 text-[15px] shadow-[0_4px_14px_-8px_rgba(120,72,40,0.35)] outline-none transition focus:border-brand-500 [&::-webkit-search-cancel-button]:hidden"
+        />
+        {searching && (
+          <button
+            type="button"
+            onClick={() => setSearch("")}
+            aria-label="Hapus pencarian"
+            className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200"
+          >
+            ✕
+          </button>
+        )}
+      </div>
+      {searching && (
+        <p className="-mt-1 px-1 text-sm text-slate-500">
+          {txs.length >= 300 ? "300+ hasil" : `${txs.length} hasil`} di semua bulan
+          {txs.length > 0 && (
+            <>
+              {" "}
+              · keluar <b className="num text-slate-700">{formatIDR(expense)}</b> · masuk <b className="num text-slate-700">{formatIDR(income)}</b>
+            </>
+          )}
+        </p>
+      )}
+      <div className={`flex flex-wrap gap-2 text-sm ${searching ? "hidden" : ""}`}>
         <Badge tone="brand">Masuk {formatIDR(income)}</Badge>
         <Badge>Keluar {formatIDR(expense)}</Badge>
       </div>
@@ -140,7 +179,9 @@ export function Transactions({ onOpenTx }: { onOpenTx: (t: Transaction) => void 
 
       {txs.length === 0 ? (
         <Card>
-          <Empty icon="🔍" title={filtered ? "Tidak ada yang cocok" : "Belum ada transaksi bulan ini"} />
+          <Empty icon="🔍" title={searching ? `Tidak ada yang cocok dengan “${search.trim()}”` : filtered ? "Tidak ada yang cocok" : "Belum ada transaksi bulan ini"}>
+            {searching ? "Coba kata lain, nama orang, atau jumlah seperti 50rb." : null}
+          </Empty>
         </Card>
       ) : (
         [...groups.entries()].map(([date, list]) => {

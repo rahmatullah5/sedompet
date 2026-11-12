@@ -2,7 +2,7 @@
 
 import { all, get, write } from "./database";
 import { can, PermissionError, type Role } from "../lib/permissions";
-import { formatIDR } from "../lib/format";
+import { formatIDR, parseAmount } from "../lib/format";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -163,8 +163,27 @@ export const q = {
   transactions(
     dompetId: string,
     me: string,
-    f: { month?: string; paidBy?: string; categoryId?: string; accountId?: string; kind?: Kind; limit?: number } = {},
+    f: { month?: string; paidBy?: string; categoryId?: string; accountId?: string; kind?: Kind; limit?: number; search?: string } = {},
   ) {
+    // Free-text search: every word must match a note, category, sub-category,
+    // account or payer name, or an amount ("50rb", "186000", "1,5jt").
+    const terms = (f.search ?? "").toLowerCase().split(/\s+/).filter(Boolean).slice(0, 6);
+    const termSql = terms
+      .map(
+        (_, i) => `AND (
+          lower(t.note) LIKE $t${i} OR lower(COALESCE(c.name, '')) LIKE $t${i} OR lower(COALESCE(pc.name, '')) LIKE $t${i}
+          OR lower(a.name) LIKE $t${i} OR lower(COALESCE(p.name, '')) LIKE $t${i}
+          OR ($n${i} IS NOT NULL AND (t.amount = $n${i} OR CAST(t.amount AS TEXT) LIKE $d${i})))`,
+      )
+      .join("\n");
+    const termParams: Record<string, string | number | null> = {};
+    terms.forEach((term, i) => {
+      termParams[`$t${i}`] = `%${term.replace(/[%_]/g, "")}%`;
+      const n = parseAmount(term);
+      const digits = term.replace(/\D/g, "");
+      termParams[`$n${i}`] = Number.isFinite(n) && n > 0 ? n : null;
+      termParams[`$d${i}`] = digits.length >= 3 ? `%${digits}%` : "__no_match__";
+    });
     return all<Transaction>(
       `SELECT t.*, a.name AS account_name, a.visibility AS account_visibility,
               COALESCE(a.holder_member_id, a.owner_member_id) AS account_holder_id,
@@ -184,6 +203,7 @@ export const q = {
          AND ($cat IS NULL OR t.category_id = $cat OR c.parent_id = $cat)
          AND ($acc IS NULL OR t.account_id = $acc)
          AND ($kind IS NULL OR t.kind = $kind)
+         ${termSql}
        ORDER BY t.date DESC, t.created_at DESC
        LIMIT $limit`,
       {
@@ -195,6 +215,7 @@ export const q = {
         $acc: f.accountId ?? null,
         $kind: f.kind ?? null,
         $limit: f.limit ?? -1,
+        ...termParams,
       },
     );
   },
