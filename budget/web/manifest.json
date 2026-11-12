@@ -1,11 +1,11 @@
 {
-    "name": "Cashew",
-    "short_name": "Cashew",
+    "name": "Sedompet",
+    "short_name": "Sedompet",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#ffffff",
     "theme_color": "#5f85c2",
-    "description": "A budget and financial tracking application designed for you",
+    "description": "Satu dompet untuk keluarga dan teman. Shared budgeting for families and friends.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

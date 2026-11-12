@@ -1,3 +1,4 @@
+import 'package:budget/pages/dompetPage.dart';
 import 'package:budget/colors.dart';
 import 'package:budget/database/tables.dart' hide AppSettings;
 import 'package:budget/pages/aboutPage.dart';
@@ -174,6 +175,20 @@ class MorePages extends StatelessWidget {
                 ),
               ],
             ),
+          Row(
+            children: [
+              Expanded(
+                child: SettingsContainerOpenPage(
+                  openPage: DompetPage(),
+                  title: "Dompet",
+                  icon: Icons.family_restroom_rounded,
+                  description: "Share one wallet with family and friends",
+                  isOutlined: true,
+                  isWideOutlined: true,
+                ),
+              ),
+            ],
+          ),
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [

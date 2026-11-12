@@ -1,0 +1,83 @@
+@import "tailwindcss";
+
+/* Warm, light-only family theme. `dark:` utilities only apply under a
+   `.dark` class (never set), so an OS dark mode can't turn this into a
+   cold dashboard. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* Brand: warm coral ("terakota") */
+  --color-brand-50: #fff5f0;
+  --color-brand-100: #ffe4d8;
+  --color-brand-200: #ffc9b3;
+  --color-brand-500: #f47c5a;
+  --color-brand-600: #ea6440;
+  --color-brand-700: #d4502e;
+  --color-brand-800: #a83f24;
+
+  /* Sunny accent and soft pastels */
+  --color-sun-100: #fff3c4;
+  --color-sun-400: #fbc93d;
+  --color-mint-100: #d9f5e8;
+  --color-mint-600: #1f9d6b;
+  --color-lilac-100: #ece7ff;
+  --color-lilac-600: #6d5bd0;
+
+  /* Re-tint Tailwind's slate greys towards warm stone/brown. */
+  --color-slate-50: #fdf9f4;
+  --color-slate-100: #f6eee5;
+  --color-slate-200: #ecdfd2;
+  --color-slate-300: #dccbbb;
+  --color-slate-400: #b29d8b;
+  --color-slate-500: #8a7563;
+  --color-slate-600: #6b5848;
+  --color-slate-700: #4e3f33;
+  --color-slate-800: #3a2e25;
+  --color-slate-900: #2b211a;
+  --color-slate-950: #1d1611;
+}
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  @apply bg-[#fff8f1] text-slate-900 antialiased;
+  background-image:
+    radial-gradient(circle at 0% 0%, #ffe9dc 0, transparent 40%),
+    radial-gradient(circle at 100% 0%, #fff3c4 0, transparent 35%);
+  background-attachment: fixed;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Hide horizontal scrollbars on swipeable rows */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.pop-in {
+  animation: pop-in 0.25s ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pop-in {
+    animation: none;
+  }
+}

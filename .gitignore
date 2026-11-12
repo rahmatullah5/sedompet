@@ -1,2 +1,9 @@
 # Miscellaneous
 /.vscode/
+
+# Sedompet: local backend config passed via --dart-define-from-file
+/sedompet.env.json
+
+# Private seeds generated from personal backups
+/supabase/seed_private/
+/supabase/.db-url

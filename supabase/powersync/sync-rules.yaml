@@ -1,0 +1,23 @@
+# PowerSync sync rules for Sedompet.
+# Paste into the PowerSync dashboard (Instance > Sync Rules) or deploy with the
+# PowerSync CLI. Each user downloads one bucket per Dompet they belong to.
+#
+# Every synced table must expose an `id` column (dompet_members has a
+# surrogate uuid id for this reason).
+#
+# Writes do NOT go through PowerSync: the client uploads its local changes to
+# Supabase (PostgREST / RPC) and Postgres RLS is the final authority.
+
+bucket_definitions:
+  dompet:
+    # One bucket per Dompet the requesting user is a member of.
+    parameters: SELECT dompet_id FROM dompet_members WHERE user_id = request.user_id()
+    data:
+      - SELECT * FROM dompets WHERE id = bucket.dompet_id
+      - SELECT * FROM dompet_members WHERE dompet_id = bucket.dompet_id
+      # Phase 2: finance data, all partitioned by dompet_id, e.g.
+      # - SELECT * FROM accounts            WHERE dompet_id = bucket.dompet_id
+      # - SELECT * FROM categories          WHERE dompet_id = bucket.dompet_id
+      # - SELECT * FROM transactions        WHERE dompet_id = bucket.dompet_id
+      # - SELECT * FROM budgets             WHERE dompet_id = bucket.dompet_id
+      # - SELECT * FROM objectives          WHERE dompet_id = bucket.dompet_id

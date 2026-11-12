@@ -1,8 +1,8 @@
 {
   "hosting": {
     "public": "build/web",
-    "predeploy": "flutter build web --release --web-renderer canvaskit --no-tree-shake-icons",
-    "site":"budget-track",
+    "predeploy": "flutter build web --release --no-tree-shake-icons --dart-define-from-file=../sedompet.env.json",
+    "site": "YOUR_FIREBASE_HOSTING_SITE",
     "ignore": [
       "firebase.json",
       "**/.*",

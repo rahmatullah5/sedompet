@@ -15,6 +15,7 @@ import 'package:budget/widgets/watchAllWallets.dart';
 import 'package:budget/database/tables.dart';
 import 'package:budget/struct/databaseGlobal.dart';
 import 'package:budget/struct/settings.dart';
+import 'package:budget/struct/dompetService.dart';
 import 'package:budget/struct/notificationsGlobal.dart';
 import 'package:budget/widgets/navigationSidebar.dart';
 import 'package:budget/widgets/globalLoadingProgress.dart';
@@ -55,6 +56,8 @@ void main() async {
     await loadCurrencyJSON();
     await loadLanguageNamesJSON();
     await initializeSettings();
+    // Sedompet shared Dompet backend (no-op when not configured)
+    await dompetService.initialize();
     tz.initializeTimeZones();
     final String? locationName = await FlutterTimezone.getLocalTimezone();
     tz.setLocalLocation(tz.getLocation(locationName ?? "America/New_York"));
