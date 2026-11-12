@@ -330,14 +330,32 @@ export { toISODate };
 
 /** Non-recurring ("variable") income/expense between two dates, ignoring transfers/loans. */
 export function variableTotals(dompetId: string, me: string, from: string, to: string) {
-  return (
+  // Income in a category that an active recurring income item uses (e.g. "Gaji")
+  // is already forecast by that item, so it is left out of the average to avoid
+  // counting the salary twice (common for history entered before the item existed).
+  const recurringIncomeCats = mq
+    .recurring(dompetId, me)
+    .filter((r) => r.active && r.kind === "income" && r.category_id)
+    .map((r) => r.category_id as string);
+  const params: Record<string, string | null> = { $d: dompetId, $me: me, $from: from, $to: to };
+  const names = recurringIncomeCats.map((id, i) => {
+    params["$ric" + i] = id;
+    return "$ric" + i;
+  });
+  const excludeIncome = names.length
+    ? // COALESCE: a NULL parent/category must count as "not excluded", not NULL.
+      "AND NOT (t.kind = 'income' AND (COALESCE(t.category_id, '') IN (" + names.join(",") + ") OR COALESCE(c.parent_id, '') IN (" + names.join(",") + ")))"
+    : "";
+  const row =
     get<{ income: number; expense: number }>(
       `SELECT COALESCE(SUM(CASE WHEN t.kind='income' THEN t.amount END), 0) AS income,
               COALESCE(SUM(CASE WHEN t.kind='expense' THEN t.amount END), 0) AS expense
        FROM transactions t JOIN accounts a ON a.id = t.account_id
+       LEFT JOIN categories c ON c.id = t.category_id
        WHERE t.dompet_id = $d AND ${VISIBLE} AND t.flag IS NULL AND t.recurring_id IS NULL
-         AND t.date BETWEEN $from AND $to`,
-      { $d: dompetId, $me: me, $from: from, $to: to },
-    ) ?? { income: 0, expense: 0 }
-  );
+         AND t.date BETWEEN $from AND $to
+         ${excludeIncome}`,
+      params,
+    ) ?? { income: 0, expense: 0 };
+  return { ...row, excludedIncomeCategories: recurringIncomeCats.length };
 }

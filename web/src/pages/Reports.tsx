@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { q } from "../db/repo";
 import { projectedRecurring, variableTotals } from "../db/money";
 import { currentMonth, formatCompact, formatIDR, formatMonth, shiftMonth, toISODate, todayISO } from "../lib/format";
@@ -24,6 +24,40 @@ function niceMax(v: number) {
 }
 
 // ---------------------------------------------------------------------------
+// Income basis for forecasts, remembered on this device and shared by every
+// chart on the page ("recurring" = only items registered in Rutin).
+// ---------------------------------------------------------------------------
+type IncomeBasis = "recurring" | "recurring+avg";
+const BASIS_KEY = "sedompet.forecast.incomeBasis";
+let basis: IncomeBasis = (() => {
+  try {
+    return localStorage.getItem(BASIS_KEY) === "recurring" ? "recurring" : "recurring+avg";
+  } catch {
+    return "recurring+avg";
+  }
+})();
+const basisListeners = new Set<() => void>();
+function useIncomeBasis(): [IncomeBasis, (b: IncomeBasis) => void] {
+  const value = useSyncExternalStore(
+    (l) => {
+      basisListeners.add(l);
+      return () => basisListeners.delete(l);
+    },
+    () => basis,
+  );
+  const set = (b: IncomeBasis) => {
+    basis = b;
+    try {
+      localStorage.setItem(BASIS_KEY, b);
+    } catch {
+      /* ignore */
+    }
+    basisListeners.forEach((l) => l());
+  };
+  return [value, set];
+}
+
+// ---------------------------------------------------------------------------
 // Forecast maths
 // ---------------------------------------------------------------------------
 function useForecast() {
@@ -40,7 +74,10 @@ function useForecast() {
   const from90 = toISODate(new Date(now.getFullYear(), now.getMonth(), day - 89));
   const v90 = variableTotals(dompet.id, me.id, from90, today);
   const dailyVar = v90.expense / 90;
-  const dailyVarIncome = v90.income / 90;
+  const [incomeBasis, setIncomeBasis] = useIncomeBasis();
+  const avgIncomePerMonth = (v90.income / 90) * 30;
+  // "recurring" = only registered recurring income (salary etc.) is expected.
+  const dailyVarIncome = incomeBasis === "recurring" ? 0 : v90.income / 90;
 
   const totals = q.monthTotals(dompet.id, me.id, month);
   const restOfMonth = projectedRecurring(dompet.id, me.id, tomorrow, monthEnd);
@@ -71,7 +108,10 @@ function useForecast() {
   });
 
   const overall = q.budgets(dompet.id, month).find((b) => !b.category_id && !b.member_id);
-  return { month, day, daysInMonth, totals, dailyVar, expenseEnd, incomeEnd, balanceNow, balanceEnd, restOfMonth, trajectory, overall };
+  return {
+    month, day, daysInMonth, totals, dailyVar, expenseEnd, incomeEnd, balanceNow, balanceEnd, restOfMonth, trajectory, overall,
+    incomeBasis, setIncomeBasis, avgIncomePerMonth, excludedIncomeCategories: v90.excludedIncomeCategories,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -130,6 +170,36 @@ export function Reports() {
 
       {/* 3-month outlook */}
       <Card title="3 bulan ke depan 🔮">
+        <div className="mb-3 rounded-2xl bg-slate-50 p-3">
+          <p className="text-sm font-semibold text-slate-700">Pemasukan dihitung dari</p>
+          <div className="mt-2 grid grid-cols-2 gap-1 rounded-full bg-white p-1 shadow-sm" role="radiogroup" aria-label="Dasar pemasukan">
+            {(
+              [
+                ["recurring", "Rutin saja"],
+                ["recurring+avg", "Rutin + rata-rata"],
+              ] as const
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                role="radio"
+                aria-checked={f.incomeBasis === key}
+                onClick={() => f.setIncomeBasis(key)}
+                className={cx(
+                  "rounded-full py-1.5 text-xs font-semibold transition",
+                  f.incomeBasis === key ? "bg-slate-800 text-white" : "text-slate-500",
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-slate-500">
+            {f.incomeBasis === "recurring"
+              ? `Hanya pemasukan dari menu Rutin (mis. Gaji) yang diperkirakan.`
+              : `Ditambah rata-rata pemasukan lain 90 hari terakhir ≈ ${formatCompact(Math.round(f.avgIncomePerMonth))}/bulan.`}
+            {f.excludedIncomeCategories > 0 && " Pemasukan di kategori yang sudah ada di Rutin (mis. Gaji) tidak dihitung dua kali."}
+          </p>
+        </div>
         <ul className="divide-y divide-slate-100">
           {f.trajectory.map((t) => (
             <li key={t.month} className="py-3">
