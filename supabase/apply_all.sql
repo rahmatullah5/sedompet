@@ -1757,3 +1757,7 @@ alter table public.budgets add column if not exists period text not null default
 do $$ begin
   alter table public.budgets add constraint budgets_period_check check (period in ('daily', 'weekly', 'monthly'));
 exception when duplicate_object then null; end $$;
+
+-- ===== supabase/migrations/20261118000000_budget_categories.sql =====
+-- Sedompet: a budget can cover several categories (category_id stays for a single one).
+alter table public.budgets add column if not exists category_ids uuid[] not null default '{}';

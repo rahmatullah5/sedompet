@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CategoryPicker } from "../components/Pickers";
+import { MultiCategoryPicker } from "../components/Pickers";
 import { m, q, type Budget, type BudgetPeriod } from "../db/repo";
 import { can } from "../lib/permissions";
 import { currentMonth, formatIDR, parseAmount } from "../lib/format";
@@ -9,6 +9,30 @@ import { MonthNav } from "./Transactions";
 import { Icon } from "../components/Icon";
 
 /** Days left (incl. today) in the budget's current period; 0 when not useful. */
+function parseIds(json: string | null | undefined): string[] {
+  try {
+    const v = JSON.parse(json ?? "[]");
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Icon(s) for a budget card: member, its single category, or up to 3 of its categories. */
+export function BudgetIcon({ b, size = 28 }: { b: Budget; size?: number }) {
+  const icons = parseIds(b.category_icons);
+  if (b.member_emoji || icons.length < 2) return <Icon value={b.member_emoji ?? b.category_icon ?? "💰"} size={size} />;
+  return (
+    <span className="inline-flex -space-x-2">
+      {icons.slice(0, 3).map((ic, i) => (
+        <span key={i} className="rounded-full bg-white ring-2 ring-white">
+          <Icon value={ic} size={size * 0.8} />
+        </span>
+      ))}
+    </span>
+  );
+}
+
 function daysLeft(month: string, period: BudgetPeriod) {
   if (month !== currentMonth() || period === "daily") return 0;
   const now = new Date();
@@ -70,15 +94,15 @@ export function Budgets() {
                   <div className="mb-2 flex items-start justify-between gap-2">
                     <div>
                       <p className="flex items-center gap-2 text-lg font-bold text-slate-800">
-                        <Icon value={b.member_emoji ?? b.category_icon ?? "💰"} size={28} /> {b.name}
+                        <BudgetIcon b={b} /> {b.name}
                       </p>
                       <div className="mt-1 flex flex-wrap gap-1">
                         <Badge tone="brand">
                           {period.icon} {formatIDR(b.amount)}/{period.per}
                         </Badge>
                         <Badge>
-                          {b.category_name ?? (b.exclude_category_ids && JSON.parse(b.exclude_category_ids).length
-                            ? `Semua kecuali ${JSON.parse(b.exclude_category_ids).length} kategori`
+                          {b.category_name ?? (parseIds(b.exclude_category_ids).length
+                            ? `Semua kecuali ${parseIds(b.exclude_category_ids).length} kategori`
                             : "Semua pengeluaran")}
                         </Badge>
                         {b.member_name && (
@@ -131,7 +155,9 @@ function BudgetFormBody({ budget, onClose }: { budget: Budget | null; onClose: (
   const categories = q.categories(dompet.id, "expense");
   const [name, setName] = useState(budget?.name ?? "");
   const [amountText, setAmountText] = useState(budget ? String(budget.amount) : "");
-  const [categoryId, setCategoryId] = useState(budget?.category_id ?? "");
+  const [categoryIds, setCategoryIds] = useState<string[]>(() =>
+    budget?.category_id ? [budget.category_id] : parseIds(budget?.category_ids),
+  );
   const [memberId, setMemberId] = useState(budget?.member_id ?? "");
   const [period, setPeriod] = useState<BudgetPeriod>(budget?.period ?? "monthly");
   const [excludes, setExcludes] = useState<string[]>(() => {
@@ -148,9 +174,10 @@ function BudgetFormBody({ budget, onClose }: { budget: Budget | null; onClose: (
       () =>
         m.saveBudget(me.id, {
           id: budget?.id,
-          name: name || categories.find((c) => c.id === categoryId)?.name || "Anggaran",
+          name: (name || categoryIds.map((id) => categories.find((c) => c.id === id)?.name).filter(Boolean).join(" + ") || "Anggaran").slice(0, 40),
           amount,
-          category_id: categoryId || null,
+          category_id: null,
+          category_ids: categoryIds,
           member_id: memberId || null,
           exclude_category_ids: excludes,
           period,
@@ -190,15 +217,20 @@ function BudgetFormBody({ budget, onClose }: { budget: Budget | null; onClose: (
       <Field label={`Batas per ${perLabel(period)}`} hint={amount > 0 ? formatIDR(amount) : period === "daily" ? "Contoh: 50rb" : period === "weekly" ? "Contoh: 500rb" : "Contoh: 3jt, 750rb"}>
         <Input inputMode="decimal" value={amountText} onChange={(e) => setAmountText(e.target.value)} />
       </Field>
-      <CategoryPicker
-        label="Kategori"
-        categories={categories}
-        value={categoryId || null}
-        onChange={(id) => setCategoryId(id ?? "")}
-        noneLabel="Semua"
-        noneIcon="💰"
-      />
-      {!categoryId && (
+      <Field label="Kategori (bisa pilih beberapa)" hint={categoryIds.length ? `${categoryIds.length} kategori dipilih` : "Kosong = semua pengeluaran"}>
+        <div className="space-y-1.5">
+          <button
+            type="button"
+            aria-pressed={categoryIds.length === 0}
+            onClick={() => setCategoryIds([])}
+            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-semibold transition ${categoryIds.length === 0 ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+          >
+            💰 Semua pengeluaran
+          </button>
+          <MultiCategoryPicker categories={categories} value={categoryIds} onChange={setCategoryIds} />
+        </div>
+      </Field>
+      {categoryIds.length === 0 && (
         <details className="group rounded-2xl bg-slate-50 px-3 py-2" open={excludes.length > 0}>
           <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-semibold text-slate-700">
             <span>

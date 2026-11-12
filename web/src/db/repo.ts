@@ -94,6 +94,10 @@ export interface Budget {
   category_id: string | null;
   member_id: string | null;
   exclude_category_ids: string | null;
+  /** JSON array when the budget covers several categories. */
+  category_ids: string | null;
+  /** Icons of the categories in category_ids (for display). */
+  category_icons: string | null;
   category_name: string | null;
   category_icon: string | null;
   member_name: string | null;
@@ -395,7 +399,9 @@ export const q = {
     const weekFrom = toISODate(monday);
     const weekTo = toISODate(new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6));
     const rows = all<Omit<Budget, "limit" | "periodLabel">>(
-      `SELECT b.*, c.name AS category_name, c.icon AS category_icon,
+      `SELECT b.*, COALESCE(c.name, (SELECT group_concat(x.name, ', ') FROM json_each(b.category_ids) j JOIN categories x ON x.id = j.value)) AS category_name,
+              c.icon AS category_icon,
+              (SELECT json_group_array(x.icon) FROM json_each(b.category_ids) j JOIN categories x ON x.id = j.value) AS category_icons,
               m.name AS member_name, m.emoji AS member_emoji,
               COALESCE((
                 SELECT SUM(t.amount) FROM transactions t
@@ -409,7 +415,10 @@ export const q = {
                     AND (CASE WHEN $current = 1 AND b.period = 'weekly' THEN $weekTo
                               WHEN $current = 1 AND b.period = 'daily' THEN $today
                               ELSE $monthTo END)
-                  AND (b.category_id IS NULL OR t.category_id = b.category_id OR c.parent_id = b.category_id)
+                  AND ((b.category_id IS NULL AND b.category_ids IS NULL)
+                       OR t.category_id = b.category_id OR c.parent_id = b.category_id
+                       OR COALESCE(t.category_id, '') IN (SELECT value FROM json_each(COALESCE(b.category_ids, '[]')))
+                       OR COALESCE(c.parent_id, '') IN (SELECT value FROM json_each(COALESCE(b.category_ids, '[]'))))
                   AND (b.exclude_category_ids IS NULL OR (
                         COALESCE(t.category_id, '') NOT IN (SELECT value FROM json_each(b.exclude_category_ids))
                     AND COALESCE(c.parent_id, '') NOT IN (SELECT value FROM json_each(b.exclude_category_ids))))
@@ -949,23 +958,27 @@ export const m = {
   },
 
   // --- budgets -------------------------------------------------------------
-  saveBudget(actorId: string, data: { id?: string; name: string; amount: number; category_id: string | null; member_id: string | null; exclude_category_ids?: string[]; period?: BudgetPeriod }) {
+  saveBudget(actorId: string, data: { id?: string; name: string; amount: number; category_id: string | null; member_id: string | null; category_ids?: string[]; exclude_category_ids?: string[]; period?: BudgetPeriod }) {
     const actor = actorOf(actorId);
     if (!can.manage(actor.role)) throw new PermissionError("Hanya pemilik/admin yang bisa mengatur anggaran.");
     const period: BudgetPeriod = data.period ?? "monthly";
     const per = period === "daily" ? "hari" : period === "weekly" ? "minggu" : "bulan";
     if (!Number.isInteger(data.amount) || data.amount <= 0) throw new Error("Jumlah harus lebih dari 0.");
     const name = requireText(data.name, "Nama anggaran");
-    const excludes = !data.category_id && data.exclude_category_ids?.length ? JSON.stringify(data.exclude_category_ids) : null;
+    // One category -> category_id (what older versions understand); several -> category_ids.
+    const cats = [...new Set([...(data.category_ids ?? []), ...(data.category_id ? [data.category_id] : [])])];
+    const categoryId = cats.length === 1 ? cats[0] : null;
+    const categoryIds = cats.length > 1 ? JSON.stringify(cats) : null;
+    const excludes = cats.length === 0 && data.exclude_category_ids?.length ? JSON.stringify(data.exclude_category_ids) : null;
     return write((run) => {
       if (data.id) {
-        run("UPDATE budgets SET name = ?, amount = ?, category_id = ?, member_id = ?, exclude_category_ids = ?, period = ? WHERE id = ? AND dompet_id = ?", [
-          name, data.amount, data.category_id, data.member_id, excludes, period, data.id, actor.dompet_id,
+        run("UPDATE budgets SET name = ?, amount = ?, category_id = ?, category_ids = ?, member_id = ?, exclude_category_ids = ?, period = ? WHERE id = ? AND dompet_id = ?", [
+          name, data.amount, categoryId, categoryIds, data.member_id, excludes, period, data.id, actor.dompet_id,
         ]);
         log(run, actor, `mengubah anggaran ${name} menjadi ${formatIDR(data.amount)}/${per}`);
       } else {
-        run("INSERT INTO budgets (id, dompet_id, name, amount, category_id, member_id, exclude_category_ids, period, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", [
-          uid(), actor.dompet_id, name, data.amount, data.category_id, data.member_id, excludes, period, actor.id,
+        run("INSERT INTO budgets (id, dompet_id, name, amount, category_id, category_ids, member_id, exclude_category_ids, period, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [
+          uid(), actor.dompet_id, name, data.amount, categoryId, categoryIds, data.member_id, excludes, period, actor.id,
         ]);
         log(run, actor, `membuat anggaran ${name} ${formatIDR(data.amount)}/${per}`);
       }

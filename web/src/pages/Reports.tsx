@@ -108,7 +108,7 @@ function useForecast() {
   });
 
   // Forecast is monthly: prefer a monthly family budget, else scale a daily/weekly one up.
-  const family = q.budgets(dompet.id, month).filter((b) => !b.category_id && !b.member_id);
+  const family = q.budgets(dompet.id, month).filter((b) => !b.category_id && !b.category_ids && !b.member_id);
   const monthlyFamily = family.find((b) => b.period === "monthly") ?? family[0];
   const [yy, mm] = month.split("-").map(Number);
   const dim = new Date(yy, mm, 0).getDate();
