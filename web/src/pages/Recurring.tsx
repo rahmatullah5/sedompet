@@ -2,17 +2,156 @@ import { useState } from "react";
 import { AccountPicker, CategoryPicker } from "../components/Pickers";
 import { DatePicker } from "../components/DatePicker";
 import { q, type Kind } from "../db/repo";
-import { describeFrequency, mm, mq, type Frequency, type Recurring as Rec } from "../db/money";
+import { describeFrequency, mm, mq, occurrences, type Frequency, type Recurring as Rec } from "../db/money";
 import { can } from "../lib/permissions";
-import { formatDay, formatIDR, parseAmount, todayISO } from "../lib/format";
+import { formatCompact, formatDay, formatIDR, parseAmount, toISODate, todayISO } from "../lib/format";
 import { useCurrent, useDbVersion } from "../lib/hooks";
 import { attempt, Badge, Button, Card, cx, Empty, Field, Input, Modal, Select, STICKY_ACTIONS } from "../components/ui";
 import { Icon, IconPicker } from "../components/Icon";
 
 /** Monthly-equivalent amount, for the "per bulan" totals. */
-function perMonth(r: Rec) {
-  const f = r.frequency === "weekly" ? 52 / 12 : r.frequency === "monthly" ? 1 : 1 / 12;
-  return (r.amount * f) / r.every;
+// ---------------------------------------------------------------------------
+// Projections from real due dates (respects next date and end date), instead
+// of averaging a yearly bill into a misleading "per month" figure.
+// ---------------------------------------------------------------------------
+type WindowKey = "1" | "3" | "12";
+const WINDOWS: Record<WindowKey, { label: string; short: string; months: number }> = {
+  "1": { label: "Bulan ini", short: "bulan ini", months: 1 },
+  "3": { label: "3 bulan", short: "3 bulan", months: 3 },
+  "12": { label: "12 bulan", short: "12 bulan", months: 12 },
+};
+
+const monthLabel = new Intl.DateTimeFormat("id-ID", { month: "short", year: "2-digit" });
+const shortDate = new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", year: "numeric" });
+const parseISO = (iso: string) => {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y, m - 1, d);
+};
+function formatShort(iso: string) {
+  return shortDate.format(parseISO(iso));
+}
+
+/** Months of this window: the current month (from today) plus following months. */
+function windowMonths(months: number) {
+  const now = new Date();
+  return Array.from({ length: months }, (_, i) => {
+    const start = new Date(now.getFullYear(), now.getMonth() + i, 1);
+    const end = new Date(now.getFullYear(), now.getMonth() + i + 1, 0);
+    return {
+      key: toISODate(start).slice(0, 7),
+      label: monthLabel.format(start),
+      from: i === 0 ? todayISO() : toISODate(start),
+      to: toISODate(end),
+    };
+  });
+}
+
+function projectWindow(items: Rec[], key: WindowKey) {
+  const months = windowMonths(WINDOWS[key].months).map((m) => {
+    let income = 0;
+    let expense = 0;
+    const due: { name: string; amount: number; kind: Kind; date: string }[] = [];
+    for (const r of items) {
+      for (const date of occurrences(r, m.from, m.to)) {
+        if (r.kind === "income") income += r.amount;
+        else expense += r.amount;
+        due.push({ name: r.name, amount: r.amount, kind: r.kind, date });
+      }
+    }
+    return { ...m, income, expense, due };
+  });
+  return {
+    months,
+    income: months.reduce((s, m) => s + m.income, 0),
+    expense: months.reduce((s, m) => s + m.expense, 0),
+  };
+}
+
+/** How many more times an item with an end date will happen. */
+function remainingCount(r: Rec) {
+  return r.end_date ? occurrences(r, todayISO(), r.end_date).length : Infinity;
+}
+
+/**
+ * For big or infrequent bills: how much to set aside per month until the next
+ * due date (e.g. 29 jt due next month -> 29 jt this month, not 2.4 jt/month).
+ */
+function savingHint(r: Rec): string | null {
+  if (!r.active || r.kind !== "expense") return null;
+  const infrequent = r.frequency === "yearly" || (r.frequency === "monthly" && r.every >= 2);
+  if (!infrequent) return null;
+  const now = new Date();
+  const due = parseISO(r.next_date);
+  const monthsLeft = Math.max(1, (due.getFullYear() - now.getFullYear()) * 12 + (due.getMonth() - now.getMonth()));
+  if (due < now) return null; // already due: shown in the due list above
+  const perMonth = Math.ceil(r.amount / monthsLeft);
+  return monthsLeft === 1
+    ? `Siapkan ${formatIDR(r.amount)} sebelum ${formatShort(r.next_date)}`
+    : `Sisihkan ≈ ${formatIDR(perMonth)}/bulan selama ${monthsLeft} bulan sampai ${formatShort(r.next_date)}`;
+}
+
+function OutlookCard({
+  windowKey,
+  setWindowKey,
+  outlook,
+}: {
+  windowKey: WindowKey;
+  setWindowKey: (k: WindowKey) => void;
+  outlook: ReturnType<typeof projectWindow>;
+}) {
+  const net = outlook.income - outlook.expense;
+  const max = Math.max(1, ...outlook.months.flatMap((m) => [m.income, m.expense]));
+  return (
+    <Card title="Proyeksi dari yang rutin 📅">
+      <div className="grid grid-cols-3 gap-1 rounded-full bg-slate-100 p-1" role="radiogroup" aria-label="Periode proyeksi">
+        {(Object.keys(WINDOWS) as WindowKey[]).map((k) => (
+          <button
+            key={k}
+            role="radio"
+            aria-checked={windowKey === k}
+            onClick={() => setWindowKey(k)}
+            className={cx("rounded-full py-1.5 text-xs font-semibold transition", windowKey === k ? "bg-slate-800 text-white" : "text-slate-500")}
+          >
+            {WINDOWS[k].label}
+          </button>
+        ))}
+      </div>
+      <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+        <div className="rounded-2xl bg-slate-50 p-2">
+          <p className="text-[11px] font-semibold text-slate-500">Tagihan</p>
+          <p className="num font-extrabold text-slate-800">{formatCompact(outlook.expense)}</p>
+        </div>
+        <div className="rounded-2xl bg-mint-100 p-2">
+          <p className="text-[11px] font-semibold text-mint-600">Pemasukan</p>
+          <p className="num font-extrabold text-slate-800">{formatCompact(outlook.income)}</p>
+        </div>
+        <div className={cx("rounded-2xl p-2", net < 0 ? "bg-red-50" : "bg-sun-100")}>
+          <p className={cx("text-[11px] font-semibold", net < 0 ? "text-red-700" : "text-amber-700")}>Selisih</p>
+          <p className="num font-extrabold text-slate-800">{formatCompact(net)}</p>
+        </div>
+      </div>
+      {outlook.months.length > 1 && (
+        <ul className="mt-3 space-y-1.5">
+          {outlook.months.map((m) => (
+            <li key={m.key} className="grid grid-cols-[3.5rem_1fr_auto] items-center gap-2 text-xs" title={m.due.map((d) => `${d.name} ${formatIDR(d.amount)}`).join(", ")}>
+              <span className="font-semibold capitalize text-slate-600">{m.label}</span>
+              <span className="space-y-0.5">
+                <span className="block h-1.5 rounded-full bg-[#2fb67c]" style={{ width: `${(m.income / max) * 100}%` }} />
+                <span className="block h-1.5 rounded-full bg-[#f47c5a]" style={{ width: `${(m.expense / max) * 100}%` }} />
+              </span>
+              <span className="num text-right text-slate-600">
+                {m.expense > 0 ? `−${formatCompact(m.expense)}` : "—"}
+                {m.due.some((d) => d.kind === "expense" && d.amount >= 5_000_000) && " ⚠️"}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="mt-2 text-xs text-slate-400">
+        Dihitung dari tanggal jatuh tempo sebenarnya. Yang sudah berakhir tidak ikut dihitung. Hijau = pemasukan, oranye = tagihan, ⚠️ = ada tagihan besar.
+      </p>
+    </Card>
+  );
 }
 
 /** Due-items strip, shown on Beranda and here. */
@@ -62,8 +201,8 @@ export function Recurring() {
   const [editing, setEditing] = useState<Rec | Kind | null>(null);
   const bills = items.filter((r) => r.kind === "expense");
   const incomes = items.filter((r) => r.kind === "income");
-  const billsMonthly = bills.filter((r) => r.active).reduce((s, r) => s + perMonth(r), 0);
-  const incomeMonthly = incomes.filter((r) => r.active).reduce((s, r) => s + perMonth(r), 0);
+  const [windowKey, setWindowKey] = useState<WindowKey>("12");
+  const outlook = projectWindow(items, windowKey);
 
   const list = (rs: Rec[]) =>
     rs.length === 0 ? (
@@ -86,6 +225,12 @@ export function Recurring() {
                   {describeFrequency(r.frequency, r.every)} · {r.active ? `berikutnya ${formatDay(r.next_date)}` : "selesai"}
                   {r.paid_by_name && ` · ${r.paid_by_name}`}
                 </span>
+                {r.active && r.end_date && (
+                  <span className="block text-xs text-slate-400">
+                    berakhir {formatShort(r.end_date)} · {remainingCount(r)} kali lagi
+                  </span>
+                )}
+                {savingHint(r) && <span className="mt-0.5 block text-xs font-semibold text-amber-700">💡 {savingHint(r)}</span>}
               </span>
               <span className={cx("num font-bold", r.kind === "income" ? "text-mint-600" : "text-slate-800")}>{formatIDR(r.amount)}</span>
             </button>
@@ -106,10 +251,12 @@ export function Recurring() {
 
       <DueList />
 
+      {items.some((r) => r.active) && <OutlookCard windowKey={windowKey} setWindowKey={setWindowKey} outlook={outlook} />}
+
       <Card
         title={
           <span className="flex items-center gap-2">
-            🧾 Tagihan & langganan <Badge>≈ {formatIDR(Math.round(billsMonthly))}/bln</Badge>
+            🧾 Tagihan & langganan <Badge>{formatCompact(outlook.expense)} · {WINDOWS[windowKey].short}</Badge>
           </span>
         }
         action={manage && <Button variant="secondary" onClick={() => setEditing("expense")}>+ Tagihan</Button>}
@@ -119,7 +266,7 @@ export function Recurring() {
       <Card
         title={
           <span className="flex items-center gap-2">
-            💼 Pemasukan rutin <Badge tone="brand">≈ {formatIDR(Math.round(incomeMonthly))}/bln</Badge>
+            💼 Pemasukan rutin <Badge tone="brand">{formatCompact(outlook.income)} · {WINDOWS[windowKey].short}</Badge>
           </span>
         }
         action={manage && <Button variant="secondary" onClick={() => setEditing("income")}>+ Pemasukan</Button>}
