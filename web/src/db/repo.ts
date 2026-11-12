@@ -256,6 +256,54 @@ export const q = {
     );
   },
 
+  /**
+   * Earlier transactions whose name matches what's being typed, to fill a new
+   * one from. One suggestion per (name, category, account), newest first;
+   * names starting with the text rank above names merely containing it.
+   */
+  suggestions(dompetId: string, me: string, text: string, limit = 5) {
+    const needle = text.trim().toLowerCase();
+    if (needle.length < 2) return [];
+    const rows = all<{
+      note: string;
+      kind: Kind;
+      amount: number;
+      category_id: string | null;
+      account_id: string;
+      paid_by: string | null;
+      date: string;
+      category_icon: string | null;
+      category_name: string | null;
+      account_name: string;
+      account_visibility: "shared" | "private";
+      paid_by_name: string | null;
+    }>(
+      `SELECT t.note, t.kind, t.amount, t.category_id, t.account_id, t.paid_by, t.date,
+              COALESCE(c.icon, pc.icon) AS category_icon, c.name AS category_name,
+              a.name AS account_name, a.visibility AS account_visibility, p.name AS paid_by_name
+       FROM transactions t
+       JOIN accounts a ON a.id = t.account_id
+       LEFT JOIN categories c ON c.id = t.category_id
+       LEFT JOIN categories pc ON pc.id = c.parent_id
+       LEFT JOIN members p ON p.id = t.paid_by
+       WHERE t.dompet_id = $d AND ${VISIBLE_ACCOUNT} AND a.archived = 0 AND t.flag IS NULL
+         AND t.note <> '' AND lower(t.note) LIKE $like
+       ORDER BY t.date DESC, t.created_at DESC
+       LIMIT 300`,
+      { $d: dompetId, $me: me, $like: "%" + needle.replace(/[%_]/g, "") + "%" },
+    );
+    const seen = new Map<string, (typeof rows)[number] & { uses: number }>();
+    for (const r of rows) {
+      const key = r.note.toLowerCase() + "|" + (r.category_id ?? "") + "|" + r.account_id;
+      const hit = seen.get(key);
+      if (hit) hit.uses += 1;
+      else seen.set(key, { ...r, uses: 1 }); // first = most recent amount/payer
+    }
+    return [...seen.values()]
+      .sort((a, b) => Number(b.note.toLowerCase().startsWith(needle)) - Number(a.note.toLowerCase().startsWith(needle)))
+      .slice(0, limit);
+  },
+
   monthTotals(dompetId: string, me: string, month: string) {
     return (
       get<{ income: number; expense: number }>(

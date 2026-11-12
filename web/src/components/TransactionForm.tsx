@@ -5,6 +5,7 @@ import { formatCompact, formatIDR, parseAmount, todayISO } from "../lib/format";
 import { useCurrent, useDbVersion } from "../lib/hooks";
 import { attempt, Avatar, Button, cx, Field, Input, Modal, STICKY_ACTIONS } from "./ui";
 import { DatePicker } from "./DatePicker";
+import { Icon } from "./Icon";
 import { AccountPicker, CategoryPicker } from "./Pickers";
 
 const QUICK = [10_000, 25_000, 50_000, 100_000];
@@ -40,7 +41,22 @@ function FormBody({ onClose, editing }: { onClose: () => void; editing: Transact
   };
   const [date, setDate] = useState(editing?.date ?? todayISO());
   const [note, setNote] = useState(editing?.note ?? "");
-  const [noteOpen, setNoteOpen] = useState(false);
+  // Suggestions only while typing a new entry (not when opening an existing one).
+  const [showSuggest, setShowSuggest] = useState(false);
+  const suggestions = showSuggest && !editing ? q.suggestions(dompet.id, me.id, note) : [];
+  // Fill the form from an earlier transaction; date stays as chosen.
+  const applySuggestion = (s: ReturnType<typeof q.suggestions>[number]) => {
+    setNote(s.note);
+    setKind(s.kind);
+    setAmountText(String(s.amount));
+    setCategoryId(s.category_id);
+    if (accounts.some((a) => a.id === s.account_id)) setAccountId(s.account_id);
+    if (s.paid_by && members.some((m) => m.id === s.paid_by)) {
+      setPaidBy(s.paid_by);
+      setPayerTouched(true);
+    }
+    setShowSuggest(false);
+  };
 
   const categories = q.categories(dompet.id, kind);
   const amount = parseAmount(amountText);
@@ -108,9 +124,56 @@ function FormBody({ onClose, editing }: { onClose: () => void; editing: Transact
           ))}
         </div>
 
+        <div className="relative">
+          <Field label="Apa ini?">
+            <Input
+              value={note}
+              maxLength={140}
+              autoComplete="off"
+              placeholder="mis. Aqua, Bensin, Pasar"
+              onChange={(e) => {
+                setNote(e.target.value);
+                setShowSuggest(true);
+              }}
+              onKeyDown={(e) => e.key === "Escape" && setShowSuggest(false)}
+            />
+          </Field>
+          {showSuggest && suggestions.length > 0 && (
+            <ul className="pop-in mt-1.5 overflow-hidden rounded-2xl bg-white shadow-[0_10px_30px_-12px_rgba(120,72,40,0.35)] ring-1 ring-slate-100" role="listbox" aria-label="Transaksi sebelumnya">
+              <li className="px-3 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Pakai dari sebelumnya</li>
+              {suggestions.map((s) => (
+                <li key={`${s.note}|${s.category_id}|${s.account_id}`}>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={false}
+                    onClick={() => applySuggestion(s)}
+                    className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-brand-50"
+                  >
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100">
+                      <Icon value={s.category_icon ?? "📦"} size={20} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold text-slate-800">{s.note}</span>
+                      <span className="block truncate text-xs text-slate-500">
+                        {s.category_name ?? "Tanpa kategori"} · {s.account_visibility === "private" ? "🔒 " : ""}
+                        {s.account_name}
+                        {s.paid_by_name ? ` · ${s.paid_by_name}` : ""}
+                        {s.uses > 1 ? ` · ${s.uses}×` : ""}
+                      </span>
+                    </span>
+                    <span className={cx("num shrink-0 text-sm font-bold", s.kind === "income" ? "text-mint-600" : "text-slate-800")}>
+                      {formatCompact(s.amount)}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
         <Field label="Berapa?" hint={Number.isFinite(amount) && amount > 0 ? formatIDR(amount) : undefined}>
           <Input
-            autoFocus
             inputMode="decimal"
             placeholder="25rb"
             value={amountText}
@@ -166,15 +229,6 @@ function FormBody({ onClose, editing }: { onClose: () => void; editing: Transact
           )}
         </div>
 
-        {noteOpen || note ? (
-          <Field label="Catatan">
-            <Input value={note} maxLength={140} autoFocus={noteOpen && !note} placeholder="mis. Belanja sayur di pasar" onChange={(e) => setNote(e.target.value)} />
-          </Field>
-        ) : (
-          <button type="button" onClick={() => setNoteOpen(true)} className="text-sm font-semibold text-brand-700">
-            + Tambah catatan
-          </button>
-        )}
       </fieldset>
 
       <div className={`${STICKY_ACTIONS} justify-between`}>
