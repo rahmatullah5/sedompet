@@ -1750,3 +1750,10 @@ to authenticated;
 
 alter table public.transactions add column if not exists transfer_id uuid;
 create index if not exists transactions_transfer_idx on public.transactions (transfer_id) where transfer_id is not null;
+
+-- ===== supabase/migrations/20261117000000_budget_period.sql =====
+-- Sedompet: budgets can be daily, weekly (Mon-Sun) or monthly.
+alter table public.budgets add column if not exists period text not null default 'monthly';
+do $$ begin
+  alter table public.budgets add constraint budgets_period_check check (period in ('daily', 'weekly', 'monthly'));
+exception when duplicate_object then null; end $$;

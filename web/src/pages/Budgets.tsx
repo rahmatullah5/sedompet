@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { CategoryPicker } from "../components/Pickers";
-import { m, q, type Budget } from "../db/repo";
+import { m, q, type Budget, type BudgetPeriod } from "../db/repo";
 import { can } from "../lib/permissions";
 import { currentMonth, formatIDR, parseAmount } from "../lib/format";
 import { useCurrent, useDbVersion } from "../lib/hooks";
@@ -8,12 +8,21 @@ import { attempt, Avatar, Badge, Button, Card, Empty, Field, Input, Modal, Progr
 import { MonthNav } from "./Transactions";
 import { Icon } from "../components/Icon";
 
-function daysLeftInMonth(month: string) {
-  if (month !== currentMonth()) return 0;
+/** Days left (incl. today) in the budget's current period; 0 when not useful. */
+function daysLeft(month: string, period: BudgetPeriod) {
+  if (month !== currentMonth() || period === "daily") return 0;
   const now = new Date();
+  if (period === "weekly") return 7 - ((now.getDay() + 6) % 7);
   const last = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
   return last - now.getDate() + 1;
 }
+
+export const PERIODS: { value: BudgetPeriod; label: string; icon: string; per: string }[] = [
+  { value: "daily", label: "Harian", icon: "☀️", per: "hari" },
+  { value: "weekly", label: "Mingguan", icon: "🗓️", per: "minggu" },
+  { value: "monthly", label: "Bulanan", icon: "📅", per: "bulan" },
+];
+export const perLabel = (p: BudgetPeriod) => PERIODS.find((x) => x.value === p)?.per ?? "bulan";
 
 export function Budgets() {
   useDbVersion();
@@ -22,14 +31,13 @@ export function Budgets() {
   const [editing, setEditing] = useState<Budget | "new" | null>(null);
   const budgets = q.budgets(dompet.id, month);
   const manage = can.manage(me.role);
-  const daysLeft = daysLeftInMonth(month);
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-extrabold tracking-tight text-slate-800">Anggaran 🐷</h1>
-          <p className="text-sm text-slate-500">Rencana belanja bulanan keluarga dan uang saku anak.</p>
+          <p className="text-sm text-slate-500">Rencana belanja harian, mingguan, atau bulanan keluarga dan uang saku anak.</p>
         </div>
         <MonthNav month={month} setMonth={setMonth} />
       </div>
@@ -46,14 +54,16 @@ export function Budgets() {
       {budgets.length === 0 ? (
         <Card>
           <Empty icon="🎯" title="Belum ada anggaran">
-            {manage ? "Buat anggaran bulanan, misalnya untuk belanja dapur atau uang saku anak." : null}
+            {manage ? "Buat anggaran, misalnya jajan harian, belanja dapur mingguan, atau uang saku bulanan anak." : null}
           </Empty>
         </Card>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           {budgets.map((b) => {
-            const left = b.amount - b.spent;
+            const left = b.limit - b.spent;
             const over = left < 0;
+            const days = daysLeft(month, b.period);
+            const period = PERIODS.find((p) => p.value === b.period)!;
             return (
               <Card key={b.id}>
                 <button className="w-full text-left disabled:cursor-default" disabled={!manage} onClick={() => setEditing(b)}>
@@ -63,6 +73,9 @@ export function Budgets() {
                         <Icon value={b.member_emoji ?? b.category_icon ?? "💰"} size={28} /> {b.name}
                       </p>
                       <div className="mt-1 flex flex-wrap gap-1">
+                        <Badge tone="brand">
+                          {period.icon} {formatIDR(b.amount)}/{period.per}
+                        </Badge>
                         <Badge>
                           {b.category_name ?? (b.exclude_category_ids && JSON.parse(b.exclude_category_ids).length
                             ? `Semua kecuali ${JSON.parse(b.exclude_category_ids).length} kategori`
@@ -77,18 +90,19 @@ export function Budgets() {
                     </div>
                     {over ? <Badge tone="amber">Lewat batas</Badge> : null}
                   </div>
-                  <Progress value={b.spent} max={b.amount} />
+                  <p className="mb-1 text-xs font-semibold text-slate-500">{b.periodLabel}</p>
+                  <Progress value={b.spent} max={b.limit} />
                   <div className="mt-2 flex justify-between text-sm">
                     <span className="num text-slate-600 dark:text-slate-300">
-                      {formatIDR(b.spent)} <span className="text-slate-400">/ {formatIDR(b.amount)}</span>
+                      {formatIDR(b.spent)} <span className="text-slate-400">/ {formatIDR(b.limit)}</span>
                     </span>
                     <span className={over ? "font-medium text-red-600" : "text-slate-500"}>
                       {over ? `lebih ${formatIDR(-left)}` : `sisa ${formatIDR(left)}`}
                     </span>
                   </div>
-                  {daysLeft > 0 && !over && (
+                  {days > 1 && !over && (
                     <p className="mt-1 text-xs text-slate-400">
-                      ≈ {formatIDR(Math.floor(left / daysLeft))}/hari untuk {daysLeft} hari lagi
+                      ≈ {formatIDR(Math.floor(left / days))}/hari untuk {days} hari lagi
                     </p>
                   )}
                 </button>
@@ -119,6 +133,7 @@ function BudgetFormBody({ budget, onClose }: { budget: Budget | null; onClose: (
   const [amountText, setAmountText] = useState(budget ? String(budget.amount) : "");
   const [categoryId, setCategoryId] = useState(budget?.category_id ?? "");
   const [memberId, setMemberId] = useState(budget?.member_id ?? "");
+  const [period, setPeriod] = useState<BudgetPeriod>(budget?.period ?? "monthly");
   const [excludes, setExcludes] = useState<string[]>(() => {
     try {
       return JSON.parse(budget?.exclude_category_ids ?? "[]");
@@ -138,6 +153,7 @@ function BudgetFormBody({ budget, onClose }: { budget: Budget | null; onClose: (
           category_id: categoryId || null,
           member_id: memberId || null,
           exclude_category_ids: excludes,
+          period,
         }),
       "Anggaran disimpan",
     );
@@ -155,7 +171,23 @@ function BudgetFormBody({ budget, onClose }: { budget: Budget | null; onClose: (
       <Field label="Nama">
         <Input value={name} maxLength={40} placeholder="mis. Belanja Dapur" onChange={(e) => setName(e.target.value)} autoFocus />
       </Field>
-      <Field label="Batas per bulan" hint={amount > 0 ? formatIDR(amount) : "Contoh: 3jt, 750rb"}>
+      <Field label="Periode">
+        <div className="grid grid-cols-3 gap-1.5">
+          {PERIODS.map((p) => (
+            <button
+              key={p.value}
+              type="button"
+              aria-pressed={period === p.value}
+              onClick={() => setPeriod(p.value)}
+              className={`flex flex-col items-center gap-0.5 rounded-2xl border py-2 text-sm transition ${period === p.value ? "border-brand-600 bg-brand-50 font-semibold text-brand-800 ring-1 ring-brand-600" : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}
+            >
+              <span className="text-xl">{p.icon}</span>
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </Field>
+      <Field label={`Batas per ${perLabel(period)}`} hint={amount > 0 ? formatIDR(amount) : period === "daily" ? "Contoh: 50rb" : period === "weekly" ? "Contoh: 500rb" : "Contoh: 3jt, 750rb"}>
         <Input inputMode="decimal" value={amountText} onChange={(e) => setAmountText(e.target.value)} />
       </Field>
       <CategoryPicker

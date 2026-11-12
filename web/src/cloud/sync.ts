@@ -96,7 +96,12 @@ function toServer(t: Synced, r: Row): Row {
         created_at: iso(r.created_at),
       };
     case "budgets":
-      return { ...pick(r, ["id", "dompet_id", "name", "amount", "category_id", "member_id", "created_by"]), exclude_category_ids: r.exclude_category_ids ? JSON.parse(String(r.exclude_category_ids)) : [] };
+      return {
+        ...pick(r, ["id", "dompet_id", "name", "amount", "category_id", "member_id", "created_by"]),
+        exclude_category_ids: r.exclude_category_ids ? JSON.parse(String(r.exclude_category_ids)) : [],
+        // Only sent when not monthly, so servers without the period migration keep working.
+        ...(r.period && r.period !== "monthly" ? { period: r.period } : {}),
+      };
     case "loans":
       return { ...pick(r, ["id", "dompet_id", "direction", "counterparty", "amount", "account_id", "start_date", "due_date", "note", "created_by"]), settled: !!r.settled };
     case "recurring":
@@ -317,9 +322,10 @@ export async function pullAll(): Promise<void> {
         [t.id, t.dompet_id, t.account_id, t.category_id, t.kind, t.amount, t.date, t.note, t.flag, t.loan_id, t.recurring_id, t.transfer_id ?? null, t.paid_by, t.created_by, t.updated_by, sqliteTime(t.created_at), sqliteTime(t.updated_at)] as (string | number | null)[],
       );
     for (const b of budgets)
-      run("INSERT INTO budgets (id, dompet_id, name, amount, category_id, member_id, exclude_category_ids, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", [
+      run("INSERT INTO budgets (id, dompet_id, name, amount, category_id, member_id, exclude_category_ids, period, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [
         b.id, b.dompet_id, b.name, b.amount, b.category_id, b.member_id,
         Array.isArray(b.exclude_category_ids) && b.exclude_category_ids.length ? JSON.stringify(b.exclude_category_ids) : null,
+        (b.period as string) || "monthly",
         b.created_by, sqliteTime(b.created_at),
       ] as (string | number | null)[]);
     for (const a of (activity ?? []) as Row[])

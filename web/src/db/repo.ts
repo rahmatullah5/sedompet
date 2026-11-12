@@ -2,7 +2,7 @@
 
 import { all, get, write } from "./database";
 import { can, PermissionError, type Role } from "../lib/permissions";
-import { formatIDR, parseAmount } from "../lib/format";
+import { currentMonth, formatIDR, parseAmount, toISODate, todayISO } from "../lib/format";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -98,8 +98,15 @@ export interface Budget {
   category_icon: string | null;
   member_name: string | null;
   member_emoji: string | null;
+  period: BudgetPeriod;
+  /** Spent within the period shown (today / this week / this month). */
   spent: number;
+  /** Limit for the period shown (scaled for weekly/daily in past months). */
+  limit: number;
+  periodLabel: string;
 }
+
+export type BudgetPeriod = "daily" | "weekly" | "monthly";
 
 export interface Activity {
   id: string;
@@ -370,8 +377,24 @@ export const q = {
   },
 
   /** Budgets count shared-account spending only, so every member sees the same progress. */
+  /**
+   * Budgets with progress for the period that matters when viewing `month`:
+   * in the current month a daily budget tracks today and a weekly one this
+   * week (Mon-Sun); for past months they show the whole month against the
+   * equivalent limit (amount x days/7 or x days).
+   */
   budgets(dompetId: string, month: string) {
-    return all<Budget>(
+    const isCurrent = month === currentMonth();
+    const [y, mo] = month.split("-").map(Number);
+    const daysInMonth = new Date(y, mo, 0).getDate();
+    const monthFrom = month + "-01";
+    const monthTo = month + "-" + String(daysInMonth).padStart(2, "0");
+    const today = todayISO();
+    const now = new Date();
+    const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - ((now.getDay() + 6) % 7));
+    const weekFrom = toISODate(monday);
+    const weekTo = toISODate(new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6));
+    const rows = all<Omit<Budget, "limit" | "periodLabel">>(
       `SELECT b.*, c.name AS category_name, c.icon AS category_icon,
               m.name AS member_name, m.emoji AS member_emoji,
               COALESCE((
@@ -379,7 +402,13 @@ export const q = {
                 JOIN accounts a ON a.id = t.account_id AND a.visibility = 'shared'
                 LEFT JOIN categories c ON c.id = t.category_id
                 WHERE t.dompet_id = b.dompet_id AND t.kind = 'expense' AND ${REAL}
-                  AND substr(t.date, 1, 7) = $month
+                  AND t.date BETWEEN
+                        (CASE WHEN $current = 1 AND b.period = 'weekly' THEN $weekFrom
+                              WHEN $current = 1 AND b.period = 'daily' THEN $today
+                              ELSE $monthFrom END)
+                    AND (CASE WHEN $current = 1 AND b.period = 'weekly' THEN $weekTo
+                              WHEN $current = 1 AND b.period = 'daily' THEN $today
+                              ELSE $monthTo END)
                   AND (b.category_id IS NULL OR t.category_id = b.category_id OR c.parent_id = b.category_id)
                   AND (b.exclude_category_ids IS NULL OR (
                         COALESCE(t.category_id, '') NOT IN (SELECT value FROM json_each(b.exclude_category_ids))
@@ -390,9 +419,25 @@ export const q = {
        LEFT JOIN categories c ON c.id = b.category_id
        LEFT JOIN members m ON m.id = b.member_id
        WHERE b.dompet_id = $d
-       ORDER BY b.member_id IS NOT NULL, b.category_id IS NOT NULL, b.name`,
-      { $d: dompetId, $month: month },
+       ORDER BY CASE b.period WHEN 'daily' THEN 0 WHEN 'weekly' THEN 1 ELSE 2 END,
+                b.member_id IS NOT NULL, b.category_id IS NOT NULL, b.name`,
+      { $d: dompetId, $current: isCurrent ? 1 : 0, $weekFrom: weekFrom, $weekTo: weekTo, $today: today, $monthFrom: monthFrom, $monthTo: monthTo },
     );
+    const dayFmt = new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short" });
+    return rows.map((b): Budget => {
+      const period = (b.period ?? "monthly") as BudgetPeriod;
+      if (period === "monthly") return { ...b, period, limit: b.amount, periodLabel: "Bulan ini" };
+      if (!isCurrent) {
+        const factor = period === "weekly" ? daysInMonth / 7 : daysInMonth;
+        return { ...b, period, limit: Math.round(b.amount * factor), periodLabel: "Sebulan (setara)" };
+      }
+      return {
+        ...b,
+        period,
+        limit: b.amount,
+        periodLabel: period === "daily" ? "Hari ini" : `Minggu ini (${dayFmt.format(monday)}–${dayFmt.format(new Date(weekTo + "T00:00"))})`,
+      };
+    });
   },
 
   /** Income/expense per month, oldest first, for the last `months` months. */
@@ -904,23 +949,25 @@ export const m = {
   },
 
   // --- budgets -------------------------------------------------------------
-  saveBudget(actorId: string, data: { id?: string; name: string; amount: number; category_id: string | null; member_id: string | null; exclude_category_ids?: string[] }) {
+  saveBudget(actorId: string, data: { id?: string; name: string; amount: number; category_id: string | null; member_id: string | null; exclude_category_ids?: string[]; period?: BudgetPeriod }) {
     const actor = actorOf(actorId);
     if (!can.manage(actor.role)) throw new PermissionError("Hanya pemilik/admin yang bisa mengatur anggaran.");
+    const period: BudgetPeriod = data.period ?? "monthly";
+    const per = period === "daily" ? "hari" : period === "weekly" ? "minggu" : "bulan";
     if (!Number.isInteger(data.amount) || data.amount <= 0) throw new Error("Jumlah harus lebih dari 0.");
     const name = requireText(data.name, "Nama anggaran");
     const excludes = !data.category_id && data.exclude_category_ids?.length ? JSON.stringify(data.exclude_category_ids) : null;
     return write((run) => {
       if (data.id) {
-        run("UPDATE budgets SET name = ?, amount = ?, category_id = ?, member_id = ?, exclude_category_ids = ? WHERE id = ? AND dompet_id = ?", [
-          name, data.amount, data.category_id, data.member_id, excludes, data.id, actor.dompet_id,
+        run("UPDATE budgets SET name = ?, amount = ?, category_id = ?, member_id = ?, exclude_category_ids = ?, period = ? WHERE id = ? AND dompet_id = ?", [
+          name, data.amount, data.category_id, data.member_id, excludes, period, data.id, actor.dompet_id,
         ]);
-        log(run, actor, `mengubah anggaran ${name} menjadi ${formatIDR(data.amount)}`);
+        log(run, actor, `mengubah anggaran ${name} menjadi ${formatIDR(data.amount)}/${per}`);
       } else {
-        run("INSERT INTO budgets (id, dompet_id, name, amount, category_id, member_id, exclude_category_ids, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", [
-          uid(), actor.dompet_id, name, data.amount, data.category_id, data.member_id, excludes, actor.id,
+        run("INSERT INTO budgets (id, dompet_id, name, amount, category_id, member_id, exclude_category_ids, period, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", [
+          uid(), actor.dompet_id, name, data.amount, data.category_id, data.member_id, excludes, period, actor.id,
         ]);
-        log(run, actor, `membuat anggaran ${name} ${formatIDR(data.amount)}/bulan`);
+        log(run, actor, `membuat anggaran ${name} ${formatIDR(data.amount)}/${per}`);
       }
     });
   },

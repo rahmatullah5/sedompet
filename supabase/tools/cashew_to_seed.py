@@ -214,7 +214,9 @@ def main():
 
     rows = []
     for b in budgets:
-        if b["archived"] or b["reoccurrence"] != 3 or b["period_length"] != 1:
+        # Cashew reoccurrence: 1 daily, 2 weekly, 3 monthly (0 custom, 4 yearly are skipped)
+        period = {1: "daily", 2: "weekly", 3: "monthly"}.get(b["reoccurrence"])
+        if b["archived"] or not period or b["period_length"] != 1:
             continue
         cat_list = json.loads(b["category_fks"] or "[]")
         category = cat.get(cat_list[0]) if len(cat_list) == 1 else None
@@ -222,10 +224,10 @@ def main():
         excl_sql = "array[" + ",".join(q(x) for x in excl) + "]::uuid[]" if excl and not category else "'{}'::uuid[]"
         rows.append(
             f"({q(stable_id('cashew', d, 'budget', b['budget_pk']))}, {q(d)}, {q((b['name'] or 'Anggaran')[:40])}, "
-            f"{max(1, round(b['amount']))}, {q(category)}, null, {excl_sql}, {q(member_id)})"
+            f"{max(1, round(b['amount']))}, {q(category)}, null, {excl_sql}, {q(period)}, {q(member_id)})"
         )
     if rows:
-        w("insert into public.budgets (id, dompet_id, name, amount, category_id, member_id, exclude_category_ids, created_by) values\n  "
+        w("insert into public.budgets (id, dompet_id, name, amount, category_id, member_id, exclude_category_ids, period, created_by) values\n  "
           + ",\n  ".join(rows) + "\non conflict (id) do nothing;")
 
     # Mark loans repaid in full as settled.

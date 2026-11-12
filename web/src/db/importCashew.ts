@@ -9,7 +9,7 @@
 //     "Balance Correction"-> flag 'adjustment'
 //     loan objective      -> loans + flag 'loan'
 //     unpaid/upcoming     -> skipped
-//   budgets (monthly)     -> budgets; weekly/custom ones are skipped
+//   budgets (daily/weekly/monthly) -> budgets; custom/yearly ones are skipped
 //
 // IDs are derived from (Dompet, Cashew id), so importing the same backup twice
 // does not create duplicates.
@@ -209,8 +209,9 @@ export async function importCashew(actorId: string, bytes: Uint8Array): Promise<
       }
 
       for (const b of budgets) {
-        const monthly = b.reoccurrence === 3 && b.period_length === 1;
-        if (!monthly || b.archived) {
+        // Cashew reoccurrence: 1 daily, 2 weekly, 3 monthly (0 custom, 4 yearly)
+        const period = b.period_length === 1 ? ({ 1: "daily", 2: "weekly", 3: "monthly" } as Record<number, string>)[b.reoccurrence ?? -1] : undefined;
+        if (!period || b.archived) {
           summary.skipped.budgets++;
           continue;
         }
@@ -229,8 +230,8 @@ export async function importCashew(actorId: string, bytes: Uint8Array): Promise<
         }
         const excludes = excludeList.map((pk) => catId.get(pk)).filter((x): x is string => !!x);
         run(
-          `INSERT OR IGNORE INTO budgets (id, dompet_id, name, amount, category_id, member_id, exclude_category_ids, created_by) VALUES (?, ?, ?, ?, ?, NULL, ?, ?)`,
-          [budgetId.get(b.budget_pk)!, d, b.name.slice(0, 40) || "Anggaran", Math.max(1, Math.round(b.amount)), category, !category && excludes.length ? JSON.stringify(excludes) : null, actor.id],
+          `INSERT OR IGNORE INTO budgets (id, dompet_id, name, amount, category_id, member_id, exclude_category_ids, period, created_by) VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?)`,
+          [budgetId.get(b.budget_pk)!, d, b.name.slice(0, 40) || "Anggaran", Math.max(1, Math.round(b.amount)), category, !category && excludes.length ? JSON.stringify(excludes) : null, period, actor.id],
         );
         summary.budgets++;
       }

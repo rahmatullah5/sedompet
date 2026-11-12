@@ -30,7 +30,7 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction) => void; g
   const byMember = q.spendingByMember(dompet.id, me.id, month);
   const topCats = q.spendingByCategory(dompet.id, me.id, month).slice(0, 3);
   const budgets = q.budgets(dompet.id, month);
-  const overall = budgets.find((b) => !b.category_id && !b.member_id);
+  const overall = budgets.find((b) => !b.category_id && !b.member_id && b.period === "monthly");
   const jars = budgets.filter((b) => b !== overall).slice(0, 4);
   const activity = q.activity(dompet.id, 6);
   const recent = q.transactions(dompet.id, me.id, { limit: 4 });
@@ -180,16 +180,17 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction) => void; g
           </div>
           <div className="grid grid-cols-2 gap-3">
             {jars.map((b) => {
-              const left = b.amount - b.spent;
+              const left = b.limit - b.spent;
               return (
                 <button key={b.id} onClick={() => goTo("anggaran")} className="rounded-3xl bg-white p-4 text-left shadow-[0_8px_24px_-14px_rgba(120,72,40,0.3)]">
                   <Icon value={b.member_emoji ?? b.category_icon ?? "💰"} size={28} />
                   <p className="mt-1 truncate font-bold text-slate-800">{b.name}</p>
+                  {b.period !== "monthly" && <p className="text-[11px] font-semibold text-brand-700">{b.periodLabel.split(" (")[0]}</p>}
                   <p className={`num text-xs font-semibold ${left < 0 ? "text-red-600" : "text-slate-500"}`}>
                     {left < 0 ? `lewat ${formatCompact(-left)}` : `sisa ${formatCompact(left)}`}
                   </p>
                   <div className="mt-2">
-                    <Progress value={b.spent} max={b.amount} />
+                    <Progress value={b.spent} max={b.limit} />
                   </div>
                 </button>
               );

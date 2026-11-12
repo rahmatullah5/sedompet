@@ -134,6 +134,7 @@ CREATE TABLE IF NOT EXISTS budgets (
   category_id  TEXT REFERENCES categories(id) ON DELETE CASCADE,  -- NULL = all expenses
   member_id    TEXT REFERENCES members(id) ON DELETE CASCADE,     -- NULL = whole family (else allowance)
   exclude_category_ids TEXT,                                      -- JSON array, for "all except" budgets
+  period       TEXT NOT NULL DEFAULT 'monthly' CHECK (period IN ('daily','weekly','monthly')),
   created_by   TEXT REFERENCES members(id) ON DELETE SET NULL,
   created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -157,6 +158,7 @@ export const COLUMN_UPGRADES: [table: string, column: string, definition: string
   ["members", "phone", "TEXT"],
   ["categories", "parent_id", "TEXT REFERENCES categories(id) ON DELETE CASCADE"],
   ["budgets", "exclude_category_ids", "TEXT"],
+  ["budgets", "period", "TEXT NOT NULL DEFAULT 'monthly' CHECK (period IN ('daily','weekly','monthly'))"],
   ["transactions", "flag", "TEXT CHECK (flag IN ('transfer','adjustment','loan'))"],
   ["transactions", "loan_id", "TEXT REFERENCES loans(id) ON DELETE CASCADE"],
   ["transactions", "recurring_id", "TEXT REFERENCES recurring(id) ON DELETE SET NULL"],
