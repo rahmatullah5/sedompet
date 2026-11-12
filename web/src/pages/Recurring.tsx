@@ -8,6 +8,7 @@ import { formatCompact, formatDay, formatIDR, parseAmount, toISODate, todayISO }
 import { useCurrent, useDbVersion } from "../lib/hooks";
 import { attempt, Badge, Button, Card, cx, Empty, Field, Input, Modal, Select, STICKY_ACTIONS } from "../components/ui";
 import { Icon, IconPicker } from "../components/Icon";
+import { SuggestionList, type Suggestion } from "../components/Suggestions";
 
 /** Monthly-equivalent amount, for the "per bulan" totals. */
 // ---------------------------------------------------------------------------
@@ -311,6 +312,21 @@ function RecurringForm({ item, kind, onClose }: { item: Rec | null; kind: Kind; 
   const [nextDate, setNextDate] = useState(item?.next_date ?? todayISO());
   const [endDate, setEndDate] = useState(item?.end_date ?? "");
   const amount = parseAmount(amountText);
+  const [moreOpen, setMoreOpen] = useState(!!item && !!(item.category_id || item.end_date || item.paid_by));
+  // Suggest from earlier transactions of the same kind while typing a new item.
+  const [showSuggest, setShowSuggest] = useState(false);
+  const suggestions = showSuggest && !item ? q.suggestions(dompet.id, me.id, name, 5, kind) : [];
+  const applySuggestion = (s: Suggestion) => {
+    setName(s.note.slice(0, 60));
+    setAmountText(String(s.amount));
+    if (accounts.some((a) => a.id === s.account_id)) setAccountId(s.account_id);
+    setCategoryId(s.category_id ?? "");
+    if (s.paid_by && members.some((m) => m.id === s.paid_by)) setPaidBy(s.paid_by);
+    if (s.category_icon) setIcon(s.category_icon);
+    // Show what was filled in under "Pengaturan lain".
+    if (s.category_id || s.paid_by) setMoreOpen(true);
+    setShowSuggest(false);
+  };
 
   return (
     <form
@@ -356,16 +372,33 @@ function RecurringForm({ item, kind, onClose }: { item: Rec | null; kind: Kind; 
           ))}
         </div>
       )}
-      <Field label="Nama">
-        <Input value={name} maxLength={60} placeholder={kind === "income" ? "mis. Gaji Ayah" : "mis. Netflix"} onChange={(e) => setName(e.target.value)} />
-      </Field>
+      <div>
+        <Field label="Nama">
+          <Input
+            value={name}
+            maxLength={60}
+            autoComplete="off"
+            placeholder={kind === "income" ? "mis. Gaji Ayah" : "mis. Netflix"}
+            onChange={(e) => {
+              setName(e.target.value);
+              setShowSuggest(true);
+            }}
+            onKeyDown={(e) => e.key === "Escape" && setShowSuggest(false)}
+          />
+        </Field>
+        {showSuggest && <SuggestionList items={suggestions} onPick={applySuggestion} />}
+      </div>
       <Field label="Berapa?" hint={amount > 0 ? formatIDR(amount) : undefined}>
         <Input inputMode="decimal" value={amountText} onChange={(e) => setAmountText(e.target.value)} />
       </Field>
       <FrequencyPicker frequency={frequency} every={every} onChange={(f, n) => (setFrequency(f), setEvery(n))} />
       <DatePicker label="Berikutnya" value={nextDate} onChange={setNextDate} presets="future" />
       <AccountPicker accounts={accounts} value={accountId} onChange={setAccountId} />
-      <details className="group rounded-2xl bg-slate-50 px-3 py-2" open={!!item && !!(item.category_id || item.end_date || item.paid_by)}>
+      <details
+        className="group rounded-2xl bg-slate-50 px-3 py-2"
+        open={moreOpen}
+        onToggle={(e) => setMoreOpen((e.currentTarget as HTMLDetailsElement).open)}
+      >
         <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-semibold text-slate-700">
           <span>
             Pengaturan lain <span className="font-normal text-slate-400">· kategori, berakhir, pembayar, ikon</span>

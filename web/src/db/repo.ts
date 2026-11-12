@@ -262,7 +262,7 @@ export const q = {
    * one from. One suggestion per (name, category, account), newest first;
    * names starting with the text rank above names merely containing it.
    */
-  suggestions(dompetId: string, me: string, text: string, limit = 5) {
+  suggestions(dompetId: string, me: string, text: string, limit = 5, kind?: Kind) {
     const needle = text.trim().toLowerCase();
     if (needle.length < 2) return [];
     const rows = all<{
@@ -289,9 +289,10 @@ export const q = {
        LEFT JOIN members p ON p.id = t.paid_by
        WHERE t.dompet_id = $d AND ${VISIBLE_ACCOUNT} AND a.archived = 0 AND t.flag IS NULL
          AND t.note <> '' AND lower(t.note) LIKE $like
+         AND ($kind IS NULL OR t.kind = $kind)
        ORDER BY t.date DESC, t.created_at DESC
        LIMIT 300`,
-      { $d: dompetId, $me: me, $like: "%" + needle.replace(/[%_]/g, "") + "%" },
+      { $d: dompetId, $me: me, $like: "%" + needle.replace(/[%_]/g, "") + "%", $kind: kind ?? null },
     );
     const seen = new Map<string, (typeof rows)[number] & { uses: number }>();
     for (const r of rows) {
