@@ -7,6 +7,7 @@ import { attempt, Avatar, Button, cx, Field, Input, Modal, STICKY_ACTIONS } from
 import { DatePicker } from "./DatePicker";
 import { Icon } from "./Icon";
 import { AccountPicker, CategoryPicker } from "./Pickers";
+import { TransferBody } from "./TransferForm";
 
 const QUICK = [10_000, 25_000, 50_000, 100_000];
 
@@ -14,17 +15,69 @@ export function TransactionForm({ open, onClose, editing }: { open: boolean; onC
   return (
     <Modal open={open} onClose={onClose} title={editing ? "Ubah transaksi" : "Catat transaksi"}>
       {/* Remount per transaction so the form starts from fresh values. */}
-      {open && <FormBody key={editing?.id ?? "new"} onClose={onClose} editing={editing ?? null} />}
+      {open && <SheetBody key={editing?.id ?? "new"} onClose={onClose} editing={editing ?? null} />}
     </Modal>
   );
 }
 
-function FormBody({ onClose, editing }: { onClose: () => void; editing: Transaction | null }) {
+const MODES: { key: Kind | "transfer"; label: string }[] = [
+  { key: "expense", label: "Pengeluaran" },
+  { key: "income", label: "Pemasukan" },
+  { key: "transfer", label: "Transfer" },
+];
+
+/** Pengeluaran / Pemasukan / Transfer switch at the top of the sheet. */
+export function ModeSwitch({ value, onPick }: { value: Kind | "transfer"; onPick: (k: Kind | "transfer") => void }) {
+  return (
+    <div className="grid grid-cols-3 gap-1 rounded-full bg-slate-100 p-1">
+      {MODES.map((m) => (
+        <button
+          key={m.key}
+          type="button"
+          onClick={() => onPick(m.key)}
+          className={cx(
+            "rounded-full py-2 text-sm font-bold transition",
+            value === m.key
+              ? m.key === "expense"
+                ? "bg-brand-600 text-white shadow-sm"
+                : m.key === "income"
+                  ? "bg-mint-600 text-white shadow-sm"
+                  : "bg-slate-800 text-white shadow-sm"
+              : "text-slate-500",
+          )}
+        >
+          {m.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Chooses between the normal transaction form and the transfer form. */
+function SheetBody({ onClose, editing }: { onClose: () => void; editing: Transaction | null }) {
+  const [mode, setMode] = useState<Kind | "transfer">(editing?.transfer_id ? "transfer" : (editing?.kind ?? "expense"));
+  if (mode === "transfer") {
+    return <TransferBody transferId={editing?.transfer_id} onClose={onClose} modeSwitch={!editing && <ModeSwitch value="transfer" onPick={setMode} />} />;
+  }
+  return <FormBody key={mode} onClose={onClose} editing={editing} initialKind={mode} onPickMode={editing ? undefined : setMode} />;
+}
+
+function FormBody({
+  onClose,
+  editing,
+  initialKind,
+  onPickMode,
+}: {
+  onClose: () => void;
+  editing: Transaction | null;
+  initialKind: Kind;
+  onPickMode?: (k: Kind | "transfer") => void;
+}) {
   useDbVersion();
   const { dompet, me, members } = useCurrent();
   const accounts = q.accounts(dompet.id, me.id).filter((a) => a.visibility === "shared" || a.owner_member_id === me.id);
 
-  const [kind, setKind] = useState<Kind>(editing?.kind ?? "expense");
+  const [kind, setKind] = useState<Kind>(editing?.kind ?? initialKind);
   const [amountText, setAmountText] = useState(editing ? String(editing.amount) : "");
   const [categoryId, setCategoryId] = useState<string | null>(editing?.category_id ?? null);
   // New entries start on an account you hold (if any), else the first one.
@@ -105,24 +158,18 @@ function FormBody({ onClose, editing }: { onClose: () => void; editing: Transact
         </p>
       )}
       <fieldset disabled={!allowed} className="min-w-0 space-y-3">
-        <div className="grid grid-cols-2 gap-1 rounded-full bg-slate-100 p-1">
-          {(["expense", "income"] as Kind[]).map((k) => (
-            <button
-              key={k}
-              type="button"
-              onClick={() => {
-                setKind(k);
-                setCategoryId(null);
-              }}
-              className={cx(
-                "rounded-full py-2 text-sm font-bold transition",
-                kind === k ? (k === "expense" ? "bg-brand-600 text-white shadow-sm" : "bg-mint-600 text-white shadow-sm") : "text-slate-500",
-              )}
-            >
-              {k === "expense" ? "Pengeluaran" : "Pemasukan"}
-            </button>
-          ))}
-        </div>
+        <ModeSwitch
+          value={kind}
+          onPick={(k) => {
+            if (k === "transfer") {
+              // Editing a normal entry can't turn it into a transfer.
+              if (onPickMode) onPickMode("transfer");
+              return;
+            }
+            setKind(k);
+            setCategoryId(null);
+          }}
+        />
 
         <div className="relative">
           <Field label="Apa ini?">

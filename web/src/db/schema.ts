@@ -117,6 +117,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   flag         TEXT CHECK (flag IN ('transfer','adjustment','loan')),
   loan_id      TEXT REFERENCES loans(id) ON DELETE CASCADE,
   recurring_id TEXT REFERENCES recurring(id) ON DELETE SET NULL,
+  transfer_id  TEXT,                      -- links both sides of a transfer (+ its fee)
   paid_by      TEXT REFERENCES members(id) ON DELETE SET NULL,
   created_by   TEXT REFERENCES members(id) ON DELETE SET NULL,
   updated_by   TEXT REFERENCES members(id) ON DELETE SET NULL,
@@ -159,4 +160,5 @@ export const COLUMN_UPGRADES: [table: string, column: string, definition: string
   ["transactions", "flag", "TEXT CHECK (flag IN ('transfer','adjustment','loan'))"],
   ["transactions", "loan_id", "TEXT REFERENCES loans(id) ON DELETE CASCADE"],
   ["transactions", "recurring_id", "TEXT REFERENCES recurring(id) ON DELETE SET NULL"],
+  ["transactions", "transfer_id", "TEXT"],
 ];

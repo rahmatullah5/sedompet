@@ -90,6 +90,9 @@ function toServer(t: Synced, r: Row): Row {
     case "transactions":
       return {
         ...pick(r, ["id", "dompet_id", "account_id", "category_id", "kind", "amount", "date", "note", "flag", "loan_id", "recurring_id", "paid_by", "created_by", "updated_by"]),
+        // Only sent when set, so servers without the transfers migration
+        // keep accepting ordinary transactions.
+        ...(r.transfer_id ? { transfer_id: r.transfer_id } : {}),
         created_at: iso(r.created_at),
       };
     case "budgets":
@@ -309,9 +312,9 @@ export async function pullAll(): Promise<void> {
       );
     for (const t of transactions)
       run(
-        `INSERT INTO transactions (id, dompet_id, account_id, category_id, kind, amount, date, note, flag, loan_id, recurring_id, paid_by, created_by, updated_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [t.id, t.dompet_id, t.account_id, t.category_id, t.kind, t.amount, t.date, t.note, t.flag, t.loan_id, t.recurring_id, t.paid_by, t.created_by, t.updated_by, sqliteTime(t.created_at), sqliteTime(t.updated_at)] as (string | number | null)[],
+        `INSERT INTO transactions (id, dompet_id, account_id, category_id, kind, amount, date, note, flag, loan_id, recurring_id, transfer_id, paid_by, created_by, updated_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [t.id, t.dompet_id, t.account_id, t.category_id, t.kind, t.amount, t.date, t.note, t.flag, t.loan_id, t.recurring_id, t.transfer_id ?? null, t.paid_by, t.created_by, t.updated_by, sqliteTime(t.created_at), sqliteTime(t.updated_at)] as (string | number | null)[],
       );
     for (const b of budgets)
       run("INSERT INTO budgets (id, dompet_id, name, amount, category_id, member_id, exclude_category_ids, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", [

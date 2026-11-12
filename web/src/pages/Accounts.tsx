@@ -2,6 +2,7 @@ import { useState } from "react";
 import { DatePicker } from "../components/DatePicker";
 import { m, q, type Account, type AccountType } from "../db/repo";
 import { Icon, IconPicker } from "../components/Icon";
+import { TransferBody } from "../components/TransferForm";
 import { can } from "../lib/permissions";
 import { formatIDR, parseAmount, todayISO } from "../lib/format";
 import { useCurrent, useDbVersion } from "../lib/hooks";
@@ -26,6 +27,7 @@ export function Accounts() {
   const accounts = q.accounts(dompet.id, me.id);
   const [editing, setEditing] = useState<Account | "new" | "new-private" | null>(null);
   const [correcting, setCorrecting] = useState<Account | null>(null);
+  const [transferOpen, setTransferOpen] = useState(false);
   const shared = accounts.filter((a) => a.visibility === "shared");
   const priv = accounts.filter((a) => a.visibility === "private");
   const manage = can.manage(me.role);
@@ -81,6 +83,11 @@ export function Accounts() {
         <a href="#/menu" className="text-sm font-semibold text-brand-700">← Menu</a>
         <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-slate-800">Isi dompet 💳</h1>
         <p className="text-sm text-slate-500">Tempat uang keluarga disimpan: tunai, bank, e-wallet.</p>
+        {can.addTransaction(me.role) && accounts.length >= 2 && (
+          <Button variant="secondary" className="mt-3" onClick={() => setTransferOpen(true)}>
+            ⇄ Transfer antar akun
+          </Button>
+        )}
       </div>
       <div className="space-y-4">
         <Card
@@ -103,6 +110,9 @@ export function Accounts() {
         </Card>
       </div>
       <AccountForm editing={editing} onClose={() => setEditing(null)} />
+      <Modal open={transferOpen} onClose={() => setTransferOpen(false)} title="Transfer antar akun ⇄">
+        {transferOpen && <TransferBody onClose={() => setTransferOpen(false)} />}
+      </Modal>
       <Modal open={correcting !== null} onClose={() => setCorrecting(null)} title="Koreksi saldo ⚖️">
         {correcting && <CorrectionForm key={correcting.id} account={correcting} onClose={() => setCorrecting(null)} />}
       </Modal>

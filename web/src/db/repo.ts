@@ -68,6 +68,7 @@ export interface Transaction {
   date: string;
   note: string;
   flag: TxFlag;
+  transfer_id: string | null;
   paid_by: string | null;
   created_by: string | null;
   updated_by: string | null;
@@ -302,6 +303,28 @@ export const q = {
     return [...seen.values()]
       .sort((a, b) => Number(b.note.toLowerCase().startsWith(needle)) - Number(a.note.toLowerCase().startsWith(needle)))
       .slice(0, limit);
+  },
+
+  /** Both sides (and the fee, if any) of a transfer. */
+  transfer(dompetId: string, transferId: string) {
+    const rows = all<{ id: string; account_id: string; kind: Kind; amount: number; date: string; note: string; flag: TxFlag; created_by: string | null }>(
+      "SELECT id, account_id, kind, amount, date, note, flag, created_by FROM transactions WHERE dompet_id = ? AND transfer_id = ?",
+      [dompetId, transferId],
+    );
+    const out = rows.find((r) => r.flag === "transfer" && r.kind === "expense");
+    const into = rows.find((r) => r.flag === "transfer" && r.kind === "income");
+    const fee = rows.find((r) => r.flag === null && r.kind === "expense");
+    if (!out || !into) return null;
+    return {
+      transferId,
+      fromAccountId: out.account_id,
+      toAccountId: into.account_id,
+      amount: out.amount,
+      fee: fee?.amount ?? 0,
+      date: out.date,
+      note: out.note.replace(/^Transfer( ke [^·]+)?( · )?/, ""),
+      createdBy: out.created_by,
+    };
   },
 
   monthTotals(dompetId: string, me: string, month: string) {
@@ -803,6 +826,66 @@ export const m = {
         if (acc.visibility === "shared") log(run, actor, `mencatat ${what}`);
       }
     });
+  },
+
+  /**
+   * Move money between two accounts: an outgoing and an incoming transaction
+   * flagged 'transfer' (balances move, spending stats don't), plus an optional
+   * admin fee as a normal expense from the source account. Editing replaces
+   * the whole group.
+   */
+  saveTransfer(
+    actorId: string,
+    data: { transferId?: string; fromAccountId: string; toAccountId: string; amount: number; fee: number; date: string; note: string },
+  ) {
+    const actor = actorOf(actorId);
+    if (!can.addTransaction(actor.role)) throw new PermissionError("Peran 'Hanya lihat' tidak bisa membuat transfer.");
+    if (!Number.isInteger(data.amount) || data.amount <= 0) throw new Error("Jumlah harus lebih dari 0.");
+    if (!Number.isInteger(data.fee) || data.fee < 0) throw new Error("Biaya admin tidak valid.");
+    if (data.fromAccountId === data.toAccountId) throw new Error("Pilih dua akun yang berbeda.");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(data.date)) throw new Error("Tanggal tidak valid.");
+    const visible = q.accounts(actor.dompet_id, actor.id);
+    const from = visible.find((a) => a.id === data.fromAccountId);
+    const to = visible.find((a) => a.id === data.toAccountId);
+    if (!from || !to) throw new Error("Pilih akun asal dan tujuan.");
+    for (const a of [from, to]) {
+      if (a.visibility === "private" && a.owner_member_id !== actor.id) throw new PermissionError("Itu akun pribadi orang lain.");
+    }
+    if (data.transferId) {
+      const existing = q.transfer(actor.dompet_id, data.transferId);
+      if (!existing) throw new Error("Transfer tidak ditemukan.");
+      const holder = (id: string) => visible.find((a) => a.id === id)?.holder_member_id === actor.id;
+      if (!can.editTransaction(actor.role, existing.createdBy === actor.id, holder(existing.fromAccountId) || holder(existing.toAccountId)))
+        throw new PermissionError("Anggota hanya bisa mengubah transfer sendiri.");
+    }
+    const transferId = data.transferId ?? uid();
+    const extra = data.note.trim().slice(0, 100);
+    return write((run) => {
+      if (data.transferId) run("DELETE FROM transactions WHERE dompet_id = ? AND transfer_id = ?", [actor.dompet_id, transferId]);
+      const insert = (accountId: string, kind: Kind, amount: number, note: string, flag: TxFlag) =>
+        run(
+          `INSERT INTO transactions (id, dompet_id, account_id, category_id, kind, amount, date, note, flag, transfer_id, paid_by, created_by, updated_by)
+           VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [uid(), actor.dompet_id, accountId, kind, amount, data.date, note.slice(0, 140), flag, transferId, actor.id, actor.id, actor.id],
+        );
+      insert(from.id, "expense", data.amount, `Transfer ke ${to.name}${extra ? " · " + extra : ""}`, "transfer");
+      insert(to.id, "income", data.amount, `Transfer dari ${from.name}${extra ? " · " + extra : ""}`, "transfer");
+      if (data.fee > 0) insert(from.id, "expense", data.fee, `Biaya transfer ke ${to.name}`, null);
+      if (from.visibility === "shared" && to.visibility === "shared")
+        log(run, actor, `${data.transferId ? "mengubah transfer" : "mentransfer"} ${formatIDR(data.amount)} dari ${from.name} ke ${to.name}`);
+      return transferId;
+    });
+  },
+
+  deleteTransfer(actorId: string, transferId: string) {
+    const actor = actorOf(actorId);
+    const existing = q.transfer(actor.dompet_id, transferId);
+    if (!existing) return Promise.resolve();
+    const visible = q.accounts(actor.dompet_id, actor.id);
+    const holder = (id: string) => visible.find((a) => a.id === id)?.holder_member_id === actor.id;
+    if (!can.editTransaction(actor.role, existing.createdBy === actor.id, holder(existing.fromAccountId) || holder(existing.toAccountId)))
+      throw new PermissionError("Anggota hanya bisa menghapus transfer sendiri.");
+    return write((run) => run("DELETE FROM transactions WHERE dompet_id = ? AND transfer_id = ?", [actor.dompet_id, transferId]));
   },
 
   deleteTransaction(actorId: string, txId: string) {
