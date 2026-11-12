@@ -5,7 +5,11 @@ import { Icon, IconPicker } from "../components/Icon";
 import { can } from "../lib/permissions";
 import { formatIDR, parseAmount, todayISO } from "../lib/format";
 import { useCurrent, useDbVersion } from "../lib/hooks";
-import { attempt, Badge, Button, Card, Field, Input, Modal, Money, Select, STICKY_ACTIONS } from "../components/ui";
+import { attempt, Avatar, Badge, Button, Card, Field, Input, Modal, Money, Select, STICKY_ACTIONS } from "../components/ui";
+import { getMode } from "../cloud/client";
+import { cloud } from "../cloud/sync";
+
+const CLOUD = getMode() === "cloud";
 
 const TYPE_LABEL: Record<AccountType, string> = {
   cash: "💵 Tunai",
@@ -25,7 +29,8 @@ export function Accounts() {
   const shared = accounts.filter((a) => a.visibility === "shared");
   const priv = accounts.filter((a) => a.visibility === "private");
   const manage = can.manage(me.role);
-  const canEdit = (a: Account) => manage || (a.visibility === "private" && a.owner_member_id === me.id);
+  const canEdit = (a: Account) =>
+    manage || (a.visibility === "private" && a.owner_member_id === me.id) || (a.visibility === "shared" && a.holder_member_id === me.id);
 
   const list = (items: Account[]) => (
     <ul className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -41,7 +46,17 @@ export function Accounts() {
             </span>
             <span className="flex-1">
               <span className="block font-semibold text-slate-800">{a.name}</span>
-              <span className="text-xs text-slate-500">{TYPE_LABEL[a.type].split(" ").slice(1).join(" ")}</span>
+              <span className="flex items-center gap-1 text-xs text-slate-500">
+                {TYPE_LABEL[a.type].split(" ").slice(1).join(" ")}
+                {a.visibility === "shared" && a.holder_name && (
+                  <>
+                    <span>·</span>
+                    <span className="inline-flex items-center gap-0.5 rounded-full bg-slate-100 px-1.5 font-semibold text-slate-600">
+                      {a.holder_emoji} {a.holder_member_id === me.id ? "kamu" : a.holder_name}
+                    </span>
+                  </>
+                )}
+              </span>
             </span>
             <Money amount={a.balance} />
           </button>
@@ -122,10 +137,34 @@ function AccountFormBody({ account, initialVisibility, onClose }: { account: Acc
   const [icon, setIcon] = useState<string>(account?.icon ?? TYPE_ICON[account?.type ?? "bank"]);
   const [visibility, setVisibility] = useState<"shared" | "private">(account?.visibility ?? initialVisibility ?? (manage ? "shared" : "private"));
   const openingValue = opening.trim() === "" ? 0 : parseAmount(opening);
+  const { members, dompet } = useCurrent();
+  const currentHolder = account ? (account.holder_member_id ?? account.owner_member_id ?? null) : null;
+  const [holderId, setHolderId] = useState<string | null>(currentHolder);
+  const [movePaidBy, setMovePaidBy] = useState(true);
+  const ownsPrivate = account?.visibility === "private" && account.owner_member_id === me.id;
+  // Who may change the holder: admins, or the owner of a private account (handover).
+  const canAssign = manage || ownsPrivate;
+  const handover = !!account && (holderId !== currentHolder || visibility !== account.visibility);
+  const othersPaid = account && holderId
+    ? q.transactions(dompet.id, me.id, { accountId: account.id }).filter((t) => !t.flag && t.paid_by !== holderId).length
+    : 0;
 
   async function save() {
     const ok = await attempt(
-      () => m.saveAccount(me.id, { id: account?.id, name, type, opening_balance: openingValue, colour, icon, visibility }),
+      async () => {
+        if (account && handover) {
+          // Handovers go through the server function in cloud mode (it may move
+          // the account out of your sight, and can update old transactions).
+          if (CLOUD) await cloud.assignAccount(account.id, holderId, visibility, movePaidBy && othersPaid > 0);
+          else await m.assignAccount(me.id, account.id, holderId, visibility, movePaidBy && othersPaid > 0);
+          // A private account handed to someone else is no longer ours to edit.
+          if (visibility === "private" && holderId !== me.id) return;
+        }
+        await m.saveAccount(me.id, {
+          id: account?.id, name, type, opening_balance: openingValue, colour, icon, visibility,
+          holder_member_id: visibility === "shared" && manage ? holderId : undefined,
+        });
+      },
       "Akun disimpan",
     );
     if (ok) onClose();
@@ -168,12 +207,69 @@ function AccountFormBody({ account, initialVisibility, onClose }: { account: Acc
         <span className="mb-1.5 block text-sm font-semibold text-slate-700">Ikon</span>
         <IconPicker value={icon} onChange={setIcon} />
       </div>
+      {canAssign && (
+        <div>
+          <span className="mb-1.5 block text-sm font-semibold text-slate-700">Dipegang oleh</span>
+          <div className="flex flex-wrap gap-1.5">
+            {manage && (
+              <button
+                type="button"
+                onClick={() => (setHolderId(null), setVisibility("shared"))}
+                aria-pressed={holderId === null}
+                className={`rounded-full border-2 px-3 py-1 text-sm font-semibold ${holderId === null ? "border-brand-600 bg-brand-50 text-brand-800" : "border-transparent bg-slate-100 text-slate-600"}`}
+              >
+                👨‍👩‍👧 Keluarga
+              </button>
+            )}
+            {members.map((mem) => {
+              const pending = CLOUD && !mem.user_id;
+              const on = holderId === mem.id;
+              return (
+                <button
+                  key={mem.id}
+                  type="button"
+                  onClick={() => setHolderId(mem.id)}
+                  aria-pressed={on}
+                  className={`flex items-center gap-1.5 rounded-full border-2 py-0.5 pl-0.5 pr-3 text-sm font-semibold ${on ? "border-brand-600 bg-brand-50 text-brand-800" : "border-transparent bg-slate-100 text-slate-600"}`}
+                >
+                  <Avatar emoji={mem.emoji} colour={mem.colour} size={24} />
+                  {mem.id === me.id ? "Saya" : mem.name}
+                  {pending && <span className="text-[10px] font-medium text-slate-400">belum gabung</span>}
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-1 text-xs text-slate-400">
+            Pemegang bisa mencatat, mengubah semua transaksi di akun ini, dan mengoreksi saldonya, termasuk yang dulu kamu catatkan untuknya.
+          </p>
+        </div>
+      )}
       <Field label="Siapa yang bisa lihat">
-        <Select value={visibility} disabled={!manage} onChange={(e) => setVisibility(e.target.value as "shared" | "private")}>
-          <option value="shared">👨‍👩‍👧 Seluruh anggota Dompet</option>
-          <option value="private">🔒 Hanya saya</option>
+        <Select
+          value={visibility}
+          disabled={!manage && !ownsPrivate}
+          onChange={(e) => {
+            const v = e.target.value as "shared" | "private";
+            setVisibility(v);
+            if (v === "private" && !holderId) setHolderId(me.id);
+          }}
+        >
+          {(manage || visibility === "shared") && <option value="shared">👨‍👩‍👧 Seluruh anggota Dompet</option>}
+          <option value="private">🔒 Hanya {holderId && holderId !== me.id ? members.find((x) => x.id === holderId)?.name : "saya"}</option>
         </Select>
       </Field>
+      {account && handover && holderId && othersPaid > 0 && (
+        <label className="flex items-start gap-2 rounded-2xl bg-sun-100 px-3 py-2 text-sm text-slate-700">
+          <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[var(--color-brand-600)]" checked={movePaidBy} onChange={(e) => setMovePaidBy(e.target.checked)} />
+          <span>
+            Ubah “dibayar oleh” di <b>{othersPaid}</b> transaksi lama menjadi <b>{members.find((x) => x.id === holderId)?.name}</b>
+            <span className="block text-xs text-slate-500">Cocok kalau selama ini kamu yang mencatatkan untuknya.</span>
+          </span>
+        </label>
+      )}
+      {account && visibility === "private" && holderId && holderId !== me.id && (
+        <p className="rounded-2xl bg-red-50 px-3 py-2 text-xs text-red-700">Setelah disimpan, akun ini pindah ke {members.find((x) => x.id === holderId)?.name} dan tidak terlihat lagi olehmu.</p>
+      )}
       <div className="flex gap-2">
         {COLOURS.map((c) => (
           <button

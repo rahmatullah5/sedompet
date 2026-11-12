@@ -22,6 +22,7 @@ export interface Member {
   colour: string;
   emoji: string;
   user_id: string | null;
+  phone?: string | null;
 }
 
 export type AccountType = "cash" | "bank" | "ewallet" | "savings";
@@ -36,6 +37,10 @@ export interface Account {
   icon: string | null;
   visibility: "shared" | "private";
   owner_member_id: string | null;
+  holder_member_id: string | null;
+  holder_name: string | null;
+  holder_emoji: string | null;
+  holder_colour: string | null;
   balance: number;
 }
 
@@ -69,6 +74,7 @@ export interface Transaction {
   // joined
   account_name: string;
   account_visibility: "shared" | "private";
+  account_holder_id: string | null;
   category_name: string | null;
   category_icon: string | null;
   category_colour: string | null;
@@ -136,11 +142,12 @@ export const q = {
 
   accounts: (dompetId: string, me: string) =>
     all<Account>(
-      `SELECT a.*,
+      `SELECT a.*, h.name AS holder_name, h.emoji AS holder_emoji, h.colour AS holder_colour,
          a.opening_balance + COALESCE((
            SELECT SUM(CASE t.kind WHEN 'income' THEN t.amount ELSE -t.amount END)
            FROM transactions t WHERE t.account_id = a.id), 0) AS balance
        FROM accounts a
+       LEFT JOIN members h ON h.id = COALESCE(a.holder_member_id, a.owner_member_id)
        WHERE a.dompet_id = $d AND a.archived = 0 AND ${VISIBLE_ACCOUNT}
        ORDER BY a.visibility = 'private', a.created_at`,
       { $d: dompetId, $me: me },
@@ -160,6 +167,7 @@ export const q = {
   ) {
     return all<Transaction>(
       `SELECT t.*, a.name AS account_name, a.visibility AS account_visibility,
+              COALESCE(a.holder_member_id, a.owner_member_id) AS account_holder_id,
               c.name AS category_name, COALESCE(c.icon, pc.icon) AS category_icon,
               COALESCE(pc.colour, c.colour) AS category_colour, pc.name AS parent_category_name,
               p.name AS paid_by_name, p.colour AS paid_by_colour, p.emoji AS paid_by_emoji,
@@ -483,12 +491,18 @@ export const m = {
   // --- accounts ------------------------------------------------------------
   saveAccount(
     actorId: string,
-    data: { id?: string; name: string; type: AccountType; opening_balance: number; colour: string; icon?: string | null; visibility: "shared" | "private" },
+    data: { id?: string; name: string; type: AccountType; opening_balance: number; colour: string; icon?: string | null; visibility: "shared" | "private"; holder_member_id?: string | null },
   ) {
     const actor = actorOf(actorId);
-    const existing = data.id ? get<{ visibility: string; owner_member_id: string | null }>("SELECT visibility, owner_member_id FROM accounts WHERE id = ?", [data.id]) : undefined;
-    const ownsPrivate = (data.visibility === "private" && (!existing || existing.owner_member_id === actor.id));
-    if (!(can.manage(actor.role) || (ownsPrivate && can.addPrivateAccount(actor.role)))) throw new PermissionError();
+    const existing = data.id
+      ? get<{ visibility: "shared" | "private"; owner_member_id: string | null; holder_member_id: string | null }>(
+          "SELECT visibility, owner_member_id, holder_member_id FROM accounts WHERE id = ?",
+          [data.id],
+        )
+      : undefined;
+    const ownsPrivate = data.visibility === "private" && (!existing || existing.owner_member_id === actor.id);
+    const holdsShared = !!existing && existing.visibility === "shared" && existing.holder_member_id === actor.id && data.visibility === "shared";
+    if (!(can.manage(actor.role) || holdsShared || (ownsPrivate && can.addPrivateAccount(actor.role)))) throw new PermissionError();
     if (!Number.isFinite(data.opening_balance)) throw new Error("Saldo awal tidak valid.");
     const name = requireText(data.name, "Nama akun");
     return write((run) => {
@@ -499,12 +513,21 @@ export const m = {
            WHERE id = ? AND dompet_id = ?`,
           [name, data.type, data.opening_balance, data.colour, data.icon ?? null, data.visibility, data.visibility, actor.id, data.id, actor.dompet_id],
         );
+        // Holder changes on shared accounts are an admin decision.
+        if (can.manage(actor.role) && data.visibility === "shared" && data.holder_member_id !== undefined) {
+          run("UPDATE accounts SET holder_member_id = ? WHERE id = ? AND dompet_id = ?", [data.holder_member_id, data.id, actor.dompet_id]);
+        }
         log(run, actor, `mengubah akun ${name}`);
       } else {
         run(
-          `INSERT INTO accounts (id, dompet_id, name, type, opening_balance, colour, icon, visibility, owner_member_id, created_by)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [uid(), actor.dompet_id, name, data.type, data.opening_balance, data.colour, data.icon ?? null, data.visibility, data.visibility === "private" ? actor.id : null, actor.id],
+          `INSERT INTO accounts (id, dompet_id, name, type, opening_balance, colour, icon, visibility, owner_member_id, holder_member_id, created_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            uid(), actor.dompet_id, name, data.type, data.opening_balance, data.colour, data.icon ?? null, data.visibility,
+            data.visibility === "private" ? actor.id : null,
+            data.visibility === "private" ? actor.id : (data.holder_member_id ?? null),
+            actor.id,
+          ],
         );
         if (data.visibility === "shared") log(run, actor, `menambahkan akun ${name}`);
       }
@@ -532,6 +555,39 @@ export const m = {
       if (acc.visibility === "shared")
         log(run, actor, `mengoreksi saldo ${acc.name} menjadi ${formatIDR(Math.round(actualBalance))} (${diff > 0 ? "+" : "−"}${formatIDR(Math.abs(diff))})`);
       return diff;
+    });
+  },
+
+  /**
+   * Hand an account to a member (null = the whole family). Mirrors the
+   * assign_account() database function used in cloud mode.
+   */
+  assignAccount(actorId: string, accountId: string, memberId: string | null, visibility: "shared" | "private", reassignPaidBy: boolean) {
+    const actor = actorOf(actorId);
+    const acc = get<{ name: string; visibility: string; owner_member_id: string | null }>(
+      "SELECT name, visibility, owner_member_id FROM accounts WHERE id = ? AND dompet_id = ?",
+      [accountId, actor.dompet_id],
+    );
+    if (!acc) throw new Error("Akun tidak ditemukan.");
+    const ownsPrivate = acc.visibility === "private" && acc.owner_member_id === actor.id;
+    if (!can.manage(actor.role) && !ownsPrivate) throw new PermissionError();
+    if (visibility === "shared" && !can.manage(actor.role)) throw new PermissionError("Hanya pemilik/admin yang bisa membuat akun bersama.");
+    if (visibility === "private" && !memberId) throw new Error("Akun pribadi harus punya pemegang.");
+    const target = memberId ? q.member(memberId) : null;
+    if (memberId && (!target || target.dompet_id !== actor.dompet_id)) throw new Error("Anggota itu tidak ada di Dompet ini.");
+    return write((run) => {
+      run("UPDATE accounts SET visibility = ?, owner_member_id = ?, holder_member_id = ? WHERE id = ?", [
+        visibility, visibility === "private" ? memberId : null, memberId, accountId,
+      ]);
+      let moved = 0;
+      if (reassignPaidBy && memberId) {
+        moved = get<{ n: number }>("SELECT count(*) AS n FROM transactions WHERE account_id = ? AND flag IS NULL AND paid_by IS NOT ?", [accountId, memberId])?.n ?? 0;
+        run("UPDATE transactions SET paid_by = ?, updated_by = ?, updated_at = datetime('now') WHERE account_id = ? AND flag IS NULL AND paid_by IS NOT ?", [
+          memberId, actor.id, accountId, memberId,
+        ]);
+      }
+      if (target) log(run, actor, `menyerahkan akun ${acc.name} kepada ${target.name}`);
+      return moved;
     });
   },
 
@@ -611,9 +667,12 @@ export const m = {
     const note = data.note.trim().slice(0, 140);
 
     if (data.id) {
-      const existing = get<{ created_by: string | null }>("SELECT created_by FROM transactions WHERE id = ? AND dompet_id = ?", [data.id, actor.dompet_id]);
+      const existing = get<{ created_by: string | null; holder: string | null }>(
+        "SELECT t.created_by, COALESCE(a.holder_member_id, a.owner_member_id) AS holder FROM transactions t JOIN accounts a ON a.id = t.account_id WHERE t.id = ? AND t.dompet_id = ?",
+        [data.id, actor.dompet_id],
+      );
       if (!existing) throw new Error("Transaksi tidak ditemukan.");
-      if (!can.editTransaction(actor.role, existing.created_by === actor.id))
+      if (!can.editTransaction(actor.role, existing.created_by === actor.id, existing.holder === actor.id))
         throw new PermissionError("Anggota hanya bisa mengubah catatan sendiri.");
     }
 
@@ -643,12 +702,12 @@ export const m = {
 
   deleteTransaction(actorId: string, txId: string) {
     const actor = actorOf(actorId);
-    const tx = get<{ created_by: string | null; amount: number; visibility: string }>(
-      "SELECT t.created_by, t.amount, a.visibility FROM transactions t JOIN accounts a ON a.id = t.account_id WHERE t.id = ? AND t.dompet_id = ?",
+    const tx = get<{ created_by: string | null; amount: number; visibility: string; holder: string | null }>(
+      "SELECT t.created_by, t.amount, a.visibility, COALESCE(a.holder_member_id, a.owner_member_id) AS holder FROM transactions t JOIN accounts a ON a.id = t.account_id WHERE t.id = ? AND t.dompet_id = ?",
       [txId, actor.dompet_id],
     );
     if (!tx) return Promise.resolve();
-    if (!can.editTransaction(actor.role, tx.created_by === actor.id)) throw new PermissionError("Anggota hanya bisa menghapus catatan sendiri.");
+    if (!can.editTransaction(actor.role, tx.created_by === actor.id, tx.holder === actor.id)) throw new PermissionError("Anggota hanya bisa menghapus catatan sendiri.");
     return write((run) => {
       run("DELETE FROM transactions WHERE id = ?", [txId]);
       if (tx.visibility === "shared") log(run, actor, `menghapus transaksi ${formatIDR(tx.amount)}`);

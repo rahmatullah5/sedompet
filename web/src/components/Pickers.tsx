@@ -43,7 +43,13 @@ export function AccountPicker({
                   <span className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ background: `${a.colour}26` }}>
                     <Icon value={a.icon ?? TYPE_ICON[a.type]} size={18} />
                   </span>
-                  {a.visibility === "private" && <span className="text-xs">🔒</span>}
+                  {a.visibility === "private" ? (
+                    <span className="text-xs">🔒</span>
+                  ) : a.holder_emoji ? (
+                    <span title={`Dipegang ${a.holder_name}`} className="text-sm leading-none">
+                      {a.holder_emoji}
+                    </span>
+                  ) : null}
                 </span>
                 <span className={cx("line-clamp-1 text-xs font-semibold leading-tight", on ? "text-brand-800" : "text-slate-700")}>{a.name}</span>
                 <span className="num text-[11px] text-slate-400">{formatCompact(a.balance)}</span>

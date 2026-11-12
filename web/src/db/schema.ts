@@ -30,7 +30,8 @@ CREATE TABLE IF NOT EXISTS members (
   role        TEXT NOT NULL CHECK (role IN ('owner','admin','member','viewer')),
   colour      TEXT NOT NULL,
   emoji       TEXT NOT NULL DEFAULT '🙂',
-  user_id     TEXT,                       -- Supabase auth user (cloud mode)
+  user_id     TEXT,                       -- Supabase auth user (cloud mode); NULL = not joined yet
+  phone       TEXT,                       -- set for members added by phone
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS members_dompet ON members(dompet_id);
@@ -46,6 +47,7 @@ CREATE TABLE IF NOT EXISTS accounts (
   -- 'private' accounts (and their transactions) are only visible to owner_member_id
   visibility       TEXT NOT NULL DEFAULT 'shared' CHECK (visibility IN ('shared','private')),
   owner_member_id  TEXT REFERENCES members(id) ON DELETE SET NULL,
+  holder_member_id TEXT REFERENCES members(id) ON DELETE SET NULL,  -- whose account it is
   archived         INTEGER NOT NULL DEFAULT 0,
   created_by       TEXT REFERENCES members(id) ON DELETE SET NULL,
   created_at       TEXT NOT NULL DEFAULT (datetime('now'))
@@ -150,6 +152,8 @@ CREATE INDEX IF NOT EXISTS activity_dompet ON activity(dompet_id, created_at);
 export const COLUMN_UPGRADES: [table: string, column: string, definition: string][] = [
   ["members", "user_id", "TEXT"],
   ["accounts", "icon", "TEXT"],
+  ["accounts", "holder_member_id", "TEXT REFERENCES members(id) ON DELETE SET NULL"],
+  ["members", "phone", "TEXT"],
   ["categories", "parent_id", "TEXT REFERENCES categories(id) ON DELETE CASCADE"],
   ["budgets", "exclude_category_ids", "TEXT"],
   ["transactions", "flag", "TEXT CHECK (flag IN ('transfer','adjustment','loan'))"],

@@ -4,7 +4,7 @@ import { exportFile, importFile, resetDatabase } from "../db/database";
 import { importCashew, type ImportSummary } from "../db/importCashew";
 import { can, ROLE_HINT, ROLE_LABEL, ROLES, type Role } from "../lib/permissions";
 import { setSession } from "../lib/session";
-import { getMode, setMode, cloudConfigured } from "../cloud/client";
+import { displayPhone, getMode, setMode, cloudConfigured } from "../cloud/client";
 import { cloud } from "../cloud/sync";
 import { InviteCard } from "../cloud/CloudScreens";
 
@@ -27,7 +27,9 @@ export function Members() {
         <Card title={`${members.length} anggota`}>
           <ul className="divide-y divide-slate-100 dark:divide-slate-800">
             {members.map((mem) => {
-              const roles = can.assignableRoles(me.role, mem.role);
+              const pending = CLOUD && !mem.user_id;
+              // Roles of people who haven't joined are set when adding them.
+              const roles = pending ? [] : can.assignableRoles(me.role, mem.role);
               const isMe = mem.id === me.id;
               return (
                 <li key={mem.id} className="flex flex-wrap items-center gap-3 py-3">
@@ -36,7 +38,13 @@ export function Members() {
                     <p className="font-bold text-slate-800">
                       {mem.name} {isMe && <Badge tone="brand">kamu</Badge>}
                     </p>
-                    <p className="text-xs text-slate-500">{ROLE_HINT[mem.role]}</p>
+                    <p className="text-xs text-slate-500">
+                      {pending ? (
+                        <span className="font-semibold text-amber-700">⏳ Belum bergabung{mem.phone ? ` · ${displayPhone(mem.phone)}` : ""}</span>
+                      ) : (
+                        ROLE_HINT[mem.role]
+                      )}
+                    </p>
                   </div>
                   {roles.length > 0 ? (
                     <Select
@@ -73,7 +81,12 @@ export function Members() {
                       onClick={() =>
                         confirm(`Keluarkan ${mem.name} dari ${dompet.name}? Akun pribadinya ikut terhapus.`) &&
                         attempt(
-                          () => (CLOUD && mem.user_id ? cloud.removeMember(dompet.id, mem.user_id) : m.removeMember(me.id, mem.id)),
+                          () =>
+                            CLOUD
+                              ? mem.user_id
+                                ? cloud.removeMember(dompet.id, mem.user_id)
+                                : cloud.removePendingMember(mem.id)
+                              : m.removeMember(me.id, mem.id),
                           `${mem.name} dikeluarkan`,
                         )
                       }
@@ -87,6 +100,7 @@ export function Members() {
           </ul>
         </Card>
         {manage && (CLOUD ? <InviteCard /> : <AddMember />)}
+        {manage && CLOUD && <AddPendingMember />}
         <MyProfile key={me.id} />
       </div>
 
@@ -350,6 +364,56 @@ export function DataTools() {
           }}
         />
       </div>
+    </Card>
+  );
+}
+
+/** Cloud: add someone by phone before they join, so accounts can be assigned to them. */
+function AddPendingMember() {
+  const { dompet, me } = useCurrent();
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [role, setRole] = useState<Exclude<Role, "owner">>("member");
+  const [busy, setBusy] = useState(false);
+  const roles: Exclude<Role, "owner">[] = me.role === "owner" ? ["admin", "member", "viewer"] : ["member", "viewer"];
+  return (
+    <Card title="Tambah anggota lewat nomor HP">
+      <p className="mb-3 text-sm text-slate-500">
+        Untuk yang belum punya akun. Kamu bisa langsung memberinya akun dan mencatatkan transaksinya. Saat ia daftar dengan nomor ini, semuanya jadi miliknya.
+      </p>
+      <form
+        className="space-y-3"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          setBusy(true);
+          if (await attempt(() => cloud.addPendingMember(dompet.id, phone, name, role), `${name.trim()} ditambahkan`)) {
+            setName("");
+            setPhone("");
+          }
+          setBusy(false);
+        }}
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Nama panggilan">
+            <Input value={name} maxLength={40} placeholder="mis. Rizka" onChange={(e) => setName(e.target.value)} />
+          </Field>
+          <Field label="Nomor HP">
+            <Input type="tel" value={phone} placeholder="0812 3456 7890" onChange={(e) => setPhone(e.target.value)} />
+          </Field>
+        </div>
+        <Field label="Peran" hint={ROLE_HINT[role]}>
+          <Select value={role} onChange={(e) => setRole(e.target.value as Exclude<Role, "owner">)}>
+            {roles.map((r) => (
+              <option key={r} value={r}>
+                {ROLE_LABEL[r]}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Button type="submit" disabled={busy || !name.trim() || !phone.trim()}>
+          {busy ? "Menambahkan…" : "Tambah"}
+        </Button>
+      </form>
     </Card>
   );
 }

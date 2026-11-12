@@ -21,9 +21,9 @@ export const ROLE_HINT: Record<Role, string> = {
 
 export const can = {
   addTransaction: (r: Role) => r !== "viewer",
-  /** Members may edit their own entries; admins/owners may edit anything. */
-  editTransaction: (r: Role, isMine: boolean) =>
-    r === "owner" || r === "admin" || (r === "member" && isMine),
+  /** Admins edit anything; members edit their own entries and anything in an account they hold. */
+  editTransaction: (r: Role, isMine: boolean, holdsAccount = false) =>
+    r === "owner" || r === "admin" || (r === "member" && (isMine || holdsAccount)),
   manage: (r: Role) => r === "owner" || r === "admin",
   /** Private accounts: any non-viewer can make one for themselves. */
   addPrivateAccount: (r: Role) => r !== "viewer",

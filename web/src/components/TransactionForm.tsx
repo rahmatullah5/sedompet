@@ -26,8 +26,18 @@ function FormBody({ onClose, editing }: { onClose: () => void; editing: Transact
   const [kind, setKind] = useState<Kind>(editing?.kind ?? "expense");
   const [amountText, setAmountText] = useState(editing ? String(editing.amount) : "");
   const [categoryId, setCategoryId] = useState<string | null>(editing?.category_id ?? null);
-  const [accountId, setAccountId] = useState(editing?.account_id ?? accounts[0]?.id ?? "");
+  // New entries start on an account you hold (if any), else the first one.
+  const [accountId, setAccountId] = useState(
+    editing?.account_id ?? (accounts.find((a) => (a.holder_member_id ?? a.owner_member_id) === me.id) ?? accounts[0])?.id ?? "",
+  );
   const [paidBy, setPaidBy] = useState(editing?.paid_by ?? me.id);
+  const [payerTouched, setPayerTouched] = useState(!!editing);
+  // Picking someone's account assumes they paid, until you choose otherwise.
+  const pickAccount = (id: string) => {
+    setAccountId(id);
+    const holder = accounts.find((a) => a.id === id)?.holder_member_id;
+    if (!payerTouched && holder) setPaidBy(holder);
+  };
   const [date, setDate] = useState(editing?.date ?? todayISO());
   const [note, setNote] = useState(editing?.note ?? "");
   const [noteOpen, setNoteOpen] = useState(false);
@@ -35,7 +45,7 @@ function FormBody({ onClose, editing }: { onClose: () => void; editing: Transact
   const categories = q.categories(dompet.id, kind);
   const amount = parseAmount(amountText);
   const isMine = !editing || editing.created_by === me.id;
-  const allowed = editing ? can.editTransaction(me.role, isMine) : can.addTransaction(me.role);
+  const allowed = editing ? can.editTransaction(me.role, isMine, editing.account_holder_id === me.id) : can.addTransaction(me.role);
   const valid = Number.isFinite(amount) && amount > 0 && accountId;
 
   const selectedAccount = useMemo(() => accounts.find((a) => a.id === accountId), [accounts, accountId]);
@@ -124,7 +134,7 @@ function FormBody({ onClose, editing }: { onClose: () => void; editing: Transact
         <CategoryPicker categories={categories} value={categoryId} onChange={setCategoryId} />
 
         <div className="space-y-3">
-          <AccountPicker accounts={accounts} value={accountId} onChange={setAccountId} />
+          <AccountPicker accounts={accounts} value={accountId} onChange={pickAccount} />
           <DatePicker label="Tanggal" value={date} onChange={setDate} />
         </div>
 
@@ -137,7 +147,7 @@ function FormBody({ onClose, editing }: { onClose: () => void; editing: Transact
               <button
                 key={mem.id}
                 type="button"
-                onClick={() => setPaidBy(mem.id)}
+                onClick={() => (setPaidBy(mem.id), setPayerTouched(true))}
                 aria-pressed={paidBy === mem.id}
                 className={cx(
                   "flex items-center gap-1.5 rounded-full border py-0.5 pl-0.5 pr-3 text-sm transition",

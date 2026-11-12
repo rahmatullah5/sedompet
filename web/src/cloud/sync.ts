@@ -57,12 +57,18 @@ function installOutbox() {
   d.exec("CREATE TABLE IF NOT EXISTS outbox (seq INTEGER PRIMARY KEY AUTOINCREMENT, tbl TEXT NOT NULL, op TEXT NOT NULL, row_id TEXT NOT NULL)");
   const guard = "WHEN NOT EXISTS (SELECT 1 FROM meta WHERE key = 'applying_remote')";
   for (const t of SYNCED) {
+    // Inserts and updates are uploaded differently (see uploadOnce), so the
+    // triggers record which one happened. Recreated on start to replace the
+    // older single 'upsert' triggers.
     d.exec(`
-      CREATE TRIGGER IF NOT EXISTS ob_${t}_ins AFTER INSERT ON ${t} ${guard}
-        BEGIN INSERT INTO outbox (tbl, op, row_id) VALUES ('${t}', 'upsert', NEW.id); END;
-      CREATE TRIGGER IF NOT EXISTS ob_${t}_upd AFTER UPDATE ON ${t} ${guard}
-        BEGIN INSERT INTO outbox (tbl, op, row_id) VALUES ('${t}', 'upsert', NEW.id); END;
-      CREATE TRIGGER IF NOT EXISTS ob_${t}_del AFTER DELETE ON ${t} ${guard}
+      DROP TRIGGER IF EXISTS ob_${t}_ins;
+      DROP TRIGGER IF EXISTS ob_${t}_upd;
+      DROP TRIGGER IF EXISTS ob_${t}_del;
+      CREATE TRIGGER ob_${t}_ins AFTER INSERT ON ${t} ${guard}
+        BEGIN INSERT INTO outbox (tbl, op, row_id) VALUES ('${t}', 'insert', NEW.id); END;
+      CREATE TRIGGER ob_${t}_upd AFTER UPDATE ON ${t} ${guard}
+        BEGIN INSERT INTO outbox (tbl, op, row_id) VALUES ('${t}', 'update', NEW.id); END;
+      CREATE TRIGGER ob_${t}_del AFTER DELETE ON ${t} ${guard}
         BEGIN INSERT INTO outbox (tbl, op, row_id) VALUES ('${t}', 'delete', OLD.id); END;
     `);
   }
@@ -78,7 +84,7 @@ const pick = (r: Row, keys: string[]) => Object.fromEntries(keys.map((k) => [k, 
 function toServer(t: Synced, r: Row): Row {
   switch (t) {
     case "accounts":
-      return { ...pick(r, ["id", "dompet_id", "name", "type", "opening_balance", "colour", "icon", "visibility", "owner_member_id", "created_by"]), archived: !!r.archived };
+      return { ...pick(r, ["id", "dompet_id", "name", "type", "opening_balance", "colour", "icon", "visibility", "owner_member_id", "holder_member_id", "created_by"]), archived: !!r.archived };
     case "categories":
       return pick(r, ["id", "dompet_id", "name", "icon", "colour", "kind", "parent_id", "sort_order"]);
     case "transactions":
@@ -129,13 +135,15 @@ function scheduleUpload() {
 
 async function uploadOnce() {
   const sb = requireSupabase();
-  const ops = all<{ seq: number; tbl: Synced; op: "upsert" | "delete"; row_id: string }>("SELECT * FROM outbox ORDER BY seq");
+  // 'upsert' = rows queued by older app versions (treated as update-or-insert).
+  type Op = "insert" | "update" | "upsert" | "delete";
+  const ops = all<{ seq: number; tbl: Synced; op: Op; row_id: string }>("SELECT * FROM outbox ORDER BY seq");
   if (ops.length === 0) return;
   setState({ syncing: true });
   const maxSeq = ops[ops.length - 1].seq;
 
   // Group consecutive ops on the same table+op so batches keep FK order.
-  const groups: { tbl: Synced; op: "upsert" | "delete"; ids: string[] }[] = [];
+  const groups: { tbl: Synced; op: Op; ids: string[] }[] = [];
   for (const o of ops) {
     const g = groups[groups.length - 1];
     if (g && g.tbl === o.tbl && g.op === o.op) {
@@ -175,14 +183,34 @@ async function uploadOnce() {
         }
         continue;
       }
+      // Postgres applies INSERT permission rules to an upsert even when it
+      // only updates, which wrongly rejects e.g. an admin editing a member's
+      // transaction. So new rows are inserted and changed rows are updated.
       const payload = rows.map((r) => toServer(g.tbl, r));
-      for (let i = 0; i < payload.length; i += 500) {
-        const chunk = payload.slice(i, i + 500);
-        const { error } =
-          g.tbl === "activity"
-            ? await sb.from(table).upsert(chunk, { onConflict: "id", ignoreDuplicates: true })
-            : await sb.from(table).upsert(chunk, { onConflict: "id" });
+      const insertOne = async (row: Row) => {
+        const { error } = await sb.from(table).insert(row);
+        if (error && error.code === "23505") return updateOne(row, false); // already uploaded
         if (error) throw error;
+      };
+      const updateOne = async (row: Row, insertIfMissing: boolean): Promise<void> => {
+        const { id, ...changes } = row;
+        const { data, error } = await sb.from(table).update(changes).eq("id", id as string).select("id");
+        if (error) throw error;
+        if (!data || data.length === 0) {
+          if (insertIfMissing) return insertOne(row);
+          throw new Error("forbidden"); // row not visible/editable for this user
+        }
+      };
+      if (g.op === "insert") {
+        for (let i = 0; i < payload.length; i += 500) {
+          const chunk = payload.slice(i, i + 500);
+          const { error } = await sb.from(table).insert(chunk);
+          if (error && error.code === "23505") {
+            for (const row of chunk) await insertOne(row);
+          } else if (error) throw error;
+        }
+      } else if (g.tbl !== "activity") {
+        for (const row of payload) await updateOne(row, g.op === "upsert");
       }
     }
     await applyRemote((run) => run("DELETE FROM outbox WHERE seq <= ?", [maxSeq]));
@@ -251,16 +279,16 @@ export async function pullAll(): Promise<void> {
     run("DELETE FROM dompets"); // cascades to every child table
     for (const d of dompets) run("INSERT INTO dompets (id, name, currency, created_at) VALUES (?, ?, ?, ?)", [d.id as string, d.name as string, d.currency as string, sqliteTime(d.created_at)]);
     members.forEach((m, i) =>
-      run("INSERT INTO members (id, dompet_id, name, role, colour, emoji, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", [
+      run("INSERT INTO members (id, dompet_id, name, role, colour, emoji, user_id, phone, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", [
         m.id as string, m.dompet_id as string, ((m.display_name as string) || "Anggota").slice(0, 40), m.role as string,
-        (m.colour as string) || MEMBER_COLOURS[i % MEMBER_COLOURS.length], (m.emoji as string) || "🙂", m.user_id as string, sqliteTime(m.joined_at),
+        (m.colour as string) || MEMBER_COLOURS[i % MEMBER_COLOURS.length], (m.emoji as string) || "🙂", (m.user_id as string) ?? null, (m.phone as string) ?? null, sqliteTime(m.joined_at),
       ]),
     );
     for (const a of accounts)
       run(
-        `INSERT INTO accounts (id, dompet_id, name, type, opening_balance, colour, icon, visibility, owner_member_id, archived, created_by, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [a.id, a.dompet_id, a.name, a.type, a.opening_balance, a.colour, a.icon, a.visibility, a.owner_member_id, a.archived ? 1 : 0, a.created_by, sqliteTime(a.created_at)] as (string | number | null)[],
+        `INSERT INTO accounts (id, dompet_id, name, type, opening_balance, colour, icon, visibility, owner_member_id, holder_member_id, archived, created_by, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [a.id, a.dompet_id, a.name, a.type, a.opening_balance, a.colour, a.icon, a.visibility, a.owner_member_id, a.holder_member_id ?? null, a.archived ? 1 : 0, a.created_by, sqliteTime(a.created_at)] as (string | number | null)[],
       );
     const cats = [...categories].sort((x, y) => Number(!!x.parent_id) - Number(!!y.parent_id));
     for (const c of cats)
@@ -512,6 +540,23 @@ export const cloud = {
     await call(requireSupabase().rpc("remove_dompet_member", { p_dompet_id: dompetId, p_user_id: userId }));
     await pullAll();
   },
+  // --- Account holders & members who haven't joined ---------------------------
+  async assignAccount(accountId: string, memberId: string | null, visibility: "shared" | "private", reassignPaidBy: boolean) {
+    const n = (await call(
+      requireSupabase().rpc("assign_account", { p_account_id: accountId, p_member_id: memberId, p_visibility: visibility, p_reassign_paid_by: reassignPaidBy }),
+    )) as number;
+    await pullAll();
+    return n;
+  },
+  async addPendingMember(dompetId: string, phone: string, name: string, role: Exclude<Role, "owner">) {
+    await call(requireSupabase().rpc("add_pending_member", { p_dompet_id: dompetId, p_phone: phone, p_display_name: name, p_role: role }));
+    await pullAll();
+  },
+  async removePendingMember(memberId: string) {
+    await call(requireSupabase().rpc("remove_pending_member", { p_member_id: memberId }));
+    await pullAll();
+  },
+
   // --- App admin -------------------------------------------------------------
   async createActivationCode(note: string) {
     return (await call(requireSupabase().rpc("app_create_activation_code", { p_note: note.trim() || null, p_valid_days: 30 }))) as ActivationCode;
