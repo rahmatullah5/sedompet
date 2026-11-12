@@ -2,8 +2,9 @@ import { useState } from "react";
 import { q, type Kind, type Transaction } from "../db/repo";
 import { currentMonth, formatDay, formatIDR, formatMonth, shiftMonth } from "../lib/format";
 import { useCurrent, useDbVersion } from "../lib/hooks";
-import { Avatar, Badge, Button, Card, Empty, Money, Select } from "../components/ui";
-import { Icon, iconText } from "../components/Icon";
+import { Avatar, Badge, Button, Card, Empty, Money } from "../components/ui";
+import { Icon } from "../components/Icon";
+import { MultiAccountPicker, MultiCategoryPicker } from "../components/Pickers";
 
 export function MonthNav({ month, setMonth }: { month: string; setMonth: (m: string) => void }) {
   const isCurrent = month === currentMonth();
@@ -56,10 +57,16 @@ export function Transactions({ onOpenTx }: { onOpenTx: (t: Transaction) => void 
   useDbVersion();
   const { dompet, me, members } = useCurrent();
   const [month, setMonth] = useState(currentMonth());
-  const [paidBy, setPaidBy] = useState("");
-  const [categoryId, setCategoryId] = useState("");
-  const [accountId, setAccountId] = useState("");
+  const [paidByIds, setPaidByIds] = useState<string[]>([]);
+  const [categoryIds, setCategoryIds] = useState<string[]>([]);
+  const [accountIds, setAccountIds] = useState<string[]>([]);
   const [kind, setKind] = useState<"" | Kind>("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const activeFilters = (categoryIds.length ? 1 : 0) + (accountIds.length ? 1 : 0);
+  const resetFilters = () => {
+    setCategoryIds([]);
+    setAccountIds([]);
+  };
   const [search, setSearch] = useState("");
   const searching = search.trim().length > 0;
 
@@ -70,9 +77,9 @@ export function Transactions({ onOpenTx }: { onOpenTx: (t: Transaction) => void 
     month: searching ? undefined : month,
     search: searching ? search : undefined,
     limit: searching ? 300 : undefined,
-    paidBy: paidBy || undefined,
-    categoryId: categoryId || undefined,
-    accountId: accountId || undefined,
+    paidByIds,
+    categoryIds,
+    accountIds,
     kind: kind || undefined,
   });
   const income = txs.filter((t) => t.kind === "income").reduce((s, t) => s + t.amount, 0);
@@ -80,7 +87,7 @@ export function Transactions({ onOpenTx }: { onOpenTx: (t: Transaction) => void 
 
   const groups = new Map<string, Transaction[]>();
   for (const t of txs) groups.set(t.date, [...(groups.get(t.date) ?? []), t]);
-  const filtered = paidBy || categoryId || accountId || kind || searching;
+  const filtered = paidByIds.length > 0 || activeFilters > 0 || kind !== "" || searching;
 
   return (
     <div className="space-y-4">
@@ -132,49 +139,74 @@ export function Transactions({ onOpenTx }: { onOpenTx: (t: Transaction) => void 
 
       <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 pb-1" role="group" aria-label="Filter anggota">
         <button
-          onClick={() => setPaidBy("")}
-          aria-pressed={paidBy === ""}
-          className={`shrink-0 rounded-full px-4 py-2 text-sm font-semibold transition ${paidBy === "" ? "bg-slate-800 text-white" : "bg-white text-slate-600 shadow-sm"}`}
+          onClick={() => setPaidByIds([])}
+          aria-pressed={paidByIds.length === 0}
+          className={`shrink-0 rounded-full px-4 py-2 text-sm font-semibold transition ${paidByIds.length === 0 ? "bg-slate-800 text-white" : "bg-white text-slate-600 shadow-sm"}`}
         >
           Semua
         </button>
-        {members.map((mem) => (
-          <button
-            key={mem.id}
-            onClick={() => setPaidBy(mem.id === paidBy ? "" : mem.id)}
-            aria-pressed={paidBy === mem.id}
-            className={`flex shrink-0 items-center gap-1.5 rounded-full py-1 pl-1 pr-3.5 text-sm font-semibold transition ${paidBy === mem.id ? "bg-slate-800 text-white" : "bg-white text-slate-600 shadow-sm"}`}
-          >
-            <Avatar emoji={mem.emoji} colour={mem.colour} size={26} />
-            {mem.name}
-          </button>
-        ))}
+        {members.map((mem) => {
+          const on = paidByIds.includes(mem.id);
+          return (
+            <button
+              key={mem.id}
+              onClick={() => setPaidByIds(on ? paidByIds.filter((id) => id !== mem.id) : [...paidByIds, mem.id])}
+              aria-pressed={on}
+              className={`flex shrink-0 items-center gap-1.5 rounded-full py-1 pl-1 pr-3.5 text-sm font-semibold transition ${on ? "bg-slate-800 text-white" : "bg-white text-slate-600 shadow-sm"}`}
+            >
+              <Avatar emoji={mem.emoji} colour={mem.colour} size={26} />
+              {mem.name}
+            </button>
+          );
+        })}
       </div>
 
-      <div className="grid grid-cols-3 gap-2">
-        <Select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} aria-label="Filter kategori">
-          <option value="">Semua kategori</option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.parent_id ? "   ↳ " : iconText(c.icon)}
-              {c.name}
-            </option>
-          ))}
-        </Select>
-        <Select value={accountId} onChange={(e) => setAccountId(e.target.value)} aria-label="Filter akun">
-          <option value="">Semua akun</option>
-          {accounts.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.visibility === "private" ? "🔒 " : ""}
-              {a.name}
-            </option>
-          ))}
-        </Select>
-        <Select value={kind} onChange={(e) => setKind(e.target.value as "" | Kind)} aria-label="Filter jenis">
-          <option value="">Masuk & keluar</option>
-          <option value="expense">Pengeluaran</option>
-          <option value="income">Pemasukan</option>
-        </Select>
+      <div className="rounded-3xl bg-white/70">
+        <div className="flex items-center gap-2 px-1">
+          <button
+            onClick={() => setFiltersOpen((o) => !o)}
+            aria-expanded={filtersOpen}
+            className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${activeFilters ? "bg-brand-600 text-white" : "bg-white text-slate-700 shadow-sm"}`}
+          >
+            ⚙️ Filter{activeFilters ? ` (${activeFilters})` : ""}
+            <span className={`text-xs transition ${filtersOpen ? "rotate-180" : ""}`}>▾</span>
+          </button>
+          {activeFilters > 0 && (
+            <button onClick={resetFilters} className="text-sm font-semibold text-slate-500 underline-offset-2 hover:underline">
+              Reset
+            </button>
+          )}
+          <div className="ml-auto grid grid-cols-3 gap-0.5 rounded-full bg-white p-0.5 shadow-sm" role="group" aria-label="Jenis">
+            {(
+              [
+                ["", "Semua"],
+                ["expense", "Keluar"],
+                ["income", "Masuk"],
+              ] as const
+            ).map(([k, label]) => (
+              <button
+                key={k}
+                onClick={() => setKind(k)}
+                aria-pressed={kind === k}
+                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${kind === k ? "bg-slate-800 text-white" : "text-slate-500"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {filtersOpen && (
+          <div className="pop-in mt-3 space-y-4 rounded-3xl bg-white p-4 shadow-[0_8px_24px_-14px_rgba(120,72,40,0.3)]">
+            <div>
+              <p className="mb-1.5 text-sm font-semibold text-slate-700">Kategori (bisa pilih beberapa)</p>
+              <MultiCategoryPicker categories={kind ? categories.filter((c) => c.kind === kind) : categories} value={categoryIds} onChange={setCategoryIds} />
+            </div>
+            <div>
+              <p className="mb-1.5 text-sm font-semibold text-slate-700">Akun</p>
+              <MultiAccountPicker accounts={accounts} value={accountIds} onChange={setAccountIds} />
+            </div>
+          </div>
+        )}
       </div>
 
       {txs.length === 0 ? (

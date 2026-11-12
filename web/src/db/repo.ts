@@ -111,6 +111,27 @@ export interface Activity {
 }
 
 export const MEMBER_COLOURS = ["#f47c5a", "#e5689b", "#4f8ef7", "#f5a524", "#8b74e8", "#2fb67c", "#22a6b3", "#e5484d"];
+/**
+ * "col IN (...)" filter with named parameters; `alsoCol` matches too
+ * (used so a parent category also matches its sub-categories).
+ */
+function listFilter(
+  col: string,
+  prefix: string,
+  ids: string[] | undefined,
+  alsoCol: string | null,
+  params: Record<string, string | number | null>,
+) {
+  if (!ids || ids.length === 0) return "";
+  const names = ids.map((id, i) => {
+    const name = "$" + prefix + i;
+    params[name] = id;
+    return name;
+  });
+  const list = names.join(",");
+  return "AND (" + col + " IN (" + list + ")" + (alsoCol ? " OR " + alsoCol + " IN (" + list + ")" : "") + ")";
+}
+
 /** Spending stats ignore transfers and balance corrections. */
 const REAL = `t.flag IS NULL`;
 /** Top-level category of a transaction (subcategories roll up). */
@@ -163,7 +184,19 @@ export const q = {
   transactions(
     dompetId: string,
     me: string,
-    f: { month?: string; paidBy?: string; categoryId?: string; accountId?: string; kind?: Kind; limit?: number; search?: string } = {},
+    f: {
+      month?: string;
+      paidBy?: string;
+      categoryId?: string;
+      accountId?: string;
+      kind?: Kind;
+      limit?: number;
+      search?: string;
+      /** Any of these categories (a parent also matches its sub-categories). */
+      categoryIds?: string[];
+      accountIds?: string[];
+      paidByIds?: string[];
+    } = {},
   ) {
     // Free-text search: every word must match a note, category, sub-category,
     // account or payer name, or an amount ("50rb", "186000", "1,5jt").
@@ -204,6 +237,9 @@ export const q = {
          AND ($acc IS NULL OR t.account_id = $acc)
          AND ($kind IS NULL OR t.kind = $kind)
          ${termSql}
+         ${listFilter("t.category_id", "cat", f.categoryIds, "c.parent_id", termParams)}
+         ${listFilter("t.account_id", "acc", f.accountIds, null, termParams)}
+         ${listFilter("t.paid_by", "pay", f.paidByIds, null, termParams)}
        ORDER BY t.date DESC, t.created_at DESC
        LIMIT $limit`,
       {

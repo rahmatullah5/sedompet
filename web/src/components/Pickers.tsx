@@ -6,6 +6,126 @@ import { cx } from "./ui";
 
 const TYPE_ICON: Record<AccountType, string> = { cash: "💵", bank: "🏦", ewallet: "📱", savings: "🐷" };
 
+/**
+ * Multi-select category icons for filtering. Selecting a parent includes its
+ * sub-categories; picking specific sub-categories narrows to just those.
+ */
+export function MultiCategoryPicker({
+  categories,
+  value,
+  onChange,
+}: {
+  categories: Category[];
+  value: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  const parents = categories.filter((c) => !c.parent_id);
+  const subsOf = (id: string) => categories.filter((c) => c.parent_id === id);
+  const has = (id: string) => value.includes(id);
+  // A parent counts as "active" if it or any of its subs is selected.
+  const active = (p: Category) => has(p.id) || subsOf(p.id).some((s) => has(s.id));
+
+  const toggleParent = (p: Category) => {
+    const subIds = subsOf(p.id).map((s) => s.id);
+    if (active(p)) onChange(value.filter((id) => id !== p.id && !subIds.includes(id)));
+    else onChange([...value, p.id]);
+  };
+  const toggleSub = (p: Category, s: Category) => {
+    const subIds = subsOf(p.id).map((x) => x.id);
+    let next = value.filter((id) => id !== p.id); // specific subs replace "all of parent"
+    next = has(s.id) ? next.filter((id) => id !== s.id) : [...next, s.id];
+    // No sub left selected -> fall back to the whole parent.
+    if (!next.some((id) => subIds.includes(id))) next = [...next, p.id];
+    onChange(next);
+  };
+
+  const withSubs = parents.filter((p) => active(p) && subsOf(p.id).length > 0);
+
+  return (
+    <div>
+      <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
+        {parents.map((p) => {
+          const on = active(p);
+          return (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => toggleParent(p)}
+              aria-pressed={on}
+              className={cx(
+                "flex flex-col items-center gap-0.5 rounded-2xl border-2 px-1 py-1.5 text-[11px] font-semibold transition",
+                on ? "border-brand-600 bg-brand-600 text-white shadow-sm" : "border-transparent bg-slate-50 text-slate-700 hover:bg-slate-100",
+              )}
+            >
+              <span className={cx("flex h-8 w-8 items-center justify-center rounded-xl", !on && "bg-white")} style={!on ? { background: `${p.colour}1f` } : undefined}>
+                <Icon value={p.icon} size={21} />
+              </span>
+              <span className="line-clamp-1 w-full text-center">{p.name}</span>
+            </button>
+          );
+        })}
+      </div>
+      {withSubs.map((p) => (
+        <div key={p.id} className="pop-in mt-2 flex flex-wrap items-center gap-1.5 rounded-2xl bg-brand-50 p-2">
+          <span className="flex items-center gap-1 px-1 text-xs font-bold text-brand-800">
+            <Icon value={p.icon} size={14} /> {p.name}:
+          </span>
+          <button
+            type="button"
+            onClick={() => onChange([...value.filter((id) => !subsOf(p.id).some((s) => s.id === id) && id !== p.id), p.id])}
+            className={cx("rounded-full px-2.5 py-0.5 text-xs font-semibold", has(p.id) ? "bg-brand-600 text-white" : "bg-white text-slate-600")}
+          >
+            Semua
+          </button>
+          {subsOf(p.id).map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => toggleSub(p, s)}
+              aria-pressed={has(s.id)}
+              className={cx(
+                "inline-flex items-center gap-1 rounded-full py-0.5 pl-1.5 pr-2.5 text-xs font-semibold",
+                has(s.id) ? "bg-brand-600 text-white" : "bg-white text-slate-600",
+              )}
+            >
+              <Icon value={s.icon} size={14} /> {s.name}
+            </button>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Multi-select account chips for filtering. */
+export function MultiAccountPicker({ accounts, value, onChange }: { accounts: Account[]; value: string[]; onChange: (ids: string[]) => void }) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {accounts.map((a) => {
+        const on = value.includes(a.id);
+        return (
+          <button
+            key={a.id}
+            type="button"
+            onClick={() => onChange(on ? value.filter((id) => id !== a.id) : [...value, a.id])}
+            aria-pressed={on}
+            className={cx(
+              "inline-flex items-center gap-1.5 rounded-full py-1 pl-1 pr-3 text-xs font-semibold transition",
+              on ? "bg-slate-800 text-white" : "bg-white text-slate-600 shadow-sm hover:bg-slate-50",
+            )}
+          >
+            <span className="flex h-6 w-6 items-center justify-center rounded-full" style={{ background: on ? "rgba(255,255,255,0.15)" : `${a.colour}26` }}>
+              <Icon value={a.icon ?? TYPE_ICON[a.type]} size={15} />
+            </span>
+            {a.visibility === "private" && "🔒 "}
+            {a.name}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /** Horizontal row of tappable account cards (icon, name, balance). */
 export function AccountPicker({
   accounts,
