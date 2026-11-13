@@ -13,5 +13,8 @@ export const WA_ACTIVATE = (phone?: string) =>
 
 export const WA_FEEDBACK = waLink("Halo, saya punya masukan/saran untuk Sedompet: ");
 
-/** Early-access lifetime purchase: admin replies with payment details and an activation code. */
-export const WA_LIFETIME = waLink("Halo, saya mau ambil Sedompet Lifetime Rp99.000. Nomor HP yang mau diaktifkan: ");
+/** Promo subscription purchase: admin replies with payment details and an activation code. */
+export const WA_SUBSCRIBE = (plan: "bulanan" | "tahunan") =>
+  waLink(
+    `Halo, saya mau langganan Sedompet ${plan === "tahunan" ? "Tahunan Rp99.000/12 bulan" : "Bulanan Rp10.000/bulan"} (harga promo). Nomor HP yang mau diaktifkan: `,
+  );

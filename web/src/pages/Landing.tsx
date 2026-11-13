@@ -1,5 +1,5 @@
 import { Avatar, MadeBy } from "../components/ui";
-import { WA_ACTIVATE, WA_FEEDBACK, WA_LIFETIME } from "../lib/contact";
+import { WA_ACTIVATE, WA_FEEDBACK, WA_SUBSCRIBE } from "../lib/contact";
 
 const FEATURES = [
   { icon: "👨‍👩‍👧", title: "Satu dompet, banyak HP", text: "Ayah catat bensin, Ibu catat belanja dapur. Semua langsung muncul di HP seluruh keluarga." },
@@ -249,97 +249,109 @@ export function Landing() {
   );
 }
 
-const LIFETIME_INCLUDES = [
-  "Satu kali bayar untuk seluruh keluarga. Ayah, Ibu, anak, semua ikut tanpa biaya tambahan",
+const PLAN_INCLUDES = [
+  "Satu langganan untuk seluruh keluarga. Ayah, Ibu, anak, semua ikut tanpa biaya tambahan",
   "Buat Dompet sebanyak apa pun: keluarga, kos bareng, trip bareng teman",
-  "Semua fitur sekarang dan update baru ke depannya",
+  "Semua fitur, termasuk update baru selama berlangganan",
   "Sinkron di semua HP & laptop, tetap jalan saat sinyal hilang",
-  "Unduh datamu ke Excel kapan saja",
+  "Unduh datamu ke Excel kapan saja, juga setelah berhenti langganan",
 ];
 
-/** Early-access lifetime offer vs the monthly price that comes later. */
+function PlanButton({ plan, primary, children }: { plan: "bulanan" | "tahunan"; primary?: boolean; children: React.ReactNode }) {
+  return (
+    <a
+      href={WA_SUBSCRIBE(plan)}
+      target="_blank"
+      rel="noopener"
+      className={
+        primary
+          ? "block rounded-full bg-brand-600 px-6 py-3.5 text-center font-semibold text-white shadow-lg shadow-brand-600/30 transition hover:bg-brand-700 active:scale-[0.98]"
+          : "block rounded-full bg-brand-50 px-6 py-3.5 text-center font-semibold text-brand-800 transition hover:bg-brand-100 active:scale-[0.98]"
+      }
+    >
+      {children}
+    </a>
+  );
+}
+
+/** Promo prices (monthly / yearly) vs the normal monthly price that comes later. */
 function Pricing() {
   return (
     <section id="harga" className="mx-auto max-w-5xl scroll-mt-20 px-5 pb-16">
-      <h2 className="text-center text-3xl font-extrabold tracking-tight text-slate-800">Bayar sekali, pakai selamanya</h2>
+      <h2 className="text-center text-3xl font-extrabold tracking-tight text-slate-800">Sehari lebih murah dari sepotong gorengan</h2>
       <p className="mx-auto mt-2 max-w-xl text-center text-slate-500">
-        Harga perkenalan untuk keluarga pertama Sedompet. Setelah masa ini selesai, Sedompet pindah ke langganan bulanan.
+        Harga promo untuk keluarga pertama Sedompet. Setelah promo selesai, harga normalnya <b className="num text-slate-700">Rp50.000/bulan</b>.
       </p>
 
-      <div className="mt-10 grid items-stretch gap-4 md:grid-cols-5">
-        {/* Lifetime */}
-        <div className="relative rounded-[2rem] bg-white p-7 shadow-[0_24px_50px_-24px_rgba(212,80,46,0.55)] ring-2 ring-brand-500 md:col-span-3">
-          <span className="absolute -top-3 left-7 rounded-full bg-brand-600 px-3 py-1 text-xs font-bold text-white shadow-sm">
-            🔥 Harga perkenalan · terbatas
-          </span>
-          <p className="text-sm font-bold uppercase tracking-wide text-brand-700">Lifetime</p>
-          <div className="mt-2 flex flex-wrap items-end gap-x-3 gap-y-1">
-            <span className="num text-5xl font-extrabold tracking-tight text-slate-800">Rp99.000</span>
-            <span className="pb-1.5 text-slate-400">
-              <s className="num">Rp500.000</s>
-            </span>
-          </div>
-          <p className="mt-1 font-semibold text-slate-600">sekali bayar, untuk selamanya. Hemat 80%.</p>
-
-          <div className="mt-5 grid gap-2 sm:grid-cols-3">
-            {[
-              ["☕", "Setara 2 gelas kopi susu kekinian"],
-              ["🛵", "≈ Rp271/hari di tahun pertama, lebih murah dari parkir motor"],
-              ["📅", "Kurang dari 2 bulan harga langganan nanti"],
-            ].map(([icon, text]) => (
-              <div key={text} className="rounded-2xl bg-sun-100/70 px-3 py-2.5 text-sm text-slate-700">
-                <span className="mr-1">{icon}</span>
-                {text}
-              </div>
-            ))}
-          </div>
-
-          <ul className="mt-5 space-y-2 text-slate-700">
-            {LIFETIME_INCLUDES.map((t) => (
-              <li key={t} className="flex gap-2">
-                <span className="text-mint-600">✓</span>
-                <span>{t}</span>
-              </li>
-            ))}
-          </ul>
-
-          <div className="mt-6 flex flex-wrap items-center gap-3">
-            <a
-              href={WA_LIFETIME}
-              target="_blank"
-              rel="noopener"
-              className="rounded-full bg-brand-600 px-6 py-3.5 font-semibold text-white shadow-lg shadow-brand-600/30 transition hover:bg-brand-700 active:scale-[0.98]"
-            >
-              Ambil Lifetime Rp99.000 →
-            </a>
-            <a href="/demo" className="font-semibold text-brand-700 hover:underline">
-              Coba demo dulu, gratis
-            </a>
-          </div>
-          <p className="mt-3 text-xs text-slate-500">
-            Bayar lewat transfer bank / QRIS ke admin di WhatsApp. Kode aktivasi dikirim setelah pembayaran diterima.
-          </p>
-        </div>
-
-        {/* Later: monthly */}
-        <div className="flex flex-col rounded-[2rem] bg-white/60 p-7 md:col-span-2">
-          <p className="text-sm font-bold uppercase tracking-wide text-slate-500">Nanti: langganan</p>
-          <div className="mt-2 flex items-end gap-1">
-            <span className="num text-4xl font-extrabold tracking-tight text-slate-400">Rp50.000</span>
-            <span className="pb-1 text-slate-400">/bulan</span>
+      <div className="mt-10 grid items-stretch gap-4 md:grid-cols-2">
+        {/* Monthly promo */}
+        <div className="flex flex-col rounded-[2rem] bg-white p-7 shadow-[0_8px_24px_-14px_rgba(120,72,40,0.3)]">
+          <p className="text-sm font-bold uppercase tracking-wide text-slate-500">Bulanan</p>
+          <div className="mt-2 flex flex-wrap items-end gap-x-2 gap-y-1">
+            <span className="num text-5xl font-extrabold tracking-tight text-slate-800">Rp10.000</span>
+            <span className="pb-1.5 text-slate-500">/bulan</span>
           </div>
           <p className="mt-1 text-sm text-slate-500">
-            Setara <b className="num">Rp600.000</b> per tahun, dan terus berjalan tiap bulan.
+            <s className="num">Rp50.000</s> · hemat 80% selama promo
           </p>
-          <div className="mt-5 rounded-2xl bg-white p-4 text-sm text-slate-600">
-            <p className="font-bold text-slate-800">Yang ambil Lifetime sekarang:</p>
-            <p className="mt-1">Tidak ikut naik. Nol tagihan bulanan, selamanya.</p>
+          <div className="mt-5 space-y-2">
+            <Relatable icon="🧋">Seharga 2 gelas es teh manis, untuk sebulan penuh</Relatable>
+            <Relatable icon="🪙">≈ Rp333/hari untuk seluruh keluarga</Relatable>
           </div>
-          <p className="mt-auto pt-5 text-xs text-slate-400">
-            Hitung-hitungan: Rp99.000 sekali vs Rp50.000 × 12 bulan = Rp600.000 tiap tahun.
+          <div className="mt-auto pt-6">
+            <PlanButton plan="bulanan">Pilih Bulanan</PlanButton>
+          </div>
+        </div>
+
+        {/* Yearly promo (best value) */}
+        <div className="relative flex flex-col rounded-[2rem] bg-white p-7 shadow-[0_24px_50px_-24px_rgba(212,80,46,0.55)] ring-2 ring-brand-500">
+          <span className="absolute -top-3 left-7 rounded-full bg-brand-600 px-3 py-1 text-xs font-bold text-white shadow-sm">🔥 Paling hemat</span>
+          <p className="text-sm font-bold uppercase tracking-wide text-brand-700">Tahunan</p>
+          <div className="mt-2 flex flex-wrap items-end gap-x-2 gap-y-1">
+            <span className="num text-5xl font-extrabold tracking-tight text-slate-800">Rp99.000</span>
+            <span className="pb-1.5 text-slate-500">/12 bulan</span>
+          </div>
+          <p className="mt-1 text-sm text-slate-500">
+            <s className="num">Rp600.000</s> · cuma <b className="num text-slate-700">Rp8.250/bulan</b>, gratis 2 bulan dibanding Bulanan
           </p>
+          <div className="mt-5 space-y-2">
+            <Relatable icon="☕">Setara 2 gelas kopi susu kekinian, untuk setahun penuh</Relatable>
+            <Relatable icon="🛵">≈ Rp271/hari, lebih murah dari parkir motor</Relatable>
+          </div>
+          <div className="mt-auto pt-6">
+            <PlanButton plan="tahunan" primary>
+              Pilih Tahunan Rp99.000 →
+            </PlanButton>
+          </div>
         </div>
       </div>
+
+      <div className="mt-4 rounded-[2rem] bg-white/60 p-6">
+        <p className="font-bold text-slate-800">Semua paket sudah termasuk:</p>
+        <ul className="mt-3 grid gap-2 text-slate-700 sm:grid-cols-2">
+          {PLAN_INCLUDES.map((t) => (
+            <li key={t} className="flex gap-2">
+              <span className="text-mint-600">✓</span>
+              <span>{t}</span>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-4 text-xs text-slate-500">
+          Bayar lewat transfer bank / QRIS ke admin di WhatsApp. Kode aktivasi dikirim setelah pembayaran diterima.{" "}
+          <a href="/demo" className="font-semibold text-brand-700 hover:underline">
+            Coba demo dulu, gratis →
+          </a>
+        </p>
+      </div>
     </section>
+  );
+}
+
+function Relatable({ icon, children }: { icon: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl bg-sun-100/70 px-3 py-2.5 text-sm text-slate-700">
+      <span className="mr-1">{icon}</span>
+      {children}
+    </div>
   );
 }
