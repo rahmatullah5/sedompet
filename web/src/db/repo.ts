@@ -3,7 +3,7 @@
 import { all, get, write } from "./database";
 import { putInTrash, snapshot } from "./trash";
 import { can, PermissionError, type Role } from "../lib/permissions";
-import { currentMonth, formatIDR, parseAmount, toISODate, todayISO } from "../lib/format";
+import { currentMonth, formatIDR, parseAmount, periodDay, periodKeyFromStart, periodRange, periodStartSql, toISODate, todayISO } from "../lib/format";
 import { baseSql, CURRENCIES, formatMoney, isBase, toBase } from "../lib/currency";
 
 // ---------------------------------------------------------------------------
@@ -13,6 +13,8 @@ export interface Dompet {
   id: string;
   name: string;
   currency: string;
+  /** Budget month starts on this day (payday), 1-28. */
+  period_start_day: number;
   created_at: string;
 }
 
@@ -217,6 +219,12 @@ export const MEMBER_EMOJIS = ["👨", "👩", "🧑", "👧", "👦", "👴", "�
 
 const uid = () => crypto.randomUUID();
 
+/** Named SQL params $mFrom/$mTo for a budget month (period). */
+const monthParams = (month: string | null | undefined) => {
+  const r = month ? periodRange(month) : null;
+  return { $mFrom: r?.from ?? null, $mTo: r?.to ?? null };
+};
+
 // A transaction is visible when its account is shared, or private and yours.
 const VISIBLE_ACCOUNT = `(a.visibility = 'shared' OR a.owner_member_id = $me)`;
 
@@ -314,7 +322,7 @@ export const q = {
        LEFT JOIN members p ON p.id = t.paid_by
        LEFT JOIN members cb ON cb.id = t.created_by
        WHERE t.dompet_id = $d AND ${VISIBLE_ACCOUNT}
-         AND ($month IS NULL OR substr(t.date, 1, 7) = $month)
+         AND ($mFrom IS NULL OR t.date BETWEEN $mFrom AND $mTo)
          AND ($paid IS NULL OR t.paid_by = $paid)
          AND ($cat IS NULL OR t.category_id = $cat OR c.parent_id = $cat)
          AND ($acc IS NULL OR t.account_id = $acc)
@@ -328,7 +336,7 @@ export const q = {
       {
         $d: dompetId,
         $me: me,
-        $month: f.month ?? null,
+        ...monthParams(f.month),
         $paid: f.paidBy ?? null,
         $cat: f.categoryId ?? null,
         $acc: f.accountId ?? null,
@@ -427,8 +435,8 @@ export const q = {
         `SELECT COALESCE(SUM(CASE WHEN t.kind='income' THEN ${BASE_AMOUNT} END), 0) AS income,
                 COALESCE(SUM(CASE WHEN t.kind='expense' THEN ${BASE_AMOUNT} END), 0) AS expense
          FROM transactions t JOIN accounts a ON a.id = t.account_id
-         WHERE t.dompet_id = $d AND ${VISIBLE_ACCOUNT} AND ${REAL} AND substr(t.date, 1, 7) = $month`,
-        { $d: dompetId, $me: me, $month: month },
+         WHERE t.dompet_id = $d AND ${VISIBLE_ACCOUNT} AND ${REAL} AND t.date BETWEEN $mFrom AND $mTo`,
+        { $d: dompetId, $me: me, ...monthParams(month) },
       ) ?? { income: 0, expense: 0 }
     );
   },
@@ -440,10 +448,10 @@ export const q = {
        FROM members m
        LEFT JOIN (transactions t JOIN accounts a ON a.id = t.account_id AND a.dompet_id = $d AND ${VISIBLE_ACCOUNT})
          ON t.paid_by = m.id AND t.kind = 'expense' AND ${REAL}
-         AND substr(t.date, 1, 7) = $month
+         AND t.date BETWEEN $mFrom AND $mTo
        WHERE m.dompet_id = $d
        GROUP BY m.id ORDER BY total DESC`,
-      { $d: dompetId, $me: me, $month: month },
+      { $d: dompetId, $me: me, ...monthParams(month) },
     );
   },
 
@@ -456,9 +464,9 @@ export const q = {
        LEFT JOIN categories c ON c.id = t.category_id
        LEFT JOIN categories top ON top.id = ${TOP_CAT}
        WHERE t.dompet_id = $d AND ${VISIBLE_ACCOUNT} AND ${REAL} AND t.kind = 'expense'
-         AND substr(t.date, 1, 7) = $month
+         AND t.date BETWEEN $mFrom AND $mTo
        GROUP BY top.id ORDER BY total DESC`,
-      { $d: dompetId, $me: me, $month: month },
+      { $d: dompetId, $me: me, ...monthParams(month) },
     );
   },
 
@@ -478,10 +486,7 @@ export const q = {
     // for every period (used by forecasts). range: spending between two dates
     // instead; excludeRecurring leaves out entries recorded from Rutin items.
     const isCurrent = month === currentMonth() && !opts.wholeMonth;
-    const [y, mo] = month.split("-").map(Number);
-    const daysInMonth = new Date(y, mo, 0).getDate();
-    const monthFrom = month + "-01";
-    const monthTo = month + "-" + String(daysInMonth).padStart(2, "0");
+    const { from: monthFrom, to: monthTo, days: daysInMonth } = periodRange(month);
     const today = todayISO();
     const now = new Date();
     const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - ((now.getDay() + 6) % 7));
@@ -545,41 +550,41 @@ export const q = {
   /** Income/expense per month, oldest first, for the last `months` months. */
   monthlySeries(dompetId: string, me: string, months: string[]) {
     const rows = all<{ month: string; income: number; expense: number }>(
-      `SELECT substr(t.date, 1, 7) AS month,
+      `SELECT ${periodStartSql("t.date")} AS month,
               COALESCE(SUM(CASE WHEN t.kind='income' THEN ${BASE_AMOUNT} END), 0) AS income,
               COALESCE(SUM(CASE WHEN t.kind='expense' THEN ${BASE_AMOUNT} END), 0) AS expense
        FROM transactions t JOIN accounts a ON a.id = t.account_id
        WHERE t.dompet_id = $d AND ${VISIBLE_ACCOUNT} AND ${REAL}
-         AND substr(t.date, 1, 7) BETWEEN $from AND $to
+         AND t.date BETWEEN $from AND $to
        GROUP BY month`,
-      { $d: dompetId, $me: me, $from: months[0], $to: months[months.length - 1] },
+      { $d: dompetId, $me: me, $from: periodRange(months[0]).from, $to: periodRange(months[months.length - 1]).to },
     );
-    const byMonth = new Map(rows.map((r) => [r.month, r]));
+    const byMonth = new Map(rows.map((r) => [periodKeyFromStart(r.month), { ...r, month: periodKeyFromStart(r.month) }]));
     return months.map((m) => byMonth.get(m) ?? { month: m, income: 0, expense: 0 });
   },
 
-  /** Expense per day of a month: [{ day: 1..31, total }]. */
+  /** Expense per day of a budget month: [{ day: 1..length, total }] (day 1 = first day of the period). */
   dailyExpense(dompetId: string, me: string, month: string) {
     return all<{ day: number; total: number }>(
-      `SELECT CAST(substr(t.date, 9, 2) AS INTEGER) AS day, SUM(${BASE_AMOUNT}) AS total
+      `SELECT CAST(julianday(t.date) - julianday($mFrom) AS INTEGER) + 1 AS day, SUM(${BASE_AMOUNT}) AS total
        FROM transactions t JOIN accounts a ON a.id = t.account_id
        WHERE t.dompet_id = $d AND ${VISIBLE_ACCOUNT} AND ${REAL} AND t.kind = 'expense'
-         AND substr(t.date, 1, 7) = $month
+         AND t.date BETWEEN $mFrom AND $mTo
        GROUP BY day ORDER BY day`,
-      { $d: dompetId, $me: me, $month: month },
+      { $d: dompetId, $me: me, ...monthParams(month) },
     );
   },
 
   /** Net balance change (all flows, incl. transfers) per month from `from` onward. */
   netChangeSince(dompetId: string, me: string, from: string) {
     return all<{ month: string; net: number }>(
-      `SELECT substr(t.date, 1, 7) AS month,
+      `SELECT ${periodStartSql("t.date")} AS month,
               SUM(CASE t.kind WHEN 'income' THEN ${BASE_AMOUNT} ELSE -${BASE_AMOUNT} END) AS net
        FROM transactions t JOIN accounts a ON a.id = t.account_id
-       WHERE t.dompet_id = $d AND ${VISIBLE_ACCOUNT} AND substr(t.date, 1, 7) >= $from
+       WHERE t.dompet_id = $d AND ${VISIBLE_ACCOUNT} AND t.date >= $from
        GROUP BY month`,
-      { $d: dompetId, $me: me, $from: from },
-    );
+      { $d: dompetId, $me: me, $from: periodRange(from).from },
+    ).map((r) => ({ ...r, month: periodKeyFromStart(r.month) }));
   },
 
   /**
@@ -594,7 +599,7 @@ export const q = {
       if (t.flag || t.account_visibility !== "shared") continue;
       const parent = t.category_id ? (parentOf.get(t.category_id) ?? null) : null;
       if (!budgets.some((b) => budgetCovers(b, t.category_id, parent, t.paid_by))) continue;
-      const day = Number(t.date.slice(8, 10));
+      const day = periodDay(t.date, month);
       byDay.set(day, (byDay.get(day) ?? 0) + t.amount_base);
     }
     return [...byDay.entries()].sort((a, b) => a[0] - b[0]).map(([day, total]) => ({ day, total }));
@@ -737,6 +742,17 @@ export const m = {
     return write((run) => {
       run("UPDATE dompets SET name = ? WHERE id = ?", [requireText(name, "Nama Dompet", 80), actor.dompet_id]);
       log(run, actor, `mengganti nama Dompet menjadi "${name.trim()}"`);
+    });
+  },
+
+  /** Budget month starts on payday (1-28) instead of the 1st. */
+  setPeriodStartDay(actorId: string, day: number) {
+    const actor = actorOf(actorId);
+    if (!can.manage(actor.role)) throw new PermissionError("Hanya pemilik/admin yang bisa mengubah awal bulan.");
+    if (!Number.isInteger(day) || day < 1 || day > 28) throw new Error("Pilih tanggal 1 sampai 28.");
+    return write((run) => {
+      run("UPDATE dompets SET period_start_day = ? WHERE id = ?", [day, actor.dompet_id]);
+      log(run, actor, day === 1 ? "mengembalikan awal bulan anggaran ke tanggal 1" : `mengubah awal bulan anggaran ke tanggal ${day} (tanggal gajian)`);
     });
   },
 

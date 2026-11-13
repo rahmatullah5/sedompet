@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { q, type Kind, type Transaction } from "../db/repo";
-import { currentMonth, formatDay, formatIDR, formatMonth, shiftMonth } from "../lib/format";
+import { currentMonth, formatDay, formatIDR, formatMonth, formatPeriodRange, shiftMonth } from "../lib/format";
 import { useCurrent, useDbVersion } from "../lib/hooks";
 import { Avatar, Badge, Button, Card, Empty, Money } from "../components/ui";
 import { Icon } from "../components/Icon";
@@ -13,7 +13,10 @@ export function MonthNav({ month, setMonth }: { month: string; setMonth: (m: str
       <Button variant="ghost" className="px-3" aria-label="Bulan sebelumnya" onClick={() => setMonth(shiftMonth(month, -1))}>
         ‹
       </Button>
-      <span className="min-w-32 text-center text-sm font-bold capitalize">{formatMonth(month)}</span>
+      <span className="min-w-32 text-center text-sm font-bold capitalize leading-tight">
+        {formatMonth(month)}
+        {formatPeriodRange(month) && <span className="block text-[11px] font-semibold normal-case text-slate-400">{formatPeriodRange(month)}</span>}
+      </span>
       <Button variant="ghost" className="px-3" aria-label="Bulan berikutnya" disabled={isCurrent} onClick={() => setMonth(shiftMonth(month, 1))}>
         ›
       </Button>

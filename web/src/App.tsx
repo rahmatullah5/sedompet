@@ -25,6 +25,7 @@ import { Admin } from "./pages/Admin";
 import { Trash } from "./pages/Trash";
 import { PlanBanner, READ_ONLY_MESSAGE } from "./components/PlanBanner";
 import { setWriteGuard } from "./db/database";
+import { setPeriodStartDay } from "./lib/format";
 
 const PAGES = ["beranda", "riwayat", "laporan", "menu", "anggaran", "keluarga", "akun", "kategori", "rutin", "pinjaman", "tujuan", "sampah", "admin"] as const;
 type PageId = (typeof PAGES)[number];
@@ -72,6 +73,8 @@ export default function App() {
   const dompets = q.dompets();
   const dompet = dompets.find((d) => d.id === session.dompetId) ?? dompets[0];
   const members = dompet ? q.members(dompet.id) : [];
+  // Budget month boundaries for every page (payday setting of this Dompet).
+  setPeriodStartDay(dompet?.period_start_day);
   // Cloud: you are the member row tied to your login. Demo: whoever was picked.
   const me = cloudMode ? members.find((x) => x.user_id === cloudState.userId) : (members.find((x) => x.id === session.memberId) ?? members[0]);
 

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { q, type Account, type Transaction } from "../db/repo";
 import { projectedRecurring } from "../db/money";
-import { currentMonth, formatCompact, formatIDR, formatMonth, timeAgo, todayISO } from "../lib/format";
+import { currentMonth, formatCompact, formatIDR, formatMonth, formatPeriodRange, periodRange, timeAgo, todayISO } from "../lib/format";
 import { useCurrent, useDbVersion } from "../lib/hooks";
 import { Avatar, Card, Empty, Modal, Progress } from "../components/ui";
 import { TxRow } from "./Transactions";
@@ -18,15 +18,9 @@ function greeting() {
   return "Selamat malam";
 }
 
-function endOfMonthISO() {
-  const now = new Date();
-  const d = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
+/** Days left in the current budget month, today included. */
 function daysLeftThisMonth() {
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate() + 1;
+  return Math.round((Date.parse(periodRange(currentMonth()).to) - Date.parse(todayISO())) / 86_400_000) + 1;
 }
 
 export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction) => void; goTo: (page: string) => void }) {
@@ -52,7 +46,7 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction) => void; g
   const days = daysLeftThisMonth();
   const [explainOpen, setExplainOpen] = useState(false);
   // Shared recurring items still to come this month (overdue ones included).
-  const scheduled = projectedRecurring(dompet.id, me.id, "1970-01-01", endOfMonthISO());
+  const scheduled = projectedRecurring(dompet.id, me.id, "1970-01-01", periodRange(month).to);
   const sharedItems = scheduled.items.filter((i) => i.shared);
   const scheduledOut = sharedItems.filter((i) => i.kind === "expense").reduce((s, i) => s + i.amount, 0);
   const scheduledIn = sharedItems.filter((i) => i.kind === "income").reduce((s, i) => s + i.amount, 0);
@@ -97,11 +91,11 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction) => void; g
         {privateTotal > 0 && <span className="relative mt-1 block text-xs text-brand-100">+ {formatIDR(privateTotal)} di tabungan pribadimu 🔒</span>}
         <span className="relative mt-5 grid grid-cols-2 gap-3">
           <span className="rounded-2xl bg-white/15 px-4 py-3">
-            <span className="block text-xs text-brand-100">Masuk bulan ini</span>
+            <span className="block text-xs text-brand-100">Masuk {formatPeriodRange(month) ? "periode ini" : "bulan ini"}</span>
             <span className="num font-bold">+{formatCompact(totals.income)}</span>
           </span>
           <span className="rounded-2xl bg-white/15 px-4 py-3">
-            <span className="block text-xs text-brand-100">Keluar bulan ini</span>
+            <span className="block text-xs text-brand-100">Keluar {formatPeriodRange(month) ? "periode ini" : "bulan ini"}</span>
             <span className="num font-bold">−{formatCompact(totals.expense)}</span>
           </span>
         </span>
@@ -145,6 +139,7 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction) => void; g
               <p className="font-bold text-slate-800">
                 Bulan {formatMonth(month).split(" ")[0]} terpakai {formatCompact(overall.spent)} dari {formatCompact(overall.amount)}
               </p>
+              {formatPeriodRange(month) && <p className="text-xs text-slate-400">Periode {formatPeriodRange(month)}</p>}
               <p className="mt-0.5 text-sm text-slate-500">{mood.text}</p>
               {overall.combined > 0 && (
                 <p className="mt-1 text-xs text-slate-400">Gabungan {overall.combined} anggaran. Buat anggaran tanpa kategori untuk batas total.</p>

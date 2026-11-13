@@ -1,7 +1,7 @@
 import { useState, useSyncExternalStore } from "react";
 import { budgetCovers, q } from "../db/repo";
 import { projectedRecurring, variableTotals } from "../db/money";
-import { currentMonth, formatCompact, formatIDR, formatMonth, shiftMonth, toISODate, todayISO } from "../lib/format";
+import { currentMonth, formatCompact, formatIDR, formatMonth, formatPeriodRange, periodDay, periodRange, shiftMonth, toISODate, todayISO } from "../lib/format";
 import { useCurrent, useDbVersion } from "../lib/hooks";
 import { Card, cx } from "../components/ui";
 import { Icon } from "../components/Icon";
@@ -65,14 +65,14 @@ function useForecast() {
   const today = todayISO();
   const now = new Date();
   const month = currentMonth();
-  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-  const day = now.getDate();
-  const monthEnd = `${month}-${String(daysInMonth).padStart(2, "0")}`;
-  const tomorrow = toISODate(new Date(now.getFullYear(), now.getMonth(), day + 1));
+  // The budget month may start on payday, so "day" is the day number inside it.
+  const { days: daysInMonth, to: monthEnd } = periodRange(month);
+  const day = periodDay(today, month);
+  const tomorrow = toISODate(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1));
 
   // Typical everyday (non-recurring) spending per day, from the last 90 days,
   // or since the first transaction when the family started more recently.
-  const from90 = toISODate(new Date(now.getFullYear(), now.getMonth(), day - 89));
+  const from90 = toISODate(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 89));
   const first = q.firstTxDate(dompet.id, me.id);
   const historyDays = first && first > from90 ? Math.max(7, Math.round((Date.parse(today) - Date.parse(first)) / 86_400_000) + 1) : 90; // floor: one big first day shouldn't dominate
   const v90 = variableTotals(dompet.id, me.id, from90, today);
@@ -94,9 +94,8 @@ function useForecast() {
   // Next 3 months: recurring items + typical variable flow (30-day equivalents).
   const ahead = [1, 2, 3].map((i) => {
     const m = shiftMonth(month, i);
-    const [y, mm] = m.split("-").map(Number);
-    const last = new Date(y, mm, 0).getDate();
-    const rec = projectedRecurring(dompet.id, me.id, `${m}-01`, `${m}-${String(last).padStart(2, "0")}`);
+    const { from, to, days: last } = periodRange(m);
+    const rec = projectedRecurring(dompet.id, me.id, from, to);
     return {
       month: m,
       income: rec.income + dailyVarIncome * last,
@@ -161,7 +160,10 @@ export function Reports() {
 
       {/* Forecast hero */}
       <Card className="pop-in">
-        <p className="text-sm font-semibold text-slate-500">Perkiraan akhir {formatMonth(f.month)}</p>
+        <p className="text-sm font-semibold text-slate-500">
+          Perkiraan akhir {formatMonth(f.month)}
+          {formatPeriodRange(f.month) && <span className="font-normal text-slate-400"> · {formatPeriodRange(f.month)}</span>}
+        </p>
         <div className="mt-2 grid grid-cols-2 gap-4">
           <div>
             <p className="text-xs text-slate-500">Total pengeluaran</p>
@@ -278,6 +280,9 @@ function PaceChart() {
   const thisMonth = f.month;
   const lastMonth = shiftMonth(thisMonth, -1);
   const days = f.daysInMonth;
+  // Day d of the budget month as a calendar date number (they differ when the month starts on payday).
+  const startDate = new Date(periodRange(thisMonth).from + "T00:00");
+  const dateOf = (d: number) => new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate() + d - 1).getDate();
 
   const cumulative = (rows: { day: number; total: number }[], upto: number) => {
     const out: number[] = [];
@@ -345,7 +350,7 @@ function PaceChart() {
           ))}
           {[1, 10, 20, days].map((d) => (
             <text key={d} x={x(d)} y={H - 8} textAnchor="middle" fontSize={11} fill={INK_MUTED}>
-              {d}
+              {dateOf(d)}
             </text>
           ))}
           {budget && <line x1={pad.l} x2={W - pad.r} y1={y(budget)} y2={y(budget)} stroke={REFERENCE} strokeWidth={1.5} strokeDasharray="5 4" />}
@@ -361,7 +366,7 @@ function PaceChart() {
         </svg>
         {hovered && (
           <Tooltip leftPct={(x(hovered) / W) * 100}>
-            <p className="text-xs font-semibold text-slate-500">Tanggal {hovered}</p>
+            <p className="text-xs font-semibold text-slate-500">Tanggal {dateOf(hovered)}</p>
             {hovered <= cur.length ? (
               <TipRow colour={EXPENSE} label="Bulan ini" value={cur[hovered - 1]} />
             ) : (

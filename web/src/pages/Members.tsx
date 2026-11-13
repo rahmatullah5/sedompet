@@ -12,6 +12,7 @@ import { InviteCard } from "../cloud/CloudScreens";
 const CLOUD = getMode() === "cloud";
 import { useCurrent, useDbVersion } from "../lib/hooks";
 import { attempt, Avatar, Badge, Button, Card, Field, Input, Select, toast } from "../components/ui";
+import { periodOf, periodRange, todayISO } from "../lib/format";
 
 export function Members() {
   useDbVersion();
@@ -206,6 +207,48 @@ function MyProfile() {
   );
 }
 
+/** Budget month starts on payday (1-28). */
+function PeriodStartSetting() {
+  const { dompet, me } = useCurrent();
+  const current = dompet.period_start_day ?? 1;
+  const [day, setDay] = useState(current);
+  const preview = periodRange(periodOf(todayISO(), day), day);
+  const fmt = new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "long" });
+  const label = (iso: string) => fmt.format(new Date(iso + "T00:00"));
+  return (
+    <div className="mt-4 rounded-2xl bg-slate-50 p-4">
+      <p className="font-bold text-slate-800">📅 Awal bulan anggaran</p>
+      <p className="mt-0.5 text-sm text-slate-500">
+        Samakan dengan tanggal gajian. Anggaran, laporan, dan sisa per hari dihitung dari tanggal ini.
+      </p>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <Select
+          className="w-auto"
+          value={day}
+          disabled={!can.manage(me.role)}
+          aria-label="Tanggal awal bulan anggaran"
+          onChange={(e) => setDay(Number(e.target.value))}
+        >
+          {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
+            <option key={d} value={d}>
+              {d === 1 ? "Tanggal 1 (biasa)" : `Tanggal ${d}`}
+            </option>
+          ))}
+        </Select>
+        {day !== current && (
+          <Button variant="secondary" onClick={() => attempt(() => m.setPeriodStartDay(me.id, day), "Awal bulan disimpan")}>
+            Simpan
+          </Button>
+        )}
+      </div>
+      <p className="mt-2 text-xs text-slate-500">
+        Periode sekarang: <b className="text-slate-700">{label(preview.from)} – {label(preview.to)}</b>
+      </p>
+      {!can.manage(me.role) && <p className="mt-1 text-xs text-slate-400">Hanya pemilik/admin yang bisa mengubah.</p>}
+    </div>
+  );
+}
+
 function DompetSettings() {
   const { dompet, me } = useCurrent();
   const [name, setName] = useState(dompet.name);
@@ -223,6 +266,7 @@ function DompetSettings() {
           Simpan
         </Button>
       </form>
+      <PeriodStartSetting />
       {can.deleteDompet(me.role) && (
         <Button
           variant="danger"

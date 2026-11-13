@@ -140,6 +140,8 @@ function toServer(t: Synced, r: Row): Row {
 // ---------------------------------------------------------------------------
 // Upload
 // ---------------------------------------------------------------------------
+/** Set by pullAll: whether the server has dompets.period_start_day (migration 20261122). */
+let serverHasPeriodStart = false;
 let uploading: Promise<void> | null = null;
 let uploadAgain = false;
 
@@ -197,7 +199,9 @@ async function uploadOnce() {
       if (rows.length === 0) continue; // inserted then deleted before upload
       if (g.tbl === "dompets") {
         for (const r of rows) {
-          const { error } = await sb.from(table).update({ name: r.name }).eq("id", r.id as string);
+          // period_start_day only once the server has the column (see pullAll).
+          const patch = serverHasPeriodStart ? { name: r.name, period_start_day: r.period_start_day ?? 1 } : { name: r.name };
+          const { error } = await sb.from(table).update(patch).eq("id", r.id as string);
           if (error) throw error;
         }
         continue;
@@ -306,7 +310,11 @@ export async function pullAll(): Promise<void> {
 
   await applyRemote((run) => {
     run("DELETE FROM dompets"); // cascades to every child table
-    for (const d of dompets) run("INSERT INTO dompets (id, name, currency, created_at) VALUES (?, ?, ?, ?)", [d.id as string, d.name as string, d.currency as string, sqliteTime(d.created_at)]);
+    serverHasPeriodStart = dompets.length > 0 && "period_start_day" in dompets[0];
+    for (const d of dompets)
+      run("INSERT INTO dompets (id, name, currency, period_start_day, created_at) VALUES (?, ?, ?, ?, ?)", [
+        d.id as string, d.name as string, d.currency as string, Number(d.period_start_day ?? 1) || 1, sqliteTime(d.created_at),
+      ]);
     members.forEach((m, i) =>
       run("INSERT INTO members (id, dompet_id, name, role, colour, emoji, user_id, phone, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", [
         m.id as string, m.dompet_id as string, ((m.display_name as string) || "Anggota").slice(0, 40), m.role as string,

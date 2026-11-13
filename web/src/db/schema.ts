@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS dompets (
   id          TEXT PRIMARY KEY,
   name        TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 80),
   currency    TEXT NOT NULL DEFAULT 'IDR',
+  period_start_day INTEGER NOT NULL DEFAULT 1,  -- budget month starts on this day (payday), 1-28
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -185,6 +186,7 @@ CREATE INDEX IF NOT EXISTS trash_dompet ON trash(dompet_id, deleted_at);
 /** Columns added after v1, applied to databases created by older versions. */
 export const COLUMN_UPGRADES: [table: string, column: string, definition: string][] = [
   ["members", "user_id", "TEXT"],
+  ["dompets", "period_start_day", "INTEGER NOT NULL DEFAULT 1"],
   ["accounts", "icon", "TEXT"],
   ["accounts", "currency", "TEXT NOT NULL DEFAULT 'IDR'"],
   ["accounts", "fx_rate", "REAL NOT NULL DEFAULT 1"],

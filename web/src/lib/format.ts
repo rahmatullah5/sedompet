@@ -51,8 +51,66 @@ export function toISODate(d: Date) {
   return `${y}-${m}-${day}`;
 }
 
+// ---------------------------------------------------------------------------
+// Budget "months" (periods). A Dompet can start its month on payday (1-28).
+// A period is still named by a "YYYY-MM" key:
+//   start 1-15  -> named after the month it starts in (5 Nov - 4 Des = "Nov")
+//   start 16-28 -> named after the month it ends in (25 Okt - 24 Nov = "Nov")
+// so the name is always the month holding most of its days.
+// ---------------------------------------------------------------------------
+let periodStartDay = 1;
+
+/** Set from the current Dompet's setting (App does this on every render). */
+export function setPeriodStartDay(day: number | null | undefined) {
+  periodStartDay = Math.min(28, Math.max(1, Math.round(day ?? 1) || 1));
+}
+export function getPeriodStartDay() {
+  return periodStartDay;
+}
+
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
+/** First and last date (inclusive) of a period, and its length in days. */
+export function periodRange(month: string, start = periodStartDay): { from: string; to: string; days: number } {
+  const startMonth = start > 15 ? shiftMonth(month, -1) : month;
+  const from = `${startMonth}-${pad2(start)}`;
+  const [y, m] = shiftMonth(startMonth, 1).split("-").map(Number);
+  const to = toISODate(new Date(y, m - 1, start - 1)); // day 0 = last day of the previous month
+  const days = Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000) + 1;
+  return { from, to, days };
+}
+
+/** The period key ("YYYY-MM") a date belongs to. */
+export function periodOf(iso: string, start = periodStartDay): string {
+  const day = Number(iso.slice(8, 10));
+  const startMonth = day >= start ? iso.slice(0, 7) : shiftMonth(iso.slice(0, 7), -1);
+  return start > 15 ? shiftMonth(startMonth, 1) : startMonth;
+}
+
+/** Day number inside its period, 1-based. */
+export function periodDay(iso: string, month: string) {
+  return Math.round((Date.parse(iso) - Date.parse(periodRange(month).from)) / 86_400_000) + 1;
+}
+
+/** SQLite expression giving the month a date's period STARTS in (see periodKeyFromStart). */
+export function periodStartSql(col: string, start = periodStartDay) {
+  return start === 1 ? `substr(${col}, 1, 7)` : `substr(date(${col}, '-${start - 1} days'), 1, 7)`;
+}
+export function periodKeyFromStart(startMonth: string, start = periodStartDay) {
+  return start > 15 ? shiftMonth(startMonth, 1) : startMonth;
+}
+
+const shortDayMonth = new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short" });
+/** "25 Okt – 24 Nov" (empty when the month simply starts on the 1st). */
+export function formatPeriodRange(month: string) {
+  if (periodStartDay === 1) return "";
+  const { from, to } = periodRange(month);
+  return `${shortDayMonth.format(new Date(from + "T00:00"))} – ${shortDayMonth.format(new Date(to + "T00:00"))}`;
+}
+
+/** Current period key (the calendar month when the month starts on the 1st). */
 export function currentMonth() {
-  return todayISO().slice(0, 7);
+  return periodOf(todayISO());
 }
 
 export function shiftMonth(month: string, delta: number) {

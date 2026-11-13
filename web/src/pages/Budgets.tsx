@@ -3,7 +3,7 @@ import { deleteWithUndo } from "../lib/undo";
 import { MultiCategoryPicker } from "../components/Pickers";
 import { m, q, type Budget, type BudgetPeriod } from "../db/repo";
 import { can } from "../lib/permissions";
-import { currentMonth, formatIDR, parseAmount } from "../lib/format";
+import { currentMonth, formatIDR, parseAmount, periodRange, todayISO } from "../lib/format";
 import { useCurrent, useDbVersion } from "../lib/hooks";
 import { attempt, Avatar, Badge, Button, Card, Empty, Field, Input, Modal, Progress, STICKY_ACTIONS } from "../components/ui";
 import { MonthNav } from "./Transactions";
@@ -38,8 +38,7 @@ function daysLeft(month: string, period: BudgetPeriod) {
   if (month !== currentMonth() || period === "daily") return 0;
   const now = new Date();
   if (period === "weekly") return 7 - ((now.getDay() + 6) % 7);
-  const last = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-  return last - now.getDate() + 1;
+  return Math.round((Date.parse(periodRange(month).to) - Date.parse(todayISO())) / 86_400_000) + 1;
 }
 
 export const PERIODS: { value: BudgetPeriod; label: string; icon: string; per: string }[] = [
