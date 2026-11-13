@@ -6,6 +6,7 @@ import { useCurrent, useDbVersion } from "../lib/hooks";
 import { DataTools } from "./Members";
 import { useSyncExternalStore } from "react";
 import { cloudStore } from "../cloud/sync";
+import { WA_FEEDBACK } from "../lib/contact";
 
 const ITEMS = [
   { href: "#/anggaran", icon: "🐷", title: "Anggaran", hint: "Batas belanja & uang saku" },
@@ -53,6 +54,19 @@ export function Menu() {
           </a>
         ))}
       </div>
+      <a
+        href={WA_FEEDBACK}
+        target="_blank"
+        rel="noopener"
+        className="flex items-center gap-3 rounded-3xl bg-white p-4 shadow-[0_8px_24px_-14px_rgba(120,72,40,0.3)] transition hover:-translate-y-0.5"
+      >
+        <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#25D366]/15 text-2xl">💬</span>
+        <span className="flex-1">
+          <span className="block font-bold text-slate-800">Kirim masukan</span>
+          <span className="block text-xs text-slate-500">Saran, kendala, atau ide? Chat admin lewat WhatsApp.</span>
+        </span>
+        <span className="text-slate-400">→</span>
+      </a>
       <DataTools />
       <MadeBy className="pb-2 text-center" />
     </div>

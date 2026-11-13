@@ -3,6 +3,7 @@ import { cloud, cloudStore } from "./sync";
 import { displayPhone, getPendingInvite, inviteLink, normalizePhone, setMode, setPendingInvite } from "./client";
 import { ROLE_HINT, ROLE_LABEL, type Role } from "../lib/permissions";
 import { useCurrent } from "../lib/hooks";
+import { WA_ACTIVATE } from "../lib/contact";
 import { attempt, Avatar, Badge, Button, Card, Field, Input, toast, MadeBy } from "../components/ui";
 
 function Hero({ subtitle }: { subtitle: string }) {
@@ -135,7 +136,13 @@ export function CloudSignIn() {
             {busy ? "Sebentar…" : tab === "masuk" ? "Masuk" : "Daftar"}
           </Button>
           {tab === "daftar" && (
-            <p className="text-center text-xs text-slate-500">Punya kode undangan? Nomormu langsung aktif. Tanpa kode, nomor harus diaktifkan admin dulu. Tidak ada SMS.</p>
+            <p className="text-center text-xs text-slate-500">
+              Punya kode undangan? Nomormu langsung aktif. Tanpa kode, nomor harus diaktifkan admin dulu.{" "}
+              <a href={WA_ACTIVATE(normalizePhone(phone) ? displayPhone(normalizePhone(phone)) : undefined)} target="_blank" rel="noopener" className="font-semibold text-[#128C7E] underline underline-offset-2">
+                Minta aktivasi via WhatsApp
+              </a>
+              . Tidak ada SMS.
+            </p>
           )}
         </form>
       </Card>
@@ -157,6 +164,9 @@ export function CloudNotActivated() {
       <p className="text-slate-500">
         {displayPhone(email)} belum diaktifkan. {error ?? ""} Minta admin Sedompet mengaktifkan nomormu, lalu coba lagi.
       </p>
+      <a href={WA_ACTIVATE(displayPhone(email))} target="_blank" rel="noopener" className="inline-flex items-center justify-center gap-1.5 rounded-full bg-[#25D366] px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#1ebe5a]">
+        💬 Minta aktivasi via WhatsApp
+      </a>
       <div className="flex gap-2">
         <Button onClick={() => location.reload()}>Coba lagi</Button>
         <Button variant="secondary" onClick={() => cloud.signOut()}>

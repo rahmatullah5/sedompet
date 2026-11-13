@@ -1,4 +1,5 @@
 import { Avatar, MadeBy } from "../components/ui";
+import { WA_ACTIVATE, WA_FEEDBACK } from "../lib/contact";
 
 const FEATURES = [
   { icon: "👨‍👩‍👧", title: "Satu dompet, banyak HP", text: "Ayah catat bensin, Ibu catat belanja dapur. Semua langsung muncul di HP seluruh keluarga." },
@@ -230,6 +231,14 @@ export function Landing() {
       <footer className="border-t border-slate-200/70 py-8 text-center text-sm text-slate-500">
         <p>👛 Sedompet · Satu dompet untuk keluarga</p>
         <MadeBy className="mt-2 text-sm" />
+        <p className="mt-3 flex flex-wrap justify-center gap-x-4 gap-y-1">
+          <a href={WA_ACTIVATE()} target="_blank" rel="noopener" className="font-semibold text-[#128C7E] hover:underline">
+            💬 Minta aktivasi nomor
+          </a>
+          <a href={WA_FEEDBACK} target="_blank" rel="noopener" className="font-semibold text-[#128C7E] hover:underline">
+            💬 Kirim masukan via WhatsApp
+          </a>
+        </p>
         <p className="mt-1 text-xs text-slate-400">Open source (GPL-3.0).</p>
       </footer>
     </div>
