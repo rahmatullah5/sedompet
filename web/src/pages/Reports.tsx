@@ -70,14 +70,17 @@ function useForecast() {
   const monthEnd = `${month}-${String(daysInMonth).padStart(2, "0")}`;
   const tomorrow = toISODate(new Date(now.getFullYear(), now.getMonth(), day + 1));
 
-  // Typical everyday (non-recurring) spending per day, from the last 90 days.
+  // Typical everyday (non-recurring) spending per day, from the last 90 days,
+  // or since the first transaction when the family started more recently.
   const from90 = toISODate(new Date(now.getFullYear(), now.getMonth(), day - 89));
+  const first = q.firstTxDate(dompet.id, me.id);
+  const historyDays = first && first > from90 ? Math.max(7, Math.round((Date.parse(today) - Date.parse(first)) / 86_400_000) + 1) : 90; // floor: one big first day shouldn't dominate
   const v90 = variableTotals(dompet.id, me.id, from90, today);
-  const dailyVar = v90.expense / 90;
+  const dailyVar = v90.expense / historyDays;
   const [incomeBasis, setIncomeBasis] = useIncomeBasis();
-  const avgIncomePerMonth = (v90.income / 90) * 30;
+  const avgIncomePerMonth = (v90.income / historyDays) * 30;
   // "recurring" = only registered recurring income (salary etc.) is expected.
-  const dailyVarIncome = incomeBasis === "recurring" ? 0 : v90.income / 90;
+  const dailyVarIncome = incomeBasis === "recurring" ? 0 : v90.income / historyDays;
 
   const totals = q.monthTotals(dompet.id, me.id, month);
   const restOfMonth = projectedRecurring(dompet.id, me.id, tomorrow, monthEnd);
@@ -121,7 +124,7 @@ function useForecast() {
   // for the days left. A bill already paid (e.g. SPP) is not counted again.
   const parentOf = new Map(q.categories(dompet.id).map((c) => [c.id, c.parent_id]));
   const usual = new Map(
-    q.budgets(dompet.id, month, { range: { from: from90, to: today }, excludeRecurring: true }).map((b) => [b.id, b.spent / 90]),
+    q.budgets(dompet.id, month, { range: { from: from90, to: today }, excludeRecurring: true }).map((b) => [b.id, b.spent / historyDays]),
   );
   const budgetOutlook = q
     .budgets(dompet.id, month, { wholeMonth: true })
@@ -137,7 +140,7 @@ function useForecast() {
     .sort((a, b) => b.over / b.limit - a.over / a.limit);
   return {
     month, day, daysInMonth, totals, dailyVar, expenseEnd, incomeEnd, balanceNow, balanceEnd, restOfMonth, trajectory, overall, budgetOutlook,
-    incomeBasis, setIncomeBasis, avgIncomePerMonth, excludedIncomeCategories: v90.excludedIncomeCategories,
+    incomeBasis, setIncomeBasis, avgIncomePerMonth, historyDays, excludedIncomeCategories: v90.excludedIncomeCategories,
   };
 }
 
@@ -242,7 +245,7 @@ export function Reports() {
           <p className="mt-2 text-xs text-slate-500">
             {f.incomeBasis === "recurring"
               ? `Hanya pemasukan dari menu Rutin (mis. Gaji) yang diperkirakan.`
-              : `Ditambah rata-rata pemasukan lain 90 hari terakhir ≈ ${formatCompact(Math.round(f.avgIncomePerMonth))}/bulan.`}
+              : `Ditambah rata-rata pemasukan lain ${f.historyDays} hari terakhir ≈ ${formatCompact(Math.round(f.avgIncomePerMonth))}/bulan.`}
             {f.excludedIncomeCategories > 0 && " Pemasukan di kategori yang sudah ada di Rutin (mis. Gaji) tidak dihitung dua kali."}
           </p>
         </div>
@@ -261,7 +264,7 @@ export function Reports() {
           ))}
         </ul>
         <p className="mt-2 text-xs text-slate-400">
-          Perkiraan = tagihan & pemasukan rutin yang terdaftar + rata-rata belanja harian 90 hari terakhir. Utang-piutang dan transfer tidak dihitung.
+          Perkiraan = tagihan & pemasukan rutin yang terdaftar + rata-rata belanja harian {f.historyDays} hari terakhir. Utang-piutang dan transfer tidak dihitung.
         </p>
       </Card>
     </div>

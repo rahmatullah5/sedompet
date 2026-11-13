@@ -394,6 +394,14 @@ export const q = {
     };
   },
 
+  /** Date of the earliest visible transaction (YYYY-MM-DD), or null. */
+  firstTxDate: (dompetId: string, me: string) =>
+    get<{ d: string | null }>(
+      `SELECT MIN(t.date) AS d FROM transactions t JOIN accounts a ON a.id = t.account_id
+       WHERE t.dompet_id = $d AND ${VISIBLE_ACCOUNT}`,
+      { $d: dompetId, $me: me },
+    )?.d ?? null,
+
   monthTotals(dompetId: string, me: string, month: string) {
     return (
       get<{ income: number; expense: number }>(

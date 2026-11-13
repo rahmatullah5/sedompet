@@ -85,8 +85,11 @@ export function Transactions({ onOpenTx }: { onOpenTx: (t: Transaction) => void 
     accountIds,
     kind: kind || undefined,
   });
-  const income = txs.filter((t) => t.kind === "income").reduce((s, t) => s + t.amount_base, 0);
-  const expense = txs.filter((t) => t.kind === "expense").reduce((s, t) => s + t.amount_base, 0);
+  // Like Laporan: transfers, balance corrections and loans move money between
+  // pockets, they aren't income or spending.
+  const real = txs.filter((t) => !t.flag);
+  const income = real.filter((t) => t.kind === "income").reduce((s, t) => s + t.amount_base, 0);
+  const expense = real.filter((t) => t.kind === "expense").reduce((s, t) => s + t.amount_base, 0);
 
   const groups = new Map<string, Transaction[]>();
   for (const t of txs) groups.set(t.date, [...(groups.get(t.date) ?? []), t]);
