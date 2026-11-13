@@ -581,6 +581,40 @@ export const q = {
     );
   },
 
+  /**
+   * Shared-account expense per day of `month` that at least one budget covers
+   * (each expense counted once). Used when there is no overall budget.
+   */
+  budgetCoveredDaily(dompetId: string, me: string, month: string) {
+    const budgets = q.budgets(dompetId, month, { wholeMonth: true });
+    const parentOf = new Map(q.categories(dompetId).map((c) => [c.id, c.parent_id]));
+    const byDay = new Map<number, number>();
+    for (const t of q.transactions(dompetId, me, { month, kind: "expense" })) {
+      if (t.flag || t.account_visibility !== "shared") continue;
+      const parent = t.category_id ? (parentOf.get(t.category_id) ?? null) : null;
+      if (!budgets.some((b) => budgetCovers(b, t.category_id, parent, t.paid_by))) continue;
+      const day = Number(t.date.slice(8, 10));
+      byDay.set(day, (byDay.get(day) ?? 0) + t.amount_base);
+    }
+    return [...byDay.entries()].sort((a, b) => a[0] - b[0]).map(([day, total]) => ({ day, total }));
+  },
+
+  /**
+   * The monthly spending limit to compare against: a budget for all spending
+   * ("Total bulanan", daily/weekly ones scaled to the month), or else every
+   * budget combined. `combined` = how many budgets were added up (0 = one
+   * overall budget). null when there are no budgets.
+   */
+  overallBudget(dompetId: string, me: string, month: string) {
+    const all = q.budgets(dompetId, month, { wholeMonth: true });
+    if (all.length === 0) return null;
+    const family = all.filter((b) => !b.category_id && !b.category_ids && !b.member_id);
+    const pick = family.find((b) => b.period === "monthly") ?? family[0];
+    if (pick) return { amount: pick.limit, spent: pick.spent, combined: 0, name: pick.name };
+    const spent = q.budgetCoveredDaily(dompetId, me, month).reduce((s, d) => s + d.total, 0);
+    return { amount: all.reduce((s, b) => s + b.limit, 0), spent, combined: all.length, name: `Gabungan ${all.length} anggaran` };
+  },
+
   /** Savings goals you can see (one linked to someone's private account is theirs only). */
   goals(dompetId: string, me: string): Goal[] {
     const balances = new Map(q.accounts(dompetId, me).map((a) => [a.id, a.balance_base]));

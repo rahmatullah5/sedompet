@@ -1,4 +1,4 @@
-import { budgetCovers, q, type Transaction } from "../db/repo";
+import { q, type Transaction } from "../db/repo";
 import { currentMonth, formatCompact, formatIDR, formatMonth, timeAgo } from "../lib/format";
 import { useCurrent, useDbVersion } from "../lib/hooks";
 import { Avatar, Card, Empty, Progress } from "../components/ui";
@@ -34,21 +34,8 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction) => void; g
   const budgets = q.budgets(dompet.id, month);
   const family = budgets.find((b) => !b.category_id && !b.category_ids && !b.member_id && b.period === "monthly");
   const jars = budgets.filter((b) => b !== family).slice(0, 4);
-  // No "Total bulanan" budget: combine every budget instead. Limits add up
-  // (monthly equivalent); spending counts each shared expense once, if any
-  // budget covers it.
-  const overall: { spent: number; amount: number; combined: number } | null = (() => {
-    if (family) return { spent: family.spent, amount: family.amount, combined: 0 };
-    const all = q.budgets(dompet.id, month, { wholeMonth: true });
-    if (all.length === 0) return null;
-    const parentOf = new Map(q.categories(dompet.id).map((c) => [c.id, c.parent_id]));
-    const spent = q
-      .transactions(dompet.id, me.id, { month, kind: "expense" })
-      .filter((t) => !t.flag && t.account_visibility === "shared")
-      .filter((t) => all.some((b) => budgetCovers(b, t.category_id, t.category_id ? (parentOf.get(t.category_id) ?? null) : null, t.paid_by)))
-      .reduce((s, t) => s + t.amount_base, 0);
-    return { spent, amount: all.reduce((s, b) => s + b.limit, 0), combined: all.length };
-  })();
+  // "Total bulanan", or every budget combined when there is none.
+  const overall = q.overallBudget(dompet.id, me.id, month);
   const activity = q.activity(dompet.id, 6);
   // Unfinished goals first.
   const goals = q.goals(dompet.id, me.id).sort((a, b) => Number(a.progress >= a.target) - Number(b.progress >= b.target));

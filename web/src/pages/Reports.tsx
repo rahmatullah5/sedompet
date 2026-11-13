@@ -110,15 +110,12 @@ function useForecast() {
     return { ...a, balance: running };
   });
 
-  // Forecast is monthly: prefer a monthly family budget, else scale a daily/weekly one up.
-  const family = q.budgets(dompet.id, month).filter((b) => !b.category_id && !b.category_ids && !b.member_id);
-  const monthlyFamily = family.find((b) => b.period === "monthly") ?? family[0];
-  const [yy, mm] = month.split("-").map(Number);
-  const dim = new Date(yy, mm, 0).getDate();
-  const overall = monthlyFamily && {
-    ...monthlyFamily,
-    amount: monthlyFamily.period === "monthly" ? monthlyFamily.amount : Math.round(monthlyFamily.amount * (monthlyFamily.period === "weekly" ? dim / 7 : dim)),
-  };
+  // Monthly limit: "Total bulanan", or every budget combined. A combined limit
+  // only covers budgeted spending, so compare it with that spending, grown to
+  // month end like the family forecast.
+  const growth = totals.expense > 0 ? expenseEnd / totals.expense : daysInMonth / day;
+  const ob = q.overallBudget(dompet.id, me.id, month);
+  const overall = ob && { ...ob, projected: ob.combined ? Math.round(ob.spent * growth) : expenseEnd };
   // Every budget, forecast from its own data: spent so far + its Rutin bills
   // still due this month + its usual non-Rutin daily spending (90-day average)
   // for the days left. A bill already paid (e.g. SPP) is not counted again.
@@ -150,7 +147,7 @@ function useForecast() {
 export function Reports() {
   useDbVersion();
   const f = useForecast();
-  const overBudget = f.overall && f.expenseEnd > f.overall.amount;
+  const overBudget = f.overall && f.overall.projected > f.overall.amount;
   const atRisk = f.budgetOutlook.filter((b) => b.over > 0);
   const daysLeft = Math.max(1, f.daysInMonth - f.day);
   const warn = overBudget || atRisk.length > 0;
@@ -181,7 +178,7 @@ export function Reports() {
           <p>
             {warn ? "⚠️ " : "✅ "}
             {f.overall && overBudget
-              ? `Dengan kebiasaan sekarang, total pengeluaran bisa lewat anggaran ${formatIDR(Math.round(f.expenseEnd - f.overall.amount))}. Kurangi sekitar ${formatIDR(Math.ceil((f.expenseEnd - f.overall.amount) / daysLeft))} per hari.`
+              ? `Dengan kebiasaan sekarang, ${f.overall.combined ? "belanja yang dianggarkan" : "total pengeluaran"} bisa lewat ${f.overall.combined ? `gabungan ${f.overall.combined} anggaran` : "anggaran"} ${formatIDR(Math.round(f.overall.projected - f.overall.amount))}. Kurangi sekitar ${formatIDR(Math.ceil((f.overall.projected - f.overall.amount) / daysLeft))} per hari.`
               : f.budgetOutlook.length === 0
                 ? `Rata-rata belanja harian keluarga ${formatIDR(Math.round(f.dailyVar))}. Buat anggaran supaya ada pembanding.`
                 : atRisk.length > 0
@@ -291,9 +288,12 @@ function PaceChart() {
     }
     return out;
   };
-  const cur = cumulative(q.dailyExpense(dompet.id, me.id, thisMonth), f.day);
-  const prev = cumulative(q.dailyExpense(dompet.id, me.id, lastMonth), days);
-  const end = f.expenseEnd;
+  // Against a combined limit, plot only the spending budgets cover.
+  const combined = !!f.overall?.combined;
+  const daily = (m: string) => (combined ? q.budgetCoveredDaily(dompet.id, me.id, m) : q.dailyExpense(dompet.id, me.id, m));
+  const cur = cumulative(daily(thisMonth), f.day);
+  const prev = cumulative(daily(lastMonth), days);
+  const end = f.overall?.projected ?? f.expenseEnd;
   const budget = f.overall?.amount ?? null;
 
   const W = 640;
@@ -313,9 +313,14 @@ function PaceChart() {
           { label: "Bulan ini", colour: EXPENSE, shape: "line" },
           { label: "Perkiraan", colour: EXPENSE, shape: "dash" },
           { label: formatMonth(lastMonth).split(" ")[0], colour: REFERENCE, shape: "line" },
-          ...(budget ? [{ label: "Anggaran", colour: REFERENCE, shape: "dash" as const }] : []),
+          ...(budget ? [{ label: combined ? "Gabungan anggaran" : "Anggaran", colour: REFERENCE, shape: "dash" as const }] : []),
         ]}
       />
+      {combined && (
+        <p className="mt-1 text-xs text-slate-400">
+          Belum ada anggaran total, jadi grafik ini hanya menghitung belanja yang masuk {f.overall?.combined} anggaranmu.
+        </p>
+      )}
       <div className="relative mt-2">
         <svg
           viewBox={`0 0 ${W} ${H}`}
@@ -363,7 +368,7 @@ function PaceChart() {
               <TipRow colour={EXPENSE} dashed label="Perkiraan" value={cur.length ? cur[cur.length - 1] + ((end - cur[cur.length - 1]) * (hovered - f.day)) / Math.max(1, days - f.day) : 0} />
             )}
             <TipRow colour={REFERENCE} label={formatMonth(lastMonth).split(" ")[0]} value={prev[hovered - 1] ?? 0} />
-            {budget && <TipRow colour={REFERENCE} dashed label="Anggaran" value={budget} />}
+            {budget && <TipRow colour={REFERENCE} dashed label={combined ? "Gabungan anggaran" : "Anggaran"} value={budget} />}
           </Tooltip>
         )}
       </div>
