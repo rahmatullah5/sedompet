@@ -1126,6 +1126,44 @@ export const m = {
   },
 
   // --- transactions --------------------------------------------------------
+  /** Many new entries at once (Catat banyak sekaligus): all saved or none. */
+  saveBulk(
+    actorId: string,
+    rows: { kind: Kind; amount: number; account_id: string; category_id: string | null; date: string; note: string; paid_by: string }[],
+  ) {
+    const actor = actorOf(actorId);
+    if (!can.addTransaction(actor.role)) throw new PermissionError("Peran 'Hanya lihat' tidak bisa mencatat transaksi.");
+    if (rows.length === 0) throw new Error("Belum ada baris yang diisi.");
+    if (rows.length > 200) throw new Error("Maksimal 200 baris sekali simpan.");
+    const accounts = new Map(q.accounts(actor.dompet_id, actor.id).map((a) => [a.id, a]));
+    const memberIds = new Set(q.members(actor.dompet_id).map((x) => x.id));
+    const catIds = new Set(q.categories(actor.dompet_id).map((c) => c.id));
+    rows.forEach((r, i) => {
+      const n = `Baris ${i + 1}: `;
+      if (!Number.isInteger(r.amount) || r.amount <= 0) throw new Error(n + "jumlah harus lebih dari 0.");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(r.date)) throw new Error(n + "tanggal tidak valid.");
+      const acc = accounts.get(r.account_id);
+      if (!acc) throw new Error(n + "pilih akun.");
+      if (acc.visibility === "private" && acc.owner_member_id !== actor.id) throw new PermissionError(n + "itu akun pribadi orang lain.");
+      if (!memberIds.has(r.paid_by)) throw new Error(n + "pilih siapa yang bayar.");
+      if (r.category_id && !catIds.has(r.category_id)) throw new Error(n + "kategori tidak ditemukan.");
+    });
+    const shared = rows.filter((r) => accounts.get(r.account_id)?.visibility === "shared");
+    const out = shared.filter((r) => r.kind === "expense").reduce((t, r) => t + toBase(r.amount, accounts.get(r.account_id)!.currency, accounts.get(r.account_id)!.fx_rate), 0);
+    const inn = shared.filter((r) => r.kind === "income").reduce((t, r) => t + toBase(r.amount, accounts.get(r.account_id)!.currency, accounts.get(r.account_id)!.fx_rate), 0);
+    return write((run) => {
+      for (const r of rows)
+        run(
+          `INSERT INTO transactions (id, dompet_id, account_id, category_id, kind, amount, date, note, paid_by, created_by, updated_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [uid(), actor.dompet_id, r.account_id, r.category_id, r.kind, r.amount, r.date, r.note.trim().slice(0, 140), r.paid_by, actor.id, actor.id],
+        );
+      if (shared.length)
+        log(run, actor, `mencatat ${shared.length} transaksi sekaligus${out ? ` (keluar ${formatIDR(out)}` : ""}${out && inn ? ", " : out ? ")" : " ("}${inn ? `masuk ${formatIDR(inn)})` : ""}`);
+      return rows.length;
+    });
+  },
+
   saveTransaction(
     actorId: string,
     data: {

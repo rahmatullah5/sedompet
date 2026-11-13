@@ -56,6 +56,7 @@ export default function App() {
   const [txOpen, setTxOpen] = useState(false);
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
   const [newTxDate, setNewTxDate] = useState<string | undefined>(undefined);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [newDompetOpen, setNewDompetOpen] = useState(false);
@@ -144,9 +145,10 @@ export default function App() {
     );
   }
 
-  const openTx = (t: Transaction | null, date?: string) => {
+  const openTx = (t: Transaction | null, date?: string, bulk = false) => {
     setEditingTx(t);
     setNewTxDate(date);
+    setBulkOpen(bulk);
     setTxOpen(true);
   };
   const canAdd = can.addTransaction(me.role) && !readOnly;
@@ -188,7 +190,7 @@ export default function App() {
         <main className="pt-2">
           <PlanBanner sub={sub} isOwner={me.role === "owner"} />
           {page === "beranda" && <Home onOpenTx={openTx} goTo={goTo} />}
-          {page === "riwayat" && <Transactions onOpenTx={openTx} onAddOnDate={canAdd ? (d) => openTx(null, d) : undefined} />}
+          {page === "riwayat" && <Transactions onOpenTx={openTx} onAddOnDate={canAdd ? (d) => openTx(null, d) : undefined} onBulk={canAdd ? () => openTx(null, undefined, true) : undefined} />}
           {page === "anggaran" && <Budgets />}
           {page === "tujuan" && <Goals />}
           {page === "keluarga" && <Members />}
@@ -230,7 +232,7 @@ export default function App() {
         </div>
       </nav>
 
-      <TransactionForm open={txOpen} onClose={() => setTxOpen(false)} editing={editingTx} initialDate={newTxDate} />
+      <TransactionForm open={txOpen} onClose={() => setTxOpen(false)} editing={editingTx} initialDate={newTxDate} bulk={bulkOpen} />
 
       <Modal open={switcherOpen} onClose={() => setSwitcherOpen(false)} title="Dompet kamu">
         <ul className="space-y-2">

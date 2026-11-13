@@ -96,7 +96,15 @@ function loadSort(): SortKey {
 
 const CAL_KEY = "sedompet.riwayat.calendar";
 
-export function Transactions({ onOpenTx, onAddOnDate }: { onOpenTx: (t: Transaction) => void; onAddOnDate?: (iso: string) => void }) {
+export function Transactions({
+  onOpenTx,
+  onAddOnDate,
+  onBulk,
+}: {
+  onOpenTx: (t: Transaction) => void;
+  onAddOnDate?: (iso: string) => void;
+  onBulk?: () => void;
+}) {
   useDbVersion();
   const { dompet, me, members } = useCurrent();
   const [month, setMonthState] = useState(currentMonth());
@@ -227,7 +235,12 @@ export function Transactions({ onOpenTx, onAddOnDate }: { onOpenTx: (t: Transact
       <div className={`flex flex-wrap gap-2 text-sm ${searching ? "hidden" : ""}`}>
         <Badge tone="brand">Masuk {formatIDR(income)}</Badge>
         <Badge>Keluar {formatIDR(expense)}</Badge>
-        <button type="button" onClick={toggleCal} aria-pressed={showCal} className="ml-auto text-sm font-semibold text-brand-700">
+        {onBulk && (
+          <button type="button" onClick={onBulk} className="ml-auto text-sm font-semibold text-brand-700">
+            📋 Catat banyak
+          </button>
+        )}
+        <button type="button" onClick={toggleCal} aria-pressed={showCal} className={`${onBulk ? "" : "ml-auto "}text-sm font-semibold text-brand-700`}>
           📅 {showCal ? "Sembunyikan kalender" : "Kalender belanja"}
         </button>
       </div>

@@ -12,15 +12,29 @@ import { attempt, Avatar, Button, cx, Field, Input, Modal, STICKY_ACTIONS } from
 import { DatePicker } from "./DatePicker";
 import { AccountPicker, CategoryPicker } from "./Pickers";
 import { TransferBody } from "./TransferForm";
+import { BulkBody } from "./BulkEntry";
 import { SuggestionList, type Suggestion } from "./Suggestions";
 
 const QUICK = [10_000, 25_000, 50_000, 100_000];
 
-export function TransactionForm({ open, onClose, editing, initialDate }: { open: boolean; onClose: () => void; editing?: Transaction | null; initialDate?: string }) {
+export function TransactionForm({
+  open,
+  onClose,
+  editing,
+  initialDate,
+  bulk,
+}: {
+  open: boolean;
+  onClose: () => void;
+  editing?: Transaction | null;
+  initialDate?: string;
+  /** Open straight in "Catat banyak sekaligus". */
+  bulk?: boolean;
+}) {
   return (
     <Modal open={open} onClose={onClose} title={editing ? "Ubah transaksi" : "Catat transaksi"}>
       {/* Remount per transaction so the form starts from fresh values. */}
-      {open && <SheetBody key={editing?.id ?? `new${initialDate ?? ""}`} onClose={onClose} editing={editing ?? null} initialDate={initialDate} />}
+      {open && <SheetBody key={editing?.id ?? `new${initialDate ?? ""}${bulk ? "bulk" : ""}`} onClose={onClose} editing={editing ?? null} initialDate={initialDate} bulk={bulk} />}
     </Modal>
   );
 }
@@ -59,12 +73,34 @@ export function ModeSwitch({ value, onPick }: { value: Kind | "transfer"; onPick
 }
 
 /** Chooses between the normal transaction form and the transfer form. */
-function SheetBody({ onClose, editing, initialDate }: { onClose: () => void; editing: Transaction | null; initialDate?: string }) {
-  const [mode, setMode] = useState<Kind | "transfer">(editing?.transfer_id ? "transfer" : (editing?.kind ?? "expense"));
+function SheetBody({ onClose, editing, initialDate, bulk }: { onClose: () => void; editing: Transaction | null; initialDate?: string; bulk?: boolean }) {
+  const [mode, setMode] = useState<Kind | "transfer" | "bulk">(editing?.transfer_id ? "transfer" : (editing?.kind ?? (bulk ? "bulk" : "expense")));
+  if (mode === "bulk") {
+    return (
+      <BulkBody
+        onClose={onClose}
+        modeSwitch={
+          <button type="button" className="text-sm font-semibold text-brand-700" onClick={() => setMode("expense")}>
+            ← Catat satu saja
+          </button>
+        }
+      />
+    );
+  }
   if (mode === "transfer") {
     return <TransferBody transferId={editing?.transfer_id} onClose={onClose} modeSwitch={!editing && <ModeSwitch value="transfer" onPick={setMode} />} />;
   }
-  return <FormBody key={mode} onClose={onClose} editing={editing} initialKind={mode} initialDate={initialDate} onPickMode={editing ? undefined : setMode} />;
+  return (
+    <FormBody
+      key={mode}
+      onClose={onClose}
+      editing={editing}
+      initialKind={mode}
+      initialDate={initialDate}
+      onPickMode={editing ? undefined : setMode}
+      onBulk={editing ? undefined : () => setMode("bulk")}
+    />
+  );
 }
 
 function FormBody({
@@ -73,11 +109,13 @@ function FormBody({
   initialKind,
   initialDate,
   onPickMode,
+  onBulk,
 }: {
   onClose: () => void;
   editing: Transaction | null;
   initialKind: Kind;
   initialDate?: string;
+  onBulk?: () => void;
   onPickMode?: (k: Kind | "transfer") => void;
 }) {
   useDbVersion();
@@ -198,6 +236,11 @@ function FormBody({
             setLines(null);
           }}
         />
+        {onBulk && (
+          <button type="button" onClick={onBulk} className="-mt-1 text-xs font-semibold text-brand-700">
+            📋 Catat banyak sekaligus
+          </button>
+        )}
 
         <div className="relative">
           <Field label="Apa ini?">
