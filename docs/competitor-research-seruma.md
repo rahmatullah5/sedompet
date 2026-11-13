@@ -190,6 +190,8 @@ Sizing: S ≈ ≤1 day, M ≈ 2–4 days, L ≈ 1–2 weeks (solo dev).
 
 ### Phase 2 — Engagement & automation (week 7–12)
 
+> **Status (13 Nov 2026): 2.1 and 2.2 built.** 2.2 Rekap mingguan on Beranda with WhatsApp share (live). 2.1 web push: rules in SQL (push_collect, tested), Edge Function `send-push`, Notifikasi page; needs the one-time setup in SETUP-PUSH.md before it sends anything.
+
 | # | Item | Size | Detail |
 |---|---|---|---|
 | 2.1 | **Web push notifications** | L | SW + VAPID, Supabase Edge Function cron: bill/loan due tomorrow, budget 80%/100%, "Anita mencatat −Rp 435.000" (opt-in per member), weekly recap |

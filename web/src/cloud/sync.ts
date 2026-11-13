@@ -503,6 +503,14 @@ export interface ActivationCode {
   months?: number | null;
 }
 
+export interface PushPrefs {
+  entries: boolean;
+  bills: boolean;
+  budget: boolean;
+  weekly: boolean;
+  plan: boolean;
+}
+
 export interface AppPhone {
   phone: string;
   activated: boolean;
@@ -662,6 +670,37 @@ export const cloud = {
     const { data, error } = await requireSupabase().storage.from("receipts").createSignedUrl(path, 60 * 60);
     if (error) throw new Error(friendlyError(error));
     return data.signedUrl;
+  },
+
+  // --- Push notifications ------------------------------------------------------
+  async pushPublicKey() {
+    const { data, error } = await requireSupabase().from("app_config").select("value").eq("key", "vapid_public_key").maybeSingle();
+    if (error) {
+      if (/app_config|does not exist|schema cache/i.test(error.message)) return null;
+      throw new Error(friendlyError(error));
+    }
+    return (data?.value as string | undefined) ?? null;
+  },
+  async pushSubscribe(sub: PushSubscriptionJSON, prefs: PushPrefs) {
+    await call(
+      requireSupabase().rpc("push_subscribe", {
+        p_endpoint: sub.endpoint,
+        p_p256dh: sub.keys?.p256dh,
+        p_auth: sub.keys?.auth,
+        p_prefs: prefs,
+        p_user_agent: navigator.userAgent,
+      }),
+    );
+  },
+  async pushPrefs(endpoint: string) {
+    const { data } = await requireSupabase().from("push_subscriptions").select("prefs").eq("endpoint", endpoint).maybeSingle();
+    return (data?.prefs as PushPrefs | undefined) ?? null;
+  },
+  async pushSetPrefs(endpoint: string, prefs: PushPrefs) {
+    await call(requireSupabase().rpc("push_set_prefs", { p_endpoint: endpoint, p_prefs: prefs }));
+  },
+  async pushUnsubscribe(endpoint: string) {
+    await call(requireSupabase().rpc("push_unsubscribe", { p_endpoint: endpoint }));
   },
 
   // --- App admin -------------------------------------------------------------

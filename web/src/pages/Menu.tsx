@@ -21,6 +21,7 @@ const ITEMS = [
   { href: "#/neraca", icon: "⚖️", title: "Neraca", hint: "Harta, utang, kekayaan bersih" },
   { href: "#/kategori", icon: "🏷️", title: "Kategori", hint: "Kategori & subkategori" },
   { href: "#/keluarga", icon: "👨‍👩‍👧", title: "Keluarga", hint: "Anggota & peran" },
+  { href: "#/notifikasi", icon: "🔔", title: "Notifikasi", hint: "Pengingat tagihan & catatan" },
   { href: "#/sampah", icon: "🗑️", title: "Sampah", hint: "Pulihkan yang terhapus" },
 ];
 

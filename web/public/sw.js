@@ -4,7 +4,7 @@
 // - /assets/* (hashed, immutable) and icons: cache first.
 // - Google Fonts: stale-while-revalidate.
 // - Everything else (Supabase API, realtime, analytics) is never touched.
-const VERSION = "v1";
+const VERSION = "v2";
 const SHELL = `sedompet-shell-${VERSION}`;
 const ASSETS = `sedompet-assets-${VERSION}`;
 const FONTS = `sedompet-fonts-${VERSION}`;
@@ -75,4 +75,36 @@ self.addEventListener("fetch", (event) => {
       }),
     );
   }
+});
+
+// --- Push notifications (sent by the 'send-push' Edge Function) -------------
+self.addEventListener("push", (event) => {
+  let msg = { title: "Sedompet", body: "", url: "/app", tag: undefined };
+  try {
+    msg = { ...msg, ...(event.data ? event.data.json() : {}) };
+  } catch {
+    if (event.data) msg.body = event.data.text();
+  }
+  event.waitUntil(
+    self.registration.showNotification(msg.title, {
+      body: msg.body,
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      tag: msg.tag,
+      renotify: !!msg.tag,
+      data: { url: msg.url || "/app" },
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = new URL(event.notification.data?.url || "/app", self.location.origin).href;
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((wins) => {
+      const app = wins.find((w) => new URL(w.url).pathname.startsWith("/app"));
+      if (app) return app.navigate(target).then((w) => (w || app).focus());
+      return self.clients.openWindow(target);
+    }),
+  );
 });
