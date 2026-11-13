@@ -217,6 +217,7 @@ export function Reports() {
       <PaceChart />
       <MonthlyChart />
       <CategoryChart />
+      <NeedWantCard />
       <NetWorthCard />
 
       {/* 3-month outlook */}
@@ -619,5 +620,39 @@ function NetWorthCard() {
         </p>
       </Card>
     </a>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Kebutuhan vs keinginan (only once something is tagged)
+// ---------------------------------------------------------------------------
+function NeedWantCard() {
+  const { dompet, me } = useCurrent();
+  const month = currentMonth();
+  const r = q.needWant(dompet.id, me.id, month);
+  const tagged = r.need + r.want;
+  if (tagged === 0) return null;
+  const wantPct = Math.round((r.want / tagged) * 100);
+  return (
+    <Card title="Kebutuhan vs keinginan">
+      <div className="flex h-3 w-full gap-0.5 overflow-hidden rounded-full" role="img" aria-label={`Kebutuhan ${formatIDR(r.need)}, keinginan ${formatIDR(r.want)}`}>
+        <div className="h-full rounded-l-full" style={{ width: `${100 - wantPct}%`, background: "var(--color-brand-500)" }} />
+        <div className="h-full rounded-r-full" style={{ width: `${wantPct}%`, background: "var(--color-lilac-600)" }} />
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+        <p>
+          <span className="mr-1.5 inline-block h-2.5 w-2.5 rounded-full" style={{ background: "var(--color-brand-500)" }} />
+          🧺 Kebutuhan <b className="num block text-slate-800">{formatIDR(r.need)}</b>
+        </p>
+        <p>
+          <span className="mr-1.5 inline-block h-2.5 w-2.5 rounded-full" style={{ background: "var(--color-lilac-600)" }} />
+          🎁 Keinginan <b className="num block text-slate-800">{formatIDR(r.want)}</b>
+        </p>
+      </div>
+      <p className="mt-2 text-xs text-slate-500">
+        {wantPct}% dari belanja yang ditandai bulan ini untuk keinginan.
+        {r.untagged > 0 && ` ${formatCompact(r.untagged)} belum ditandai.`}
+      </p>
+    </Card>
   );
 }

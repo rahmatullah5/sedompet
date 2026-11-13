@@ -175,7 +175,7 @@ Sizing: S ≈ ≤1 day, M ≈ 2–4 days, L ≈ 1–2 weeks (solo dev).
 
 ### Phase 1 — Finance depth (week 3–6)
 
-> **Status (13 Nov 2026): 1.1, 1.2, 1.5 done.** Patungan with settle-up (split_with on transactions), payday month start (period_start_day), Neraca page with 6-month trend and per-owner view. Also shipped: paid plans with expiry (read-only Dompet when the plan ends). Next: 1.3 richer transaction form, 1.4 future-dated + uang bebas, 1.6 spending calendar.
+> **Status (13 Nov 2026): 1.1, 1.2, 1.3, 1.5 done.** Patungan with settle-up (split_with on transactions), payday month start (period_start_day), Neraca page with 6-month trend and per-owner view. Also shipped: paid plans with expiry (read-only Dompet when the plan ends). 1.3 shipped as: pecah ke beberapa kategori (incl. biaya admin line), kebutuhan/keinginan, tempat beli, foto nota (private storage bucket). Next: 1.4 future-dated + uang bebas, 1.6 spending calendar.
 
 | # | Item | Size | Detail |
 |---|---|---|---|

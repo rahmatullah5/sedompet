@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import { deleteWithUndo } from "../lib/undo";
 import { m, parseSplit, q, type Kind, type Transaction } from "../db/repo";
 import { computeSplit, initialSplit, SplitEditor, type SplitState } from "./SplitEditor";
+import { receiptValue, TxDetails, type PhotoDraft } from "./TxDetails";
+import { CategoryLines, linesTotal, newLine, type Line } from "./CategoryLines";
 import { can } from "../lib/permissions";
 import { formatCompact, todayISO } from "../lib/format";
 import { currencyInfo, formatMoney, isBase, moneyInputText, parseMoney } from "../lib/currency";
@@ -97,6 +99,11 @@ function FormBody({
   };
   const [date, setDate] = useState(editing?.date ?? todayISO());
   const [note, setNote] = useState(editing?.note ?? "");
+  const [need, setNeed] = useState<"need" | "want" | null>(editing?.need ?? null);
+  const [merchant, setMerchant] = useState(editing?.merchant ?? "");
+  const [photo, setPhoto] = useState<PhotoDraft | null>(null);
+  const [photoRemoved, setPhotoRemoved] = useState(false);
+  const [lines, setLines] = useState<Line[] | null>(null);
   // Suggestions only while typing a new entry (not when opening an existing one).
   const [showSuggest, setShowSuggest] = useState(false);
   const suggestions = showSuggest && !editing ? q.suggestions(dompet.id, me.id, note) : [];
@@ -106,6 +113,8 @@ function FormBody({
     setKind(s.kind);
     setAmountText(moneyInputText(s.amount, accounts.find((a) => a.id === s.account_id)?.currency));
     setCategoryId(s.category_id);
+    if (s.merchant) setMerchant(s.merchant);
+    if (s.need) setNeed(s.need);
     if (accounts.some((a) => a.id === s.account_id)) setAccountId(s.account_id);
     if (s.paid_by && members.some((m) => m.id === s.paid_by)) {
       setPaidBy(s.paid_by);
@@ -116,7 +125,9 @@ function FormBody({
 
   const categories = q.categories(dompet.id, kind);
   const currency = accounts.find((a) => a.id === accountId)?.currency ?? "IDR";
-  const amount = parseMoney(amountText, currency);
+  const multi = !editing && lines !== null;
+  const linesInfo = multi ? linesTotal(lines!, currency) : null;
+  const amount = multi ? linesInfo!.total : parseMoney(amountText, currency);
   const isMine = !editing || editing.created_by === me.id;
   const allowed = editing ? can.editTransaction(me.role, isMine, editing.account_holder_id === me.id) : can.addTransaction(me.role);
 
@@ -124,13 +135,13 @@ function FormBody({
   const [split, setSplit] = useState<SplitState>(() =>
     initialSplit(parseSplit(editing?.split_with), members, editing?.amount ?? 0, editing?.account_currency ?? "IDR"),
   );
-  const canSplit = kind === "expense" && selectedAccount?.visibility === "shared" && members.length > 1;
+  const canSplit = kind === "expense" && selectedAccount?.visibility === "shared" && members.length > 1 && !multi;
   const splitResult = computeSplit(canSplit ? split : { ...split, on: false }, amount, currency);
   const valid = Number.isFinite(amount) && amount > 0 && accountId && !(canSplit && split.on && !splitResult.shares);
 
   async function save() {
     const ok = await attempt(
-      () =>
+      async () =>
         m.saveTransaction(me.id, {
           id: editing?.id,
           kind,
@@ -141,6 +152,10 @@ function FormBody({
           note,
           paid_by: paidBy,
           split: splitResult.shares,
+          need: kind === "expense" ? need : null,
+          merchant,
+          receipt: await receiptValue(dompet.id, editing?.receipt ?? null, photo, photoRemoved),
+          lines: multi ? lines!.map((l, i) => ({ category_id: l.categoryId, amount: linesInfo!.amounts[i] })) : undefined,
         }),
       editing ? "Transaksi diperbarui" : "Tercatat! Keluarga bisa langsung lihat.",
     );
@@ -178,6 +193,7 @@ function FormBody({
             }
             setKind(k);
             setCategoryId(null);
+            setLines(null);
           }}
         />
 
@@ -198,6 +214,10 @@ function FormBody({
           {showSuggest && <SuggestionList items={suggestions} onPick={applySuggestion} />}
         </div>
 
+        {multi ? (
+          <CategoryLines lines={lines!} setLines={setLines} categories={categories} currency={currency} />
+        ) : (
+        <>
         <Field label={isBase(currency) ? "Berapa?" : `Berapa? (${currencyInfo(currency).flag} ${currency})`} hint={Number.isFinite(amount) && amount > 0 ? formatMoney(amount, currency) : undefined}>
           <Input
             inputMode="decimal"
@@ -221,6 +241,17 @@ function FormBody({
         </div>
 
         <CategoryPicker categories={categories} value={categoryId} onChange={setCategoryId} />
+        </>
+        )}
+        {!editing && kind === "expense" && !split.on && (
+          <button
+            type="button"
+            className="text-sm font-semibold text-brand-700"
+            onClick={() => setLines(multi ? null : [newLine(categoryId, amountText), newLine()])}
+          >
+            {multi ? "← Satu kategori saja" : "➗ Pecah ke beberapa kategori"}
+          </button>
+        )}
 
         <div className="space-y-3">
           <AccountPicker accounts={accounts} value={accountId} onChange={pickAccount} />
@@ -256,6 +287,20 @@ function FormBody({
         </div>
 
         {canSplit && <SplitEditor value={split} onChange={setSplit} members={members} amount={amount} currency={currency} payerId={paidBy} />}
+
+        <TxDetails
+          kind={kind}
+          need={need}
+          setNeed={setNeed}
+          merchant={merchant}
+          setMerchant={setMerchant}
+          merchants={q.merchants(dompet.id)}
+          existingReceipt={editing?.receipt ?? null}
+          photo={photo}
+          setPhoto={setPhoto}
+          removed={photoRemoved}
+          setRemoved={setPhotoRemoved}
+        />
 
       </fieldset>
 

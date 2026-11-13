@@ -140,6 +140,10 @@ export interface Transaction {
   transfer_id: string | null;
   /** JSON SplitShare[] when the expense is shared between members. */
   split_with: string | null;
+  need: "need" | "want" | null;
+  merchant: string | null;
+  /** Receipt photo: data: URL (demo) or storage path (cloud). */
+  receipt: string | null;
   paid_by: string | null;
   created_by: string | null;
   updated_by: string | null;
@@ -339,7 +343,7 @@ export const q = {
     const termSql = terms
       .map(
         (_, i) => `AND (
-          lower(t.note) LIKE $t${i} OR lower(COALESCE(c.name, '')) LIKE $t${i} OR lower(COALESCE(pc.name, '')) LIKE $t${i}
+          lower(t.note) LIKE $t${i} OR lower(COALESCE(t.merchant, '')) LIKE $t${i} OR lower(COALESCE(c.name, '')) LIKE $t${i} OR lower(COALESCE(pc.name, '')) LIKE $t${i}
           OR lower(a.name) LIKE $t${i} OR lower(COALESCE(p.name, '')) LIKE $t${i}
           OR ($n${i} IS NOT NULL AND (t.amount = $n${i} OR CAST(t.amount AS TEXT) LIKE $d${i})))`,
       )
@@ -414,8 +418,10 @@ export const q = {
       account_currency: string;
       account_visibility: "shared" | "private";
       paid_by_name: string | null;
+      merchant: string | null;
+      need: "need" | "want" | null;
     }>(
-      `SELECT t.note, t.kind, t.amount, t.category_id, t.account_id, t.paid_by, t.date,
+      `SELECT t.note, t.kind, t.amount, t.category_id, t.account_id, t.paid_by, t.date, t.merchant, t.need,
               COALESCE(c.icon, pc.icon) AS category_icon, c.name AS category_name,
               a.name AS account_name, COALESCE(a.currency, 'IDR') AS account_currency, a.visibility AS account_visibility, p.name AS paid_by_name
        FROM transactions t
@@ -440,6 +446,15 @@ export const q = {
     return [...seen.values()]
       .sort((a, b) => Number(b.note.toLowerCase().startsWith(needle)) - Number(a.note.toLowerCase().startsWith(needle)))
       .slice(0, limit);
+  },
+
+  /** Shop names used before (most used first), for the "Tempat beli" suggestions. */
+  merchants(dompetId: string) {
+    return all<{ merchant: string }>(
+      `SELECT merchant FROM transactions WHERE dompet_id = ? AND merchant IS NOT NULL AND merchant <> ''
+       GROUP BY lower(merchant) ORDER BY count(*) DESC, max(date) DESC LIMIT 30`,
+      [dompetId],
+    ).map((r) => r.merchant);
   },
 
   /** Both sides (and the fee, if any) of a transfer. */
@@ -483,6 +498,20 @@ export const q = {
          WHERE t.dompet_id = $d AND ${VISIBLE_ACCOUNT} AND ${REAL} AND t.date BETWEEN $mFrom AND $mTo`,
         { $d: dompetId, $me: me, ...monthParams(month) },
       ) ?? { income: 0, expense: 0 }
+    );
+  },
+
+  /** Spending this month split by the kebutuhan / keinginan tag (untagged separate). */
+  needWant(dompetId: string, me: string, month: string) {
+    return (
+      get<{ need: number; want: number; untagged: number }>(
+        `SELECT COALESCE(SUM(CASE WHEN t.need = 'need' THEN ${BASE_AMOUNT} END), 0) AS need,
+                COALESCE(SUM(CASE WHEN t.need = 'want' THEN ${BASE_AMOUNT} END), 0) AS want,
+                COALESCE(SUM(CASE WHEN t.need IS NULL THEN ${BASE_AMOUNT} END), 0) AS untagged
+         FROM transactions t JOIN accounts a ON a.id = t.account_id
+         WHERE t.dompet_id = $d AND ${VISIBLE_ACCOUNT} AND ${REAL} AND t.kind = 'expense' AND t.date BETWEEN $mFrom AND $mTo`,
+        { $d: dompetId, $me: me, ...monthParams(month) },
+      ) ?? { need: 0, want: 0, untagged: 0 }
     );
   },
 
@@ -1080,6 +1109,11 @@ export const m = {
       id?: string; kind: Kind; amount: number; account_id: string; category_id: string | null; date: string; note: string; paid_by: string;
       /** Who the expense is for (shares add up to `amount`); null = not split. */
       split?: SplitShare[] | null;
+      need?: "need" | "want" | null;
+      merchant?: string;
+      receipt?: string | null;
+      /** New entries only: one transaction per line (different categories), same everything else. */
+      lines?: { category_id: string | null; amount: number }[];
     },
   ) {
     const actor = actorOf(actorId);
@@ -1105,6 +1139,14 @@ export const m = {
       if (sum !== data.amount) throw new Error(`Total bagian ${formatMoney(sum, acc.currency)} belum sama dengan ${formatMoney(data.amount, acc.currency)}.`);
     }
     const splitJson = split ? JSON.stringify(split) : null;
+    const need = data.need === "need" || data.need === "want" ? data.need : null;
+    const merchant = data.merchant?.trim().slice(0, 60) || null;
+    const receipt = data.receipt || null;
+    const lines = !data.id && data.lines && data.lines.length > 1 ? data.lines : null;
+    if (lines) {
+      if (split) throw new Error("Patungan belum bisa digabung dengan pecah kategori.");
+      if (lines.some((l) => !Number.isInteger(l.amount) || l.amount <= 0)) throw new Error("Isi jumlah di setiap baris.");
+    }
 
     if (data.id) {
       const existing = get<{ created_by: string | null; holder: string | null }>(
@@ -1124,18 +1166,19 @@ export const m = {
       if (data.id) {
         run(
           `UPDATE transactions SET kind = ?, amount = ?, account_id = ?, category_id = ?, date = ?, note = ?,
-             paid_by = ?, split_with = ?, updated_by = ?, updated_at = datetime('now')
+             paid_by = ?, split_with = ?, need = ?, merchant = ?, receipt = ?, updated_by = ?, updated_at = datetime('now')
            WHERE id = ? AND dompet_id = ?`,
-          [data.kind, data.amount, data.account_id, data.category_id, data.date, note, data.paid_by, splitJson, actor.id, data.id, actor.dompet_id],
+          [data.kind, data.amount, data.account_id, data.category_id, data.date, note, data.paid_by, splitJson, need, merchant, receipt, actor.id, data.id, actor.dompet_id],
         );
         if (acc.visibility === "shared") log(run, actor, `mengubah ${what}`);
       } else {
-        run(
-          `INSERT INTO transactions (id, dompet_id, account_id, category_id, kind, amount, date, note, paid_by, split_with, created_by, updated_by)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [uid(), actor.dompet_id, data.account_id, data.category_id, data.kind, data.amount, data.date, note, data.paid_by, splitJson, actor.id, actor.id],
-        );
-        if (acc.visibility === "shared") log(run, actor, `mencatat ${what}`);
+        for (const line of lines ?? [{ category_id: data.category_id, amount: data.amount }])
+          run(
+            `INSERT INTO transactions (id, dompet_id, account_id, category_id, kind, amount, date, note, paid_by, split_with, need, merchant, receipt, created_by, updated_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [uid(), actor.dompet_id, data.account_id, line.category_id, data.kind, line.amount, data.date, note, data.paid_by, splitJson, need, merchant, receipt, actor.id, actor.id],
+          );
+        if (acc.visibility === "shared") log(run, actor, lines ? `mencatat ${data.kind === "expense" ? "pengeluaran" : "pemasukan"} ${formatMoney(lines.reduce((t, l) => t + l.amount, 0), acc.currency)} dipecah ke ${lines.length} kategori` : `mencatat ${what}`);
       }
     });
   },

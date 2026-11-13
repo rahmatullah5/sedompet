@@ -51,11 +51,14 @@ export function transactionsCsv(dompetId: string, me: string): { csv: string; co
     t.flag ? FLAG_LABEL[t.flag] ?? t.flag : "",
     t.created_by_name ?? "",
     splitText(t.split_with),
+    t.merchant ?? "",
+    t.need === "need" ? "Kebutuhan" : t.need === "want" ? "Keinginan" : "",
+    t.receipt ? "ada" : "",
   ]);
   return {
     count: rows.length,
     csv: toCsv(
-      ["Tanggal", "Jenis", "Jumlah", "Mata uang", "Jumlah (Rp)", "Kategori", "Subkategori", "Akun", "Dibayar oleh", "Catatan", "Tipe", "Dicatat oleh", "Patungan (bagian)"],
+      ["Tanggal", "Jenis", "Jumlah", "Mata uang", "Jumlah (Rp)", "Kategori", "Subkategori", "Akun", "Dibayar oleh", "Catatan", "Tipe", "Dicatat oleh", "Patungan (bagian)", "Tempat beli", "Kebutuhan/keinginan", "Foto nota"],
       rows,
     ),
   };

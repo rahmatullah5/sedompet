@@ -125,6 +125,9 @@ CREATE TABLE IF NOT EXISTS transactions (
   recurring_id TEXT REFERENCES recurring(id) ON DELETE SET NULL,
   transfer_id  TEXT,                      -- links both sides of a transfer (+ its fee)
   split_with   TEXT,                      -- JSON [{"m": member id, "a": share}] for shared/split expenses
+  need         TEXT CHECK (need IS NULL OR need IN ('need','want')),  -- kebutuhan / keinginan
+  merchant     TEXT,                      -- tempat beli
+  receipt      TEXT,                      -- receipt photo: data: URL (demo) or storage path (cloud)
   paid_by      TEXT REFERENCES members(id) ON DELETE SET NULL,
   created_by   TEXT REFERENCES members(id) ON DELETE SET NULL,
   updated_by   TEXT REFERENCES members(id) ON DELETE SET NULL,
@@ -202,4 +205,7 @@ export const COLUMN_UPGRADES: [table: string, column: string, definition: string
   ["transactions", "recurring_id", "TEXT REFERENCES recurring(id) ON DELETE SET NULL"],
   ["transactions", "transfer_id", "TEXT"],
   ["transactions", "split_with", "TEXT"],
+  ["transactions", "need", "TEXT CHECK (need IS NULL OR need IN ('need','want'))"],
+  ["transactions", "merchant", "TEXT"],
+  ["transactions", "receipt", "TEXT"],
 ];

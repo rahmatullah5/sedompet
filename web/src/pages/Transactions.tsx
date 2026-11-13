@@ -52,7 +52,10 @@ export function TxRow({ t, onClick, showDate }: { t: Transaction; onClick: () =>
               {t.account_visibility === "private" && "🔒 "}
               {t.account_name}
               {t.note && t.category_name && ` · ${t.parent_category_name ? `${t.parent_category_name} › ` : ""}${t.category_name}`}
+              {t.merchant && ` · ${t.merchant}`}
             </span>
+            {t.receipt && <span title="Ada foto nota">🧾</span>}
+            {t.need === "want" && <span className="rounded-full bg-lilac-100 px-1.5 text-[10px] font-semibold text-lilac-600">keinginan</span>}
             {t.split_with && t.flag === "transfer" ? (
               <span className="rounded-full bg-mint-100 px-1.5 text-[10px] font-semibold text-mint-600">lunas patungan</span>
             ) : (
