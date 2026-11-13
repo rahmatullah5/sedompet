@@ -21,7 +21,7 @@ export function MonthNav({ month, setMonth }: { month: string; setMonth: (m: str
   );
 }
 
-export function TxRow({ t, onClick }: { t: Transaction; onClick: () => void }) {
+export function TxRow({ t, onClick, showDate }: { t: Transaction; onClick: () => void; showDate?: boolean }) {
   return (
     <li>
       <button onClick={onClick} className="flex w-full items-center gap-3 rounded-2xl px-2 py-2.5 text-left transition hover:bg-slate-50">
@@ -36,6 +36,12 @@ export function TxRow({ t, onClick }: { t: Transaction; onClick: () => void }) {
             {t.note || t.category_name || (t.flag === "transfer" ? "Transfer" : t.flag === "adjustment" ? "Koreksi saldo" : "Tanpa kategori")}
           </span>
           <span className="flex flex-wrap items-center gap-x-1.5 text-xs text-slate-500">
+            {showDate && (
+              <>
+                <span className="font-semibold capitalize text-slate-600">{formatDay(t.date)}</span>
+                <span>·</span>
+              </>
+            )}
             {t.paid_by_emoji && <Avatar emoji={t.paid_by_emoji} colour={t.paid_by_colour ?? "#94a3b8"} size={16} />}
             <span>{t.paid_by_name ?? "—"}</span>
             <span>·</span>
@@ -56,6 +62,23 @@ export function TxRow({ t, onClick }: { t: Transaction; onClick: () => void }) {
   );
 }
 
+type SortKey = "newest" | "oldest" | "largest" | "smallest";
+const SORTS: [SortKey, string][] = [
+  ["newest", "Terbaru"],
+  ["oldest", "Terlama"],
+  ["largest", "Terbesar"],
+  ["smallest", "Terkecil"],
+];
+const SORT_KEY = "sedompet.riwayat.sort";
+function loadSort(): SortKey {
+  try {
+    const v = localStorage.getItem(SORT_KEY);
+    return SORTS.some(([k]) => k === v) ? (v as SortKey) : "newest";
+  } catch {
+    return "newest";
+  }
+}
+
 export function Transactions({ onOpenTx }: { onOpenTx: (t: Transaction) => void }) {
   useDbVersion();
   const { dompet, me, members } = useCurrent();
@@ -69,6 +92,15 @@ export function Transactions({ onOpenTx }: { onOpenTx: (t: Transaction) => void 
   const resetFilters = () => {
     setCategoryIds([]);
     setAccountIds([]);
+  };
+  const [sort, setSortState] = useState<SortKey>(loadSort);
+  const setSort = (k: SortKey) => {
+    setSortState(k);
+    try {
+      localStorage.setItem(SORT_KEY, k);
+    } catch {
+      /* ignore */
+    }
   };
   const [search, setSearch] = useState("");
   const searching = search.trim().length > 0;
@@ -91,8 +123,17 @@ export function Transactions({ onOpenTx }: { onOpenTx: (t: Transaction) => void 
   const income = real.filter((t) => t.kind === "income").reduce((s, t) => s + t.amount_base, 0);
   const expense = real.filter((t) => t.kind === "expense").reduce((s, t) => s + t.amount_base, 0);
 
+  // Query order is newest first. By amount: one flat list (rupiah value, so
+  // other currencies compare fairly); by date: grouped per day.
+  const byAmount = sort === "largest" || sort === "smallest";
+  const sorted =
+    sort === "oldest"
+      ? [...txs].reverse()
+      : byAmount
+        ? [...txs].sort((a, b) => (sort === "largest" ? b.amount_base - a.amount_base : a.amount_base - b.amount_base))
+        : txs;
   const groups = new Map<string, Transaction[]>();
-  for (const t of txs) groups.set(t.date, [...(groups.get(t.date) ?? []), t]);
+  for (const t of sorted) groups.set(t.date, [...(groups.get(t.date) ?? []), t]);
   const filtered = paidByIds.length > 0 || activeFilters > 0 || kind !== "" || searching;
 
   return (
@@ -168,7 +209,7 @@ export function Transactions({ onOpenTx }: { onOpenTx: (t: Transaction) => void 
       </div>
 
       <div className="rounded-3xl bg-white/70">
-        <div className="flex items-center gap-2 px-1">
+        <div className="flex flex-wrap items-center gap-2 px-1">
           <button
             onClick={() => setFiltersOpen((o) => !o)}
             aria-expanded={filtersOpen}
@@ -182,6 +223,21 @@ export function Transactions({ onOpenTx }: { onOpenTx: (t: Transaction) => void 
               Reset
             </button>
           )}
+          <label className="relative flex items-center">
+            <span className="sr-only">Urutkan</span>
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as SortKey)}
+              className={`appearance-none rounded-full py-2 pl-3 pr-7 text-sm font-semibold shadow-sm outline-none ${sort !== "newest" ? "bg-brand-600 text-white" : "bg-white text-slate-700"}`}
+            >
+              {SORTS.map(([k, label]) => (
+                <option key={k} value={k}>
+                  ↕ {label}
+                </option>
+              ))}
+            </select>
+            <span className={`pointer-events-none absolute right-2.5 text-xs ${sort !== "newest" ? "text-white" : "text-slate-500"}`}>▾</span>
+          </label>
           <div className="ml-auto grid grid-cols-3 gap-0.5 rounded-full bg-white p-0.5 shadow-sm" role="group" aria-label="Jenis">
             {(
               [
@@ -220,6 +276,14 @@ export function Transactions({ onOpenTx }: { onOpenTx: (t: Transaction) => void 
           <Empty icon="🔍" title={searching ? `Tidak ada yang cocok dengan “${search.trim()}”` : filtered ? "Tidak ada yang cocok" : "Belum ada transaksi bulan ini"}>
             {searching ? "Coba kata lain, nama orang, atau jumlah seperti 50rb." : null}
           </Empty>
+        </Card>
+      ) : byAmount ? (
+        <Card className="p-2 sm:p-3">
+          <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+            {sorted.map((t) => (
+              <TxRow key={t.id} t={t} showDate onClick={() => onOpenTx(t)} />
+            ))}
+          </ul>
         </Card>
       ) : (
         [...groups.entries()].map(([date, list]) => {
