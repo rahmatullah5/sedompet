@@ -6,6 +6,7 @@ import { TxRow } from "./Transactions";
 import { DueList } from "./Recurring";
 import { Icon } from "../components/Icon";
 import { BudgetIcon } from "./Budgets";
+import { GoalRow } from "./Goals";
 
 function greeting() {
   const h = new Date().getHours();
@@ -49,6 +50,8 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction) => void; g
     return { spent, amount: all.reduce((s, b) => s + b.limit, 0), combined: all.length };
   })();
   const activity = q.activity(dompet.id, 6);
+  // Unfinished goals first.
+  const goals = q.goals(dompet.id, me.id).sort((a, b) => Number(a.progress >= a.target) - Number(b.progress >= b.target));
   const recent = q.transactions(dompet.id, me.id, { limit: 4 });
   const familySpend = byMember.reduce((s, x) => s + x.total, 0);
   const days = daysLeftThisMonth();
@@ -121,6 +124,28 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction) => void; g
               </div>
             </div>
           </div>
+        </Card>
+      )}
+
+      {goals.length > 0 && (
+        <Card
+          className="pop-in"
+          title="Tujuan keluarga 🎯"
+          action={
+            <button onClick={() => goTo("tujuan")} className="text-sm font-semibold text-brand-700">
+              Lihat semua
+            </button>
+          }
+        >
+          <ul className="space-y-3">
+            {goals.slice(0, 3).map((g) => (
+              <li key={g.id}>
+                <button className="w-full text-left" onClick={() => goTo("tujuan")}>
+                  <GoalRow g={g} compact />
+                </button>
+              </li>
+            ))}
+          </ul>
         </Card>
       )}
 

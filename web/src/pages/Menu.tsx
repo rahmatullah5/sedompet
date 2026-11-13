@@ -10,6 +10,7 @@ import { WA_FEEDBACK } from "../lib/contact";
 
 const ITEMS = [
   { href: "#/anggaran", icon: "🐷", title: "Anggaran", hint: "Batas belanja & uang saku" },
+  { href: "#/tujuan", icon: "🎯", title: "Tujuan", hint: "Tabungan umroh, sekolah…" },
   { href: "#/rutin", icon: "🔁", title: "Rutin", hint: "Langganan, SPP, gaji" },
   { href: "#/pinjaman", icon: "🤝", title: "Utang & Piutang", hint: "Pinjam-meminjam" },
   { href: "#/akun", icon: "💳", title: "Isi dompet", hint: "Tunai, bank, e-wallet" },

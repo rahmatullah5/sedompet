@@ -95,6 +95,16 @@ export async function seedDemo(): Promise<{ dompetId: string; ownerId: string }>
     budget("Transportasi", 900000, "Transportasi", null);
     budget("Uang saku Kakak", 800000, null, kakak);
 
+    // Savings goals
+    const goal = (name: string, icon: string, target: number, date: string | null, account: string | null, saved: number) =>
+      run("INSERT INTO goals (id, dompet_id, name, icon, target, target_date, account_id, saved, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", [
+        uid(), dompetId, name, icon, target, date, account, saved, ayah,
+      ]);
+    const nextYear = new Date().getFullYear() + 1;
+    goal("Umroh keluarga", "🕋", 60000000, `${nextYear + 1}-06-01`, null, 14500000);
+    goal("Laptop kuliah Kakak", "💻", 9000000, `${nextYear}-07-01`, null, 3200000);
+    goal("Dana darurat", "🛟", 40000000, null, tabungan, 0);
+
     // A little history for the activity feed
     const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString().slice(0, 19).replace("T", " ");
     const act = (member: string, message: string, min: number) =>

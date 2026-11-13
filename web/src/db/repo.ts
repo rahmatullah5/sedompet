@@ -155,6 +155,24 @@ export function budgetCovers(
   return inScope && !hit(excl) && (!b.member_id || paidBy === b.member_id);
 }
 
+export interface Goal {
+  id: string;
+  dompet_id: string;
+  name: string;
+  icon: string;
+  /** Rupiah. */
+  target: number;
+  target_date: string | null;
+  account_id: string | null;
+  /** Manual savings in rupiah (used when no account is linked). */
+  saved: number;
+  created_by: string | null;
+  account_name: string | null;
+  account_visibility: "shared" | "private" | null;
+  /** Saved so far: linked account balance (rupiah) or `saved`. */
+  progress: number;
+}
+
 export interface Activity {
   id: string;
   member_id: string | null;
@@ -561,6 +579,18 @@ export const q = {
        GROUP BY month`,
       { $d: dompetId, $me: me, $from: from },
     );
+  },
+
+  /** Savings goals you can see (one linked to someone's private account is theirs only). */
+  goals(dompetId: string, me: string): Goal[] {
+    const balances = new Map(q.accounts(dompetId, me).map((a) => [a.id, a.balance_base]));
+    return all<Omit<Goal, "progress">>(
+      `SELECT g.*, a.name AS account_name, a.visibility AS account_visibility
+       FROM goals g LEFT JOIN accounts a ON a.id = g.account_id
+       WHERE g.dompet_id = $d AND (g.account_id IS NULL OR ${VISIBLE_ACCOUNT})
+       ORDER BY COALESCE(g.target_date, '9999'), g.created_at`,
+      { $d: dompetId, $me: me },
+    ).map((g) => ({ ...g, progress: g.account_id ? Math.max(0, balances.get(g.account_id) ?? 0) : g.saved }));
   },
 
   activity: (dompetId: string, limit = 12) =>
@@ -1072,6 +1102,55 @@ export const m = {
         log(run, actor, `membuat anggaran ${name} ${formatIDR(data.amount)}/${per}`);
       }
     });
+  },
+
+  // --- goals ---------------------------------------------------------------
+  saveGoal(
+    actorId: string,
+    data: { id?: string; name: string; icon: string; target: number; target_date: string | null; account_id: string | null; saved: number },
+  ) {
+    const actor = actorOf(actorId);
+    if (!can.manage(actor.role)) throw new PermissionError("Hanya pemilik/admin yang bisa mengatur tujuan.");
+    if (!Number.isInteger(data.target) || data.target <= 0) throw new Error("Target harus lebih dari 0.");
+    if (!Number.isInteger(data.saved) || data.saved < 0) throw new Error("Jumlah terkumpul tidak valid.");
+    if (data.target_date && !/^\d{4}-\d{2}-\d{2}$/.test(data.target_date)) throw new Error("Tanggal tidak valid.");
+    const acc = data.account_id ? q.accounts(actor.dompet_id, actor.id).find((a) => a.id === data.account_id) : null;
+    if (data.account_id && !acc) throw new Error("Akun tidak ditemukan.");
+    const name = requireText(data.name, "Nama tujuan");
+    const icon = data.icon || "🎯";
+    return write((run) => {
+      if (data.id) {
+        run("UPDATE goals SET name = ?, icon = ?, target = ?, target_date = ?, account_id = ?, saved = ? WHERE id = ? AND dompet_id = ?", [
+          name, icon, data.target, data.target_date, data.account_id, data.saved, data.id, actor.dompet_id,
+        ]);
+      } else {
+        run("INSERT INTO goals (id, dompet_id, name, icon, target, target_date, account_id, saved, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", [
+          uid(), actor.dompet_id, name, icon, data.target, data.target_date, data.account_id, data.saved, actor.id,
+        ]);
+        if (!acc || acc.visibility === "shared") log(run, actor, `membuat tujuan ${icon} ${name} ${formatIDR(data.target)}`);
+      }
+    });
+  },
+
+  /** Top up (positive) or take from (negative) a goal without a linked account. */
+  adjustGoal(actorId: string, goalId: string, delta: number) {
+    const actor = actorOf(actorId);
+    if (!can.addTransaction(actor.role)) throw new PermissionError("Peran 'Hanya lihat' tidak bisa menabung.");
+    if (!Number.isInteger(delta) || delta === 0) throw new Error("Jumlah harus lebih dari 0.");
+    const g = q.goals(actor.dompet_id, actor.id).find((x) => x.id === goalId);
+    if (!g) throw new Error("Tujuan tidak ditemukan.");
+    if (g.account_id) throw new Error("Tujuan ini mengikuti saldo akun. Transfer ke akunnya saja.");
+    if (g.saved + delta < 0) throw new Error(`Terkumpul baru ${formatIDR(g.saved)}.`);
+    return write((run) => {
+      run("UPDATE goals SET saved = saved + ? WHERE id = ? AND dompet_id = ?", [delta, goalId, actor.dompet_id]);
+      log(run, actor, delta > 0 ? `menabung ${formatIDR(delta)} untuk ${g.icon} ${g.name}` : `mengambil ${formatIDR(-delta)} dari tabungan ${g.icon} ${g.name}`);
+    });
+  },
+
+  deleteGoal(actorId: string, goalId: string) {
+    const actor = actorOf(actorId);
+    if (!can.manage(actor.role)) throw new PermissionError();
+    return write((run) => run("DELETE FROM goals WHERE id = ? AND dompet_id = ?", [goalId, actor.dompet_id]));
   },
 
   deleteBudget(actorId: string, budgetId: string) {

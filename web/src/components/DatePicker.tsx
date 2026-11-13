@@ -30,7 +30,7 @@ function friendly(iso: string) {
   return { rel, full };
 }
 
-type Preset = "past" | "future";
+type Preset = "past" | "future" | "goal";
 
 export function DatePicker({
   value,
@@ -65,11 +65,18 @@ export function DatePicker({
             { label: "Kemarin", iso: addDays(today, -1) },
             { label: "2 hari lalu", iso: addDays(today, -2) },
           ]
-        : [
-            { label: "Hari ini", iso: today },
-            { label: "+1 minggu", iso: addDays(today, 7) },
-            { label: "+1 bulan", iso: addMonths(today, 1) },
-          ];
+        : presets === "goal"
+          ? [
+              { label: "+6 bulan", iso: addMonths(today, 6) },
+              { label: "+1 tahun", iso: addMonths(today, 12) },
+              { label: "+2 tahun", iso: addMonths(today, 24) },
+              { label: "+5 tahun", iso: addMonths(today, 60) },
+            ]
+          : [
+              { label: "Hari ini", iso: today },
+              { label: "+1 minggu", iso: addDays(today, 7) },
+              { label: "+1 bulan", iso: addMonths(today, 1) },
+            ];
     return list.filter((q) => allowed(q.iso));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [presets, today, min, max]);

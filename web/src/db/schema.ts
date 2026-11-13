@@ -146,6 +146,21 @@ CREATE TABLE IF NOT EXISTS budgets (
 );
 CREATE INDEX IF NOT EXISTS budgets_dompet ON budgets(dompet_id);
 
+-- Savings goals. Progress = linked account's balance, else \`saved\` (rupiah).
+CREATE TABLE IF NOT EXISTS goals (
+  id           TEXT PRIMARY KEY,
+  dompet_id    TEXT NOT NULL REFERENCES dompets(id) ON DELETE CASCADE,
+  name         TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 40),
+  icon         TEXT NOT NULL DEFAULT '🎯',
+  target       INTEGER NOT NULL CHECK (target > 0),
+  target_date  TEXT,
+  account_id   TEXT REFERENCES accounts(id) ON DELETE SET NULL,
+  saved        INTEGER NOT NULL DEFAULT 0,
+  created_by   TEXT REFERENCES members(id) ON DELETE SET NULL,
+  created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS goals_dompet ON goals(dompet_id);
+
 CREATE TABLE IF NOT EXISTS activity (
   id          TEXT PRIMARY KEY,
   dompet_id   TEXT NOT NULL REFERENCES dompets(id) ON DELETE CASCADE,

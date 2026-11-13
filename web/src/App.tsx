@@ -12,6 +12,7 @@ import { ProfilePicker } from "./components/ProfilePicker";
 import { Home } from "./pages/Home";
 import { Transactions } from "./pages/Transactions";
 import { Budgets } from "./pages/Budgets";
+import { Goals } from "./pages/Goals";
 import { Accounts } from "./pages/Accounts";
 import { Members } from "./pages/Members";
 import { NewDompetForm, Welcome } from "./pages/Welcome";
@@ -22,7 +23,7 @@ import { Reports } from "./pages/Reports";
 import { Menu } from "./pages/Menu";
 import { Admin } from "./pages/Admin";
 
-const PAGES = ["beranda", "riwayat", "laporan", "menu", "anggaran", "keluarga", "akun", "kategori", "rutin", "pinjaman", "admin"] as const;
+const PAGES = ["beranda", "riwayat", "laporan", "menu", "anggaran", "keluarga", "akun", "kategori", "rutin", "pinjaman", "tujuan", "admin"] as const;
 type PageId = (typeof PAGES)[number];
 
 const NAV: { id: PageId; label: string; icon: string }[] = [
@@ -170,6 +171,7 @@ export default function App() {
           {page === "beranda" && <Home onOpenTx={openTx} goTo={goTo} />}
           {page === "riwayat" && <Transactions onOpenTx={openTx} />}
           {page === "anggaran" && <Budgets />}
+          {page === "tujuan" && <Goals />}
           {page === "keluarga" && <Members />}
           {page === "akun" && <Accounts />}
           {page === "laporan" && <Reports />}

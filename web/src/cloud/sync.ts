@@ -16,11 +16,11 @@ import { setSession } from "../lib/session";
 import type { Role } from "../lib/permissions";
 
 // Local table -> server table. Order matters for uploads of new rows.
-const SYNCED = ["dompets", "members", "accounts", "categories", "loans", "recurring", "transactions", "budgets", "activity"] as const;
+const SYNCED = ["dompets", "members", "accounts", "categories", "loans", "recurring", "transactions", "budgets", "goals", "activity"] as const;
 type Synced = (typeof SYNCED)[number];
 const SERVER: Record<Synced, string> = {
   dompets: "dompets", members: "dompet_members", accounts: "accounts", categories: "categories", loans: "loans",
-  recurring: "recurring", transactions: "transactions", budgets: "budgets", activity: "activity",
+  recurring: "recurring", transactions: "transactions", budgets: "budgets", goals: "goals", activity: "activity",
 };
 
 // ---------------------------------------------------------------------------
@@ -116,6 +116,8 @@ function toServer(t: Synced, r: Row): Row {
         ...pick(r, ["id", "dompet_id", "name", "icon", "kind", "amount", "account_id", "category_id", "paid_by", "frequency", "every", "next_date", "end_date", "created_by"]),
         active: !!r.active,
       };
+    case "goals":
+      return pick(r, ["id", "dompet_id", "name", "icon", "target", "target_date", "account_id", "saved", "created_by"]);
     case "activity":
       return pick(r, ["id", "dompet_id", "member_id", "message"]);
     case "dompets":
@@ -280,9 +282,11 @@ export async function pullAll(): Promise<void> {
     return;
   }
   setState({ syncing: true });
-  const [dompets, members, accounts, categories, loans, recurring, transactions, budgets] = await Promise.all([
+  const [dompets, members, accounts, categories, loans, recurring, transactions, budgets, goals] = await Promise.all([
     fetchAll("dompets"), fetchAll("dompet_members"), fetchAll("accounts"), fetchAll("categories"), fetchAll("loans"),
     fetchAll("recurring"), fetchAll("transactions"), fetchAll("budgets"),
+    // Servers without the goals migration yet: no goals rather than no sync.
+    fetchAll("goals").catch(() => [] as Row[]),
   ]);
   const { data: activity, error: actErr } = await requireSupabase().from("activity").select("*").order("created_at", { ascending: false }).limit(500);
   if (actErr) throw actErr;
@@ -336,6 +340,10 @@ export async function pullAll(): Promise<void> {
         Array.isArray(b.exclude_category_ids) && b.exclude_category_ids.length ? JSON.stringify(b.exclude_category_ids) : null,
         (b.period as string) || "monthly",
         b.created_by, sqliteTime(b.created_at),
+      ] as (string | number | null)[]);
+    for (const g of goals)
+      run("INSERT INTO goals (id, dompet_id, name, icon, target, target_date, account_id, saved, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [
+        g.id, g.dompet_id, g.name, g.icon, g.target, g.target_date, g.account_id, g.saved, g.created_by, sqliteTime(g.created_at),
       ] as (string | number | null)[]);
     for (const a of (activity ?? []) as Row[])
       run("INSERT INTO activity (id, dompet_id, member_id, message, created_at) VALUES (?, ?, ?, ?, ?)", [
