@@ -91,17 +91,22 @@ function useForecast() {
   const incomeEnd = totals.income + restOfMonth.income + dailyVarIncome * remainingDays;
 
   const balanceNow = q.accounts(dompet.id, me.id).reduce((s, a) => s + a.balance_base, 0);
-  const balanceEnd = balanceNow + (incomeEnd - totals.income) - (expenseEnd - totals.expense);
+  // Entries already recorded for later dates: in this month's totals, not in today's balance.
+  const recordedAhead = q.scheduledEntries(dompet.id, me.id, periodRange(shiftMonth(month, 3)).to);
+  const recordedNet = (from: string, to: string) =>
+    recordedAhead.filter((e) => e.date >= from && e.date <= to).reduce((s, e) => s + (e.kind === "income" ? e.amount_base : -e.amount_base), 0);
+  const balanceEnd = balanceNow + recordedNet(today, monthEnd) + (incomeEnd - totals.income) - (expenseEnd - totals.expense);
 
   // Next 3 months: recurring items + typical variable flow (30-day equivalents).
   const ahead = [1, 2, 3].map((i) => {
     const m = shiftMonth(month, i);
     const { from, to, days: last } = periodRange(m);
     const rec = projectedRecurring(dompet.id, me.id, from, to);
+    const already = recordedNet(from, to);
     return {
       month: m,
-      income: rec.income + dailyVarIncome * last,
-      expense: rec.expense + dailyVar * last,
+      income: rec.income + dailyVarIncome * last + Math.max(0, already),
+      expense: rec.expense + dailyVar * last + Math.max(0, -already),
       recurring: rec.items,
     };
   });

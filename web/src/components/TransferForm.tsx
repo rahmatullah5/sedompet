@@ -152,6 +152,7 @@ export function TransferBody({
         </div>
 
         <DatePicker label="Tanggal" value={date} onChange={setDate} />
+        {date > todayISO() && <p className="-mt-1 text-xs text-sky-700">🗓️ Bertanggal nanti: saldo kedua akun baru berubah saat tanggalnya tiba.</p>}
         <Field label="Catatan (opsional)">
           <Input value={note} maxLength={100} placeholder="mis. Isi saldo GoPay" onChange={(e) => setNote(e.target.value)} />
         </Field>

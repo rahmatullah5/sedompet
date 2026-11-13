@@ -10,6 +10,7 @@
 
 import { all } from "./database";
 import { baseSql } from "../lib/currency";
+import { todayISO } from "../lib/format";
 
 const VISIBLE = `(a.visibility = 'shared' OR a.owner_member_id = $me)`;
 
@@ -33,9 +34,10 @@ export interface NetWorth {
   net: number;
 }
 
-/** Net worth on `upTo` (inclusive, YYYY-MM-DD), or including everything when null. */
+/** Net worth on `upTo` (inclusive, YYYY-MM-DD); null = today. */
 export function netWorth(dompetId: string, me: string, upTo: string | null = null): NetWorth {
-  const params = { $d: dompetId, $me: me, $upto: upTo };
+  // "Now" = up to today: entries dated later don't count yet.
+  const params = { $d: dompetId, $me: me, $upto: upTo ?? todayISO() };
   const accounts = all<{
     id: string; name: string; type: string; icon: string | null; visibility: string;
     owner: string | null; balance_base: number;

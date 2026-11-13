@@ -256,6 +256,11 @@ function FormBody({
         <div className="space-y-3">
           <AccountPicker accounts={accounts} value={accountId} onChange={pickAccount} />
           <DatePicker label="Tanggal" value={date} onChange={setDate} />
+          {date > todayISO() && (
+            <p className="-mt-1 text-xs text-sky-700">
+              🗓️ Bertanggal nanti: sudah masuk catatan & anggaran bulan itu, tapi saldo akun baru berubah saat tanggalnya tiba.
+            </p>
+          )}
         </div>
 
         <div>

@@ -50,7 +50,18 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction) => void; g
   const sharedItems = scheduled.items.filter((i) => i.shared);
   const scheduledOut = sharedItems.filter((i) => i.kind === "expense").reduce((s, i) => s + i.amount, 0);
   const scheduledIn = sharedItems.filter((i) => i.kind === "income").reduce((s, i) => s + i.amount, 0);
-  const free = sharedTotal - scheduledOut;
+  // Entries already recorded for a later date this month (not in balances yet).
+  const dated = q.scheduledEntries(dompet.id, me.id, periodRange(month).to, true);
+  // Expenses count; a transfer arriving in another shared account cancels its outgoing side;
+  // other income is left out so the number stays on the safe side.
+  const datedEffect = (e: (typeof dated)[number]) => (e.kind === "expense" ? -e.amount_base : e.flag === "transfer" ? e.amount_base : 0);
+  const datedOut = -dated.reduce((s, e) => s + datedEffect(e), 0);
+  const datedExpenseInPeriod = dated.filter((e) => e.kind === "expense" && !e.flag).reduce((s, e) => s + e.amount_base, 0);
+  const upcoming = [
+    ...sharedItems.map((i) => ({ date: i.date, name: i.name, effect: i.kind === "expense" ? -i.amount : 0, shown: i.kind === "expense" ? -i.amount : i.amount, source: "rutin" as const })),
+    ...dated.map((e) => ({ date: e.date, name: e.note || e.category_name || "Transfer", effect: datedEffect(e), shown: e.kind === "expense" ? -e.amount_base : e.amount_base, source: "dicatat" as const })),
+  ].sort((a, b) => a.date.localeCompare(b.date));
+  const free = sharedTotal - scheduledOut - datedOut;
 
   let mood: { emoji: string; text: string } | null = null;
   if (overall) {
@@ -97,14 +108,16 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction) => void; g
           <span className="rounded-2xl bg-white/15 px-4 py-3">
             <span className="block text-xs text-brand-100">Keluar {formatPeriodRange(month) ? "periode ini" : "bulan ini"}</span>
             <span className="num font-bold">−{formatCompact(totals.expense)}</span>
+            {datedExpenseInPeriod > 0 && <span className="block text-[11px] text-brand-100">{formatCompact(datedExpenseInPeriod)} bertanggal nanti</span>}
           </span>
         </span>
       </button>
       <div className="-mt-3 flex items-center justify-between gap-2 px-2 text-xs">
         <span className="text-slate-500">
-          {scheduledOut > 0 ? (
+          {scheduledOut > 0 || datedOut !== 0 ? (
             <>
-              Uang bebas ≈ <b className={free < 0 ? "text-red-600" : "text-slate-700"}>{formatIDR(free)}</b> setelah tagihan rutin bulan ini
+              Uang bebas ≈ <b className={free < 0 ? "text-red-600" : "text-slate-700"}>{formatIDR(free)}</b> setelah{" "}
+              {scheduledOut > 0 && datedOut !== 0 ? "tagihan & catatan terjadwal" : scheduledOut > 0 ? "tagihan rutin" : "catatan terjadwal"} bulan ini
             </>
           ) : (
             "Tidak ada tagihan rutin tersisa bulan ini"
@@ -122,8 +135,9 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction) => void; g
         privateTotal={privateTotal}
         income={totals.income}
         expense={totals.expense}
-        items={sharedItems}
-        scheduledOut={scheduledOut}
+        upcoming={upcoming}
+        free={free}
+        datedExpense={datedExpenseInPeriod}
         scheduledIn={scheduledIn}
         budgetLeft={overall ? overall.amount - overall.spent : null}
         days={days}
@@ -301,15 +315,15 @@ function BalanceExplainer(p: {
   privateTotal: number;
   income: number;
   expense: number;
-  items: { date: string; name: string; kind: "income" | "expense"; amount: number }[];
-  scheduledOut: number;
+  upcoming: { date: string; name: string; effect: number; shown: number; source: "rutin" | "dicatat" }[];
+  free: number;
+  datedExpense: number;
   scheduledIn: number;
   budgetLeft: number | null;
   days: number;
 }) {
   const shared = p.accounts.filter((a) => a.visibility === "shared");
   const today = todayISO();
-  const free = p.sharedTotal - p.scheduledOut;
   const Row = ({ label, value, strong, hint }: { label: string; value: string; strong?: boolean; hint?: string }) => (
     <li className="flex items-baseline justify-between gap-3 py-1.5">
       <span className={strong ? "font-bold text-slate-800" : "text-slate-600"}>
@@ -341,28 +355,39 @@ function BalanceExplainer(p: {
             <Row label="Keluar" value={`−${formatIDR(p.expense)}`} />
           </ul>
           <p className="mt-1 text-xs text-slate-500">Transfer antar akun, koreksi saldo dan pinjaman tidak dihitung sebagai pemasukan/pengeluaran, karena uangnya hanya pindah tempat.</p>
+          {p.datedExpense > 0 && (
+            <p className="mt-1 text-xs text-slate-500">
+              Keluar sudah termasuk {formatIDR(p.datedExpense)} yang dicatat untuk tanggal nanti. Saldo baru berkurang saat tanggalnya tiba.
+            </p>
+          )}
         </section>
 
         <section>
           <h3 className="mb-1 font-bold text-slate-800">Uang bebas sampai akhir bulan</h3>
-          {p.items.length === 0 ? (
-            <p className="text-xs text-slate-500">Tidak ada tagihan atau pemasukan rutin yang tersisa bulan ini.</p>
+          {p.upcoming.length === 0 ? (
+            <p className="text-xs text-slate-500">Tidak ada tagihan rutin atau catatan bertanggal nanti yang tersisa bulan ini.</p>
           ) : (
             <ul className="divide-y divide-slate-100">
               <Row label="Uang keluarga sekarang" value={formatIDR(p.sharedTotal)} />
-              {p.items.map((i, idx) => (
+              {p.upcoming.map((i, idx) => (
                 <Row
                   key={idx}
                   label={i.name}
-                  hint={i.date < today ? "sudah jatuh tempo, belum dicatat" : `jatuh tempo ${i.date.slice(8)}/${i.date.slice(5, 7)}`}
-                  value={i.kind === "expense" ? `−${formatIDR(i.amount)}` : `(+${formatIDR(i.amount)})`}
+                  hint={
+                    i.source === "dicatat"
+                      ? `sudah dicatat untuk ${i.date.slice(8)}/${i.date.slice(5, 7)}`
+                      : i.date < today
+                        ? "tagihan rutin, sudah jatuh tempo"
+                        : `tagihan rutin, jatuh tempo ${i.date.slice(8)}/${i.date.slice(5, 7)}`
+                  }
+                  value={i.effect !== 0 ? `${i.effect < 0 ? "−" : "+"}${formatIDR(Math.abs(i.effect))}` : `(+${formatIDR(Math.abs(i.shown))})`}
                 />
               ))}
-              <Row label="Uang bebas" value={formatIDR(free)} strong />
+              <Row label="Uang bebas" value={formatIDR(p.free)} strong />
             </ul>
           )}
-          {p.scheduledIn > 0 && (
-            <p className="mt-1 text-xs text-slate-500">Pemasukan rutin (dalam kurung) belum ditambahkan, supaya hitungannya aman kalau telat masuk.</p>
+          {p.upcoming.some((i) => i.effect === 0) && (
+            <p className="mt-1 text-xs text-slate-500">Pemasukan (dalam kurung) belum ditambahkan, supaya hitungannya aman kalau telat masuk.</p>
           )}
         </section>
 

@@ -68,6 +68,8 @@ export interface Account {
   balance: number;
   /** Balance converted to rupiah, for totals. */
   balance_base: number;
+  /** Net of entries dated after today (account currency); not in `balance` yet. */
+  scheduled: number;
 }
 
 export type Kind = "expense" | "income";
@@ -299,12 +301,16 @@ export const q = {
       `SELECT a.*, h.name AS holder_name, h.emoji AS holder_emoji, h.colour AS holder_colour,
          a.opening_balance + COALESCE((
            SELECT SUM(CASE t.kind WHEN 'income' THEN t.amount ELSE -t.amount END)
-           FROM transactions t WHERE t.account_id = a.id), 0) AS balance
+           FROM transactions t WHERE t.account_id = a.id AND t.date <= $today), 0) AS balance,
+         COALESCE((
+           SELECT SUM(CASE t.kind WHEN 'income' THEN t.amount ELSE -t.amount END)
+           FROM transactions t WHERE t.account_id = a.id AND t.date > $today), 0) AS scheduled
        FROM accounts a
        LEFT JOIN members h ON h.id = COALESCE(a.holder_member_id, a.owner_member_id)
        WHERE a.dompet_id = $d AND a.archived = 0 AND ${VISIBLE_ACCOUNT}
        ORDER BY a.visibility = 'private', a.created_at`,
-      { $d: dompetId, $me: me },
+      // Entries dated after today don't move the balance until their day comes.
+      { $d: dompetId, $me: me, $today: todayISO() },
     ).map((a): Account => ({ ...a, currency: a.currency || "IDR", fx_rate: a.fx_rate ?? 1, balance_base: toBase(a.balance, a.currency, a.fx_rate) })),
 
   /** Custom account types already used in this Dompet (for the type picker). */
@@ -446,6 +452,23 @@ export const q = {
     return [...seen.values()]
       .sort((a, b) => Number(b.note.toLowerCase().startsWith(needle)) - Number(a.note.toLowerCase().startsWith(needle)))
       .slice(0, limit);
+  },
+
+  /**
+   * Entries dated after today up to `to` (inclusive), in rupiah, already
+   * recorded but not in balances yet. sharedOnly: shared accounts only, and
+   * transfers between them cancel out.
+   */
+  scheduledEntries(dompetId: string, me: string, to: string, sharedOnly = false) {
+    return all<{ id: string; date: string; note: string; kind: Kind; flag: TxFlag; amount_base: number; category_name: string | null; category_icon: string | null }>(
+      `SELECT t.id, t.date, t.note, t.kind, t.flag, ${BASE_AMOUNT} AS amount_base, c.name AS category_name, c.icon AS category_icon
+       FROM transactions t JOIN accounts a ON a.id = t.account_id
+       LEFT JOIN categories c ON c.id = t.category_id
+       WHERE t.dompet_id = $d AND ${VISIBLE_ACCOUNT} AND t.date > $today AND t.date <= $to
+         AND ($shared = 0 OR a.visibility = 'shared')
+       ORDER BY t.date, t.created_at`,
+      { $d: dompetId, $me: me, $today: todayISO(), $to: to, $shared: sharedOnly ? 1 : 0 },
+    );
   },
 
   /** Shop names used before (most used first), for the "Tempat beli" suggestions. */
