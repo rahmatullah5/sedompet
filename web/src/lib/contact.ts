@@ -12,3 +12,6 @@ export const WA_ACTIVATE = (phone?: string) =>
   waLink(`Halo, saya mau minta aktivasi nomor Sedompet${phone ? ` ${phone}` : ""}. Terima kasih!`);
 
 export const WA_FEEDBACK = waLink("Halo, saya punya masukan/saran untuk Sedompet: ");
+
+/** Early-access lifetime purchase: admin replies with payment details and an activation code. */
+export const WA_LIFETIME = waLink("Halo, saya mau ambil Sedompet Lifetime Rp99.000. Nomor HP yang mau diaktifkan: ");

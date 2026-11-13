@@ -1,5 +1,5 @@
 import { Avatar, MadeBy } from "../components/ui";
-import { WA_ACTIVATE, WA_FEEDBACK } from "../lib/contact";
+import { WA_ACTIVATE, WA_FEEDBACK, WA_LIFETIME } from "../lib/contact";
 
 const FEATURES = [
   { icon: "👨‍👩‍👧", title: "Satu dompet, banyak HP", text: "Ayah catat bensin, Ibu catat belanja dapur. Semua langsung muncul di HP seluruh keluarga." },
@@ -79,6 +79,7 @@ export function Landing() {
             <a href="#fitur" className="hover:text-brand-700">Fitur</a>
             <a href="#cara" className="hover:text-brand-700">Cara kerja</a>
             <a href="#pindahan" className="hover:text-brand-700">Pindahan</a>
+            <a href="#harga" className="hover:text-brand-700">Harga</a>
           </div>
           <div className="flex items-center gap-2">
             <a href="/demo" className="hidden rounded-full px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-white sm:inline-block">
@@ -189,6 +190,8 @@ export function Landing() {
         </div>
       </section>
 
+      <Pricing />
+
       {/* Trust */}
       <section className="mx-auto max-w-5xl px-5 pb-16">
         <div className="grid gap-4 text-center sm:grid-cols-2 lg:grid-cols-4">
@@ -243,5 +246,100 @@ export function Landing() {
         <p className="mt-1 text-xs text-slate-400">Open source (GPL-3.0).</p>
       </footer>
     </div>
+  );
+}
+
+const LIFETIME_INCLUDES = [
+  "Satu kali bayar untuk seluruh keluarga. Ayah, Ibu, anak, semua ikut tanpa biaya tambahan",
+  "Buat Dompet sebanyak apa pun: keluarga, kos bareng, trip bareng teman",
+  "Semua fitur sekarang dan update baru ke depannya",
+  "Sinkron di semua HP & laptop, tetap jalan saat sinyal hilang",
+  "Unduh datamu ke Excel kapan saja",
+];
+
+/** Early-access lifetime offer vs the monthly price that comes later. */
+function Pricing() {
+  return (
+    <section id="harga" className="mx-auto max-w-5xl scroll-mt-20 px-5 pb-16">
+      <h2 className="text-center text-3xl font-extrabold tracking-tight text-slate-800">Bayar sekali, pakai selamanya</h2>
+      <p className="mx-auto mt-2 max-w-xl text-center text-slate-500">
+        Harga perkenalan untuk keluarga pertama Sedompet. Setelah masa ini selesai, Sedompet pindah ke langganan bulanan.
+      </p>
+
+      <div className="mt-10 grid items-stretch gap-4 md:grid-cols-5">
+        {/* Lifetime */}
+        <div className="relative rounded-[2rem] bg-white p-7 shadow-[0_24px_50px_-24px_rgba(212,80,46,0.55)] ring-2 ring-brand-500 md:col-span-3">
+          <span className="absolute -top-3 left-7 rounded-full bg-brand-600 px-3 py-1 text-xs font-bold text-white shadow-sm">
+            🔥 Harga perkenalan · terbatas
+          </span>
+          <p className="text-sm font-bold uppercase tracking-wide text-brand-700">Lifetime</p>
+          <div className="mt-2 flex flex-wrap items-end gap-x-3 gap-y-1">
+            <span className="num text-5xl font-extrabold tracking-tight text-slate-800">Rp99.000</span>
+            <span className="pb-1.5 text-slate-400">
+              <s className="num">Rp500.000</s>
+            </span>
+          </div>
+          <p className="mt-1 font-semibold text-slate-600">sekali bayar, untuk selamanya. Hemat 80%.</p>
+
+          <div className="mt-5 grid gap-2 sm:grid-cols-3">
+            {[
+              ["☕", "Setara 2 gelas kopi susu kekinian"],
+              ["🛵", "≈ Rp271/hari di tahun pertama, lebih murah dari parkir motor"],
+              ["📅", "Kurang dari 2 bulan harga langganan nanti"],
+            ].map(([icon, text]) => (
+              <div key={text} className="rounded-2xl bg-sun-100/70 px-3 py-2.5 text-sm text-slate-700">
+                <span className="mr-1">{icon}</span>
+                {text}
+              </div>
+            ))}
+          </div>
+
+          <ul className="mt-5 space-y-2 text-slate-700">
+            {LIFETIME_INCLUDES.map((t) => (
+              <li key={t} className="flex gap-2">
+                <span className="text-mint-600">✓</span>
+                <span>{t}</span>
+              </li>
+            ))}
+          </ul>
+
+          <div className="mt-6 flex flex-wrap items-center gap-3">
+            <a
+              href={WA_LIFETIME}
+              target="_blank"
+              rel="noopener"
+              className="rounded-full bg-brand-600 px-6 py-3.5 font-semibold text-white shadow-lg shadow-brand-600/30 transition hover:bg-brand-700 active:scale-[0.98]"
+            >
+              Ambil Lifetime Rp99.000 →
+            </a>
+            <a href="/demo" className="font-semibold text-brand-700 hover:underline">
+              Coba demo dulu, gratis
+            </a>
+          </div>
+          <p className="mt-3 text-xs text-slate-500">
+            Bayar lewat transfer bank / QRIS ke admin di WhatsApp. Kode aktivasi dikirim setelah pembayaran diterima.
+          </p>
+        </div>
+
+        {/* Later: monthly */}
+        <div className="flex flex-col rounded-[2rem] bg-white/60 p-7 md:col-span-2">
+          <p className="text-sm font-bold uppercase tracking-wide text-slate-500">Nanti: langganan</p>
+          <div className="mt-2 flex items-end gap-1">
+            <span className="num text-4xl font-extrabold tracking-tight text-slate-400">Rp50.000</span>
+            <span className="pb-1 text-slate-400">/bulan</span>
+          </div>
+          <p className="mt-1 text-sm text-slate-500">
+            Setara <b className="num">Rp600.000</b> per tahun, dan terus berjalan tiap bulan.
+          </p>
+          <div className="mt-5 rounded-2xl bg-white p-4 text-sm text-slate-600">
+            <p className="font-bold text-slate-800">Yang ambil Lifetime sekarang:</p>
+            <p className="mt-1">Tidak ikut naik. Nol tagihan bulanan, selamanya.</p>
+          </div>
+          <p className="mt-auto pt-5 text-xs text-slate-400">
+            Hitung-hitungan: Rp99.000 sekali vs Rp50.000 × 12 bulan = Rp600.000 tiap tahun.
+          </p>
+        </div>
+      </div>
+    </section>
   );
 }
