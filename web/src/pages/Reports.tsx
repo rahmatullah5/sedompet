@@ -4,7 +4,7 @@ import { projectedRecurring, variableTotals } from "../db/money";
 import { currentMonth, formatCompact, formatIDR, formatMonth, formatPeriodRange, periodDay, periodRange, shiftMonth, toISODate, todayISO } from "../lib/format";
 import { useCurrent, useDbVersion } from "../lib/hooks";
 import { Card, cx } from "../components/ui";
-import { netWorth } from "../db/networth";
+import { cashFlow, netWorth } from "../db/networth";
 import { netWorthTrend } from "./Neraca";
 import { Icon } from "../components/Icon";
 
@@ -221,6 +221,7 @@ export function Reports() {
 
       <PaceChart />
       <MonthlyChart />
+      <CashFlowCard />
       <CategoryChart />
       <NeedWantCard />
       <NetWorthCard />
@@ -658,6 +659,104 @@ function NeedWantCard() {
         {wantPct}% dari belanja yang ditandai bulan ini untuk keinginan.
         {r.untagged > 0 && ` ${formatCompact(r.untagged)} belum ditandai.`}
       </p>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Arus kas: income vs spending, other money moves, and balances that close
+// ---------------------------------------------------------------------------
+function CashFlowCard() {
+  const { dompet, me } = useCurrent();
+  const [mode, setMode] = useState<"month" | "year">("month");
+  const [month, setMonth] = useState(currentMonth());
+  const year = Number(month.slice(0, 4));
+  const range =
+    mode === "month"
+      ? periodRange(month)
+      : { from: periodRange(`${year}-01`).from, to: periodRange(`${year}-12`).to };
+  const cf = cashFlow(dompet.id, me.id, range.from, range.to);
+  const net = cf.income - cf.expense;
+  const isLast = mode === "month" ? month >= currentMonth() : year >= Number(currentMonth().slice(0, 4));
+  const step = (d: number) => setMonth(shiftMonth(month, mode === "month" ? d : d * 12));
+  const label = mode === "month" ? formatMonth(month) : `Tahun ${year}`;
+  const sign = (v: number) => (v > 0 ? `+${formatIDR(v)}` : v < 0 ? `−${formatIDR(-v)}` : formatIDR(0));
+  const Line = ({ label, value, hint, strong }: { label: string; value: string; hint?: string; strong?: boolean }) => (
+    <li className="flex items-baseline justify-between gap-3 py-2">
+      <span className={strong ? "font-bold text-slate-800" : "text-slate-600"}>
+        {label}
+        {hint && <span className="block text-xs font-normal text-slate-400">{hint}</span>}
+      </span>
+      <span className={`num shrink-0 ${strong ? "font-extrabold text-slate-800" : "font-semibold text-slate-700"}`}>{value}</span>
+    </li>
+  );
+  const others = [
+    cf.newAccounts !== 0 && { label: "Saldo awal akun baru", hint: "uang lama yang baru dicatat", v: cf.newAccounts },
+    cf.adjustments !== 0 && { label: "Koreksi saldo", hint: "menyamakan saldo dengan kenyataan", v: cf.adjustments },
+    cf.loans !== 0 && { label: "Pinjaman (bersih)", hint: "dipinjamkan, dipinjam, dan cicilannya", v: cf.loans },
+    cf.transfers !== 0 && { label: "Transfer ke akun yang tidak terlihat", hint: "mis. ke akun pribadi anggota lain", v: cf.transfers },
+  ].filter(Boolean) as { label: string; hint: string; v: number }[];
+
+  return (
+    <Card title="Arus kas 💧">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="grid grid-cols-2 gap-0.5 rounded-full bg-slate-100 p-0.5 text-xs font-bold">
+          {(
+            [
+              ["month", "Bulanan"],
+              ["year", "Tahunan"],
+            ] as const
+          ).map(([k, l]) => (
+            <button key={k} type="button" aria-pressed={mode === k} onClick={() => setMode(k)} className={`rounded-full px-3 py-1.5 ${mode === k ? "bg-slate-800 text-white" : "text-slate-500"}`}>
+              {l}
+            </button>
+          ))}
+        </div>
+        <span className="flex items-center gap-1 text-xs font-semibold text-slate-500">
+          <button aria-label="Sebelumnya" className="rounded-full px-2 py-1 hover:bg-slate-100" onClick={() => step(-1)}>
+            ‹
+          </button>
+          <span className="text-center capitalize leading-tight">
+            {label}
+            {mode === "month" && formatPeriodRange(month) && <span className="block text-[10px] font-normal normal-case">{formatPeriodRange(month)}</span>}
+          </span>
+          <button aria-label="Berikutnya" disabled={isLast} className="rounded-full px-2 py-1 hover:bg-slate-100 disabled:opacity-30" onClick={() => step(1)}>
+            ›
+          </button>
+        </span>
+      </div>
+
+      <ul className="divide-y divide-slate-100 text-sm">
+        <Line label="Uang masuk" hint="pemasukan dari kategori" value={`+${formatIDR(cf.income)}`} />
+        <Line label="Uang keluar" hint="semua belanja & tagihan" value={`−${formatIDR(cf.expense)}`} />
+        <Line label="Arus kas bersih" hint={net >= 0 ? "uang bebas yang tersisa" : "lebih banyak keluar dari masuk"} value={sign(net)} strong />
+      </ul>
+
+      {others.length > 0 && (
+        <>
+          <p className="mt-4 text-xs font-bold uppercase tracking-wide text-slate-400">Bukan pemasukan / pengeluaran</p>
+          <ul className="divide-y divide-slate-100 text-sm">
+            {others.map((o) => (
+              <Line key={o.label} label={o.label} hint={o.hint} value={sign(o.v)} />
+            ))}
+          </ul>
+        </>
+      )}
+
+      <p className="mt-4 text-xs font-bold uppercase tracking-wide text-slate-400">Saldo semua akun</p>
+      <ul className="divide-y divide-slate-100 text-sm">
+        <Line label="Awal periode" value={formatIDR(cf.startBalance)} />
+        <Line label="Akhir periode" value={formatIDR(cf.endBalance)} />
+        <Line label="Berubah" value={sign(cf.endBalance - cf.startBalance)} strong />
+      </ul>
+      <p className={`mt-2 rounded-xl px-3 py-2 text-xs font-semibold ${Math.abs(cf.gap) <= 1 ? "bg-mint-100 text-mint-600" : "bg-amber-50 text-amber-800"}`}>
+        {Math.abs(cf.gap) <= 1
+          ? "✓ Cocok: arus kas + pergerakan lain = perubahan saldo semua akun."
+          : `Selisih ${formatIDR(cf.gap)} antara catatan dan saldo. Cek akun dengan mata uang asing atau koreksi saldo.`}
+      </p>
+      {range.to > todayISO() && cashFlow(dompet.id, me.id, range.from, todayISO()).endBalance !== cf.endBalance && (
+        <p className="mt-2 text-xs text-slate-400">Termasuk catatan yang bertanggal nanti di periode ini, jadi saldo akhir bisa beda dengan saldo hari ini.</p>
+      )}
     </Card>
   );
 }

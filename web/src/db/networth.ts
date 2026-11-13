@@ -87,3 +87,67 @@ export function netWorth(dompetId: string, me: string, upTo: string | null = nul
   const totalLiabilities = liabilities.reduce((s, x) => s + x.amount, 0);
   return { assets, liabilities, totalAssets, totalLiabilities, net: totalAssets - totalLiabilities };
 }
+
+export interface CashFlow {
+  /** Real income / spending (not transfers, corrections or loans). */
+  income: number;
+  expense: number;
+  /** Money moved without being income or spending. Signed: + adds to balances. */
+  adjustments: number;
+  loans: number;
+  /** Transfers net (0 unless one side is an account you can't see). */
+  transfers: number;
+  /** Opening balances of accounts created inside the period. */
+  newAccounts: number;
+  startBalance: number;
+  endBalance: number;
+  /** startBalance + every movement - endBalance; 0 when everything adds up. */
+  gap: number;
+}
+
+/**
+ * Arus kas between two dates (inclusive), in rupiah, over every account you
+ * can see (archived ones too, so the sums close).
+ */
+export function cashFlow(dompetId: string, me: string, from: string, to: string): CashFlow {
+  const p = { $d: dompetId, $me: me, $from: from, $to: to };
+  const signed = `CASE t.kind WHEN 'income' THEN ${baseSql("t.amount")} ELSE -${baseSql("t.amount")} END`;
+  const flows = all<{ flag: string | null; kind: string; total: number }>(
+    `SELECT t.flag, t.kind, SUM(${baseSql("t.amount")}) AS total
+     FROM transactions t JOIN accounts a ON a.id = t.account_id
+     WHERE t.dompet_id = $d AND ${VISIBLE} AND t.date BETWEEN $from AND $to
+     GROUP BY t.flag, t.kind`,
+    p,
+  );
+  const sum = (flag: string | null, kind?: string) =>
+    flows.filter((f) => f.flag === flag && (!kind || f.kind === kind)).reduce((s, f) => s + (f.kind === "income" ? f.total : -f.total), 0);
+  const income = flows.filter((f) => f.flag === null && f.kind === "income").reduce((s, f) => s + f.total, 0);
+  const expense = flows.filter((f) => f.flag === null && f.kind === "expense").reduce((s, f) => s + f.total, 0);
+
+  // Opening balances count from the day the account was created.
+  const created = `substr(a.created_at, 1, 10)`;
+  const bal = all<{ start: number; fresh: number; finish: number }>(
+    `SELECT
+       COALESCE(SUM(CASE WHEN ${created} < $from THEN ${baseSql("a.opening_balance")} ELSE 0 END), 0)
+         + COALESCE((SELECT SUM(${signed}) FROM transactions t JOIN accounts a ON a.id = t.account_id
+                     WHERE t.dompet_id = $d AND ${VISIBLE} AND t.date < $from), 0) AS start,
+       COALESCE(SUM(CASE WHEN ${created} BETWEEN $from AND $to THEN ${baseSql("a.opening_balance")} ELSE 0 END), 0) AS fresh,
+       COALESCE(SUM(CASE WHEN ${created} <= $to THEN ${baseSql("a.opening_balance")} ELSE 0 END), 0)
+         + COALESCE((SELECT SUM(${signed}) FROM transactions t JOIN accounts a ON a.id = t.account_id
+                     WHERE t.dompet_id = $d AND ${VISIBLE} AND t.date <= $to), 0) AS finish
+     FROM accounts a WHERE a.dompet_id = $d AND ${VISIBLE}`,
+    p,
+  )[0] ?? { start: 0, fresh: 0, finish: 0 };
+
+  const adjustments = sum("adjustment");
+  const loans = sum("loan");
+  const transfers = sum("transfer");
+  const moved = income - expense + adjustments + loans + transfers + bal.fresh;
+  return {
+    income, expense, adjustments, loans, transfers,
+    newAccounts: bal.fresh,
+    startBalance: bal.start,
+    endBalance: bal.finish,
+    gap: Math.round(bal.start + moved - bal.finish),
+  };
+}
