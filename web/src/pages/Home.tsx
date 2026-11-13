@@ -10,6 +10,7 @@ import { Icon } from "../components/Icon";
 import { BudgetIcon } from "./Budgets";
 import { GoalRow } from "./Goals";
 import { StartChecklist } from "../components/StartChecklist";
+import { RecapCard } from "../components/RecapCard";
 
 function greeting() {
   const h = new Date().getHours();
@@ -168,6 +169,18 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction | null) => 
           </div>
         </Card>
       )}
+
+      <RecapCard
+        budgetLine={
+          overall
+            ? `🐷 Anggaran ${formatMonth(month).split(" ")[0]}: terpakai ${Math.round((overall.spent / overall.amount) * 100)}%, ${
+                overall.amount - overall.spent >= 0
+                  ? `sisa ${formatCompact(overall.amount - overall.spent)} (±${formatCompact(Math.floor((overall.amount - overall.spent) / days))}/hari)`
+                  : `lewat ${formatCompact(overall.spent - overall.amount)}`
+              }`
+            : undefined
+        }
+      />
 
       {goals.length > 0 && (
         <Card
