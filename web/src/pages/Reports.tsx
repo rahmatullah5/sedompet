@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore } from "react";
-import { q } from "../db/repo";
+import { budgetCovers, q } from "../db/repo";
 import { projectedRecurring, variableTotals } from "../db/money";
 import { currentMonth, formatCompact, formatIDR, formatMonth, shiftMonth, toISODate, todayISO } from "../lib/format";
 import { useCurrent, useDbVersion } from "../lib/hooks";
@@ -116,14 +116,23 @@ function useForecast() {
     ...monthlyFamily,
     amount: monthlyFamily.period === "monthly" ? monthlyFamily.amount : Math.round(monthlyFamily.amount * (monthlyFamily.period === "weekly" ? dim / 7 : dim)),
   };
-  // Every budget, projected to month end by the same growth as the family
-  // forecast above (falls back to this month's pace when nothing is spent yet).
-  const growth = totals.expense > 0 ? expenseEnd / totals.expense : daysInMonth / day;
+  // Every budget, forecast from its own data: spent so far + its Rutin bills
+  // still due this month + its usual non-Rutin daily spending (90-day average)
+  // for the days left. A bill already paid (e.g. SPP) is not counted again.
+  const parentOf = new Map(q.categories(dompet.id).map((c) => [c.id, c.parent_id]));
+  const usual = new Map(
+    q.budgets(dompet.id, month, { range: { from: from90, to: today }, excludeRecurring: true }).map((b) => [b.id, b.spent / 90]),
+  );
   const budgetOutlook = q
     .budgets(dompet.id, month, { wholeMonth: true })
     .map((b) => {
-      const projected = Math.round(b.spent * growth);
-      return { id: b.id, name: b.name, limit: b.limit, spent: b.spent, projected, over: projected - b.limit };
+      // Budgets count shared accounts only, so do the Rutin bills here.
+      const bills = restOfMonth.items
+        .filter((i) => i.kind === "expense" && i.shared && budgetCovers(b, i.category_id, i.category_id ? (parentOf.get(i.category_id) ?? null) : null, i.paid_by))
+        .reduce((s, i) => s + i.amount, 0);
+      const daily = (usual.get(b.id) ?? 0) * remainingDays;
+      const projected = Math.round(b.spent + bills + daily);
+      return { id: b.id, name: b.name, limit: b.limit, spent: b.spent, bills, daily: Math.round(daily), projected, over: projected - b.limit };
     })
     .sort((a, b) => b.over / b.limit - a.over / a.limit);
   return {
@@ -183,6 +192,11 @@ export function Reports() {
                   <span className="font-semibold">{b.name}</span>
                   <span className="num text-xs">
                     ≈ {formatCompact(b.projected)} / {formatCompact(b.limit)} · lebih {formatIDR(b.over)} · kurangi ≈ {formatIDR(Math.ceil(b.over / daysLeft))}/hari
+                  </span>
+                  <span className="num w-full text-[11px] opacity-75">
+                    = sudah {formatCompact(b.spent)}
+                    {b.bills > 0 && ` + rutin ${formatCompact(b.bills)}`}
+                    {b.daily > 0 && ` + biasanya ${formatCompact(b.daily)} untuk ${daysLeft} hari lagi`}
                   </span>
                 </li>
               ))}

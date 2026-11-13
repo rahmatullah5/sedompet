@@ -44,6 +44,7 @@ export interface Recurring {
   account_id: string;
   account_name: string;
   account_currency: string;
+  account_visibility: "shared" | "private";
   /** `amount` in rupiah. */
   amount_base: number;
   category_id: string | null;
@@ -110,7 +111,7 @@ export const mq = {
 
   recurring(dompetId: string, me: string) {
     return all<Recurring>(
-      `SELECT r.*, a.name AS account_name, COALESCE(a.currency, 'IDR') AS account_currency, ${baseSql("r.amount")} AS amount_base, c.icon AS category_icon, c.name AS category_name,
+      `SELECT r.*, a.name AS account_name, COALESCE(a.currency, 'IDR') AS account_currency, a.visibility AS account_visibility, ${baseSql("r.amount")} AS amount_base, c.icon AS category_icon, c.name AS category_name,
               p.name AS paid_by_name
        FROM recurring r
        JOIN accounts a ON a.id = r.account_id
@@ -320,13 +321,16 @@ export const mm = {
 export function projectedRecurring(dompetId: string, me: string, from: string, to: string) {
   let income = 0;
   let expense = 0;
-  const items: { date: string; name: string; kind: Kind; amount: number }[] = [];
+  const items: {
+    date: string; name: string; kind: Kind; amount: number;
+    category_id: string | null; paid_by: string | null; shared: boolean;
+  }[] = [];
   for (const r of mq.recurring(dompetId, me)) {
     for (const date of occurrences(r, from, to)) {
       const base = r.amount_base;
       if (r.kind === "income") income += base;
       else expense += base;
-      items.push({ date, name: r.name, kind: r.kind, amount: base });
+      items.push({ date, name: r.name, kind: r.kind, amount: base, category_id: r.category_id, paid_by: r.paid_by, shared: r.account_visibility === "shared" });
     }
   }
   items.sort((a, b) => a.date.localeCompare(b.date));

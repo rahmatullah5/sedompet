@@ -138,6 +138,23 @@ export interface Budget {
 
 export type BudgetPeriod = "daily" | "weekly" | "monthly";
 
+/**
+ * Does a budget count an expense in this category (with its parent) paid by
+ * this member? Mirrors the SQL filter in q.budgets.
+ */
+export function budgetCovers(
+  b: Pick<Budget, "category_id" | "category_ids" | "exclude_category_ids" | "member_id">,
+  categoryId: string | null,
+  parentId: string | null,
+  paidBy: string | null,
+) {
+  const ids = b.category_ids ? (JSON.parse(b.category_ids) as string[]) : [];
+  const excl = b.exclude_category_ids ? (JSON.parse(b.exclude_category_ids) as string[]) : [];
+  const hit = (list: string[]) => (categoryId !== null && list.includes(categoryId)) || (parentId !== null && list.includes(parentId));
+  const inScope = (!b.category_id && ids.length === 0) || (b.category_id !== null && (categoryId === b.category_id || parentId === b.category_id)) || hit(ids);
+  return inScope && !hit(excl) && (!b.member_id || paidBy === b.member_id);
+}
+
 export interface Activity {
   id: string;
   member_id: string | null;
@@ -425,9 +442,14 @@ export const q = {
    * week (Mon-Sun); for past months they show the whole month against the
    * equivalent limit (amount x days/7 or x days).
    */
-  budgets(dompetId: string, month: string, opts: { wholeMonth?: boolean } = {}) {
+  budgets(
+    dompetId: string,
+    month: string,
+    opts: { wholeMonth?: boolean; range?: { from: string; to: string }; excludeRecurring?: boolean } = {},
+  ) {
     // wholeMonth: month-to-date spending against the monthly-equivalent limit,
-    // for every period (used by forecasts).
+    // for every period (used by forecasts). range: spending between two dates
+    // instead; excludeRecurring leaves out entries recorded from Rutin items.
     const isCurrent = month === currentMonth() && !opts.wholeMonth;
     const [y, mo] = month.split("-").map(Number);
     const daysInMonth = new Date(y, mo, 0).getDate();
@@ -448,11 +470,14 @@ export const q = {
                 JOIN accounts a ON a.id = t.account_id AND a.visibility = 'shared'
                 LEFT JOIN categories c ON c.id = t.category_id
                 WHERE t.dompet_id = b.dompet_id AND t.kind = 'expense' AND ${REAL}
+                  AND ($noRec = 0 OR t.recurring_id IS NULL)
                   AND t.date BETWEEN
-                        (CASE WHEN $current = 1 AND b.period = 'weekly' THEN $weekFrom
+                        (CASE WHEN $rangeFrom IS NOT NULL THEN $rangeFrom
+                              WHEN $current = 1 AND b.period = 'weekly' THEN $weekFrom
                               WHEN $current = 1 AND b.period = 'daily' THEN $today
                               ELSE $monthFrom END)
-                    AND (CASE WHEN $current = 1 AND b.period = 'weekly' THEN $weekTo
+                    AND (CASE WHEN $rangeTo IS NOT NULL THEN $rangeTo
+                              WHEN $current = 1 AND b.period = 'weekly' THEN $weekTo
                               WHEN $current = 1 AND b.period = 'daily' THEN $today
                               ELSE $monthTo END)
                   AND ((b.category_id IS NULL AND b.category_ids IS NULL)
@@ -470,7 +495,8 @@ export const q = {
        WHERE b.dompet_id = $d
        ORDER BY CASE b.period WHEN 'daily' THEN 0 WHEN 'weekly' THEN 1 ELSE 2 END,
                 b.member_id IS NOT NULL, b.category_id IS NOT NULL, b.name`,
-      { $d: dompetId, $current: isCurrent ? 1 : 0, $weekFrom: weekFrom, $weekTo: weekTo, $today: today, $monthFrom: monthFrom, $monthTo: monthTo },
+      { $d: dompetId, $current: isCurrent ? 1 : 0, $weekFrom: weekFrom, $weekTo: weekTo, $today: today, $monthFrom: monthFrom, $monthTo: monthTo,
+        $rangeFrom: opts.range?.from ?? null, $rangeTo: opts.range?.to ?? null, $noRec: opts.excludeRecurring ? 1 : 0 },
     );
     const dayFmt = new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short" });
     return rows.map((b): Budget => {
