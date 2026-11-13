@@ -49,7 +49,10 @@ self.addEventListener("fetch", (event) => {
         caches.open(ASSETS).then(async (c) => {
           const hit = await c.match(req);
           if (hit) return hit;
-          const res = await fetch(req);
+          let res = await fetch(req);
+          // Right after a deploy the browser may hold a stale 404 for a new
+          // hashed file; retry once past the HTTP cache.
+          if (!res.ok) res = await fetch(req, { cache: "reload" });
           if (res.ok) c.put(req, res.clone());
           return res;
         }),
