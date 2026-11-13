@@ -320,3 +320,6 @@ end $$;
 
 revoke execute on function public.register_phone(text, text, text, text) from public;
 grant execute on function public.register_phone(text, text, text, text) to anon, authenticated;
+
+-- Make the Supabase API pick up new/changed functions and columns right away.
+notify pgrst, 'reload schema';

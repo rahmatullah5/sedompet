@@ -6,3 +6,6 @@ do $$ begin
   alter table public.dompets add constraint dompets_period_start_day_check check (period_start_day between 1 and 28);
 exception when duplicate_object then null; end $$;
 grant update (period_start_day) on public.dompets to authenticated;
+
+-- Make the Supabase API pick up new/changed functions and columns right away.
+notify pgrst, 'reload schema';
