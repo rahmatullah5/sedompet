@@ -15,6 +15,7 @@ const ITEMS = [
   { href: "#/tujuan", icon: "🎯", title: "Tujuan", hint: "Tabungan umroh, sekolah…" },
   { href: "#/rutin", icon: "🔁", title: "Rutin", hint: "Langganan, SPP, gaji" },
   { href: "#/pinjaman", icon: "🤝", title: "Utang & Piutang", hint: "Pinjam-meminjam" },
+  { href: "#/patungan", icon: "👥", title: "Patungan", hint: "Siapa utang ke siapa" },
   { href: "#/akun", icon: "💳", title: "Isi dompet", hint: "Tunai, bank, e-wallet" },
   { href: "#/kategori", icon: "🏷️", title: "Kategori", hint: "Kategori & subkategori" },
   { href: "#/keluarga", icon: "👨‍👩‍👧", title: "Keluarga", hint: "Anggota & peran" },
@@ -28,11 +29,13 @@ export function Menu() {
   const openLoans = mq.loans(dompet.id, me.id).filter((l) => !l.settled).length;
   const accounts = q.accounts(dompet.id, me.id).length;
   const trashed = trash.list(dompet.id).length;
+  const owing = q.splitBalances(dompet.id).filter((b) => b.net < -1).length;
   const badge: Record<string, string | null> = {
     "#/rutin": due ? `${due} jatuh tempo` : null,
     "#/pinjaman": openLoans ? `${openLoans} berjalan` : null,
     "#/akun": `${accounts} akun`,
     "#/sampah": trashed ? `${trashed} bisa dipulihkan` : null,
+    "#/patungan": owing ? `${owing} orang belum lunas` : null,
   };
   const balance = q.accounts(dompet.id, me.id).reduce((s, a) => s + a.balance_base, 0);
   const { appAdmin } = useSyncExternalStore(cloudStore.subscribe, cloudStore.get);

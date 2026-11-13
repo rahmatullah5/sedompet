@@ -109,6 +109,9 @@ function toServer(t: Synced, r: Row): Row {
         // Only sent when set, so servers without the transfers migration
         // keep accepting ordinary transactions.
         ...(r.transfer_id ? { transfer_id: r.transfer_id } : {}),
+        // Split shares: always once the server has the column (so clearing a
+        // split syncs too); before that only when set, which then fails loudly.
+        ...(serverHasSplit || r.split_with ? { split_with: r.split_with ? JSON.parse(String(r.split_with)) : null } : {}),
         created_at: iso(r.created_at),
       };
     case "budgets":
@@ -142,6 +145,8 @@ function toServer(t: Synced, r: Row): Row {
 // ---------------------------------------------------------------------------
 /** Set by pullAll: whether the server has dompets.period_start_day (migration 20261122). */
 let serverHasPeriodStart = false;
+/** Set by pullAll: whether the server has transactions.split_with (migration 20261123). */
+let serverHasSplit = false;
 let uploading: Promise<void> | null = null;
 let uploadAgain = false;
 
@@ -344,11 +349,14 @@ export async function pullAll(): Promise<void> {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [r.id, r.dompet_id, r.name, r.icon, r.kind, r.amount, r.account_id, r.category_id, r.paid_by, r.frequency, r.every, r.next_date, r.end_date, r.active ? 1 : 0, r.created_by, sqliteTime(r.created_at)] as (string | number | null)[],
       );
+    if (transactions.length > 0) serverHasSplit = "split_with" in transactions[0];
     for (const t of transactions)
       run(
-        `INSERT INTO transactions (id, dompet_id, account_id, category_id, kind, amount, date, note, flag, loan_id, recurring_id, transfer_id, paid_by, created_by, updated_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [t.id, t.dompet_id, t.account_id, t.category_id, t.kind, t.amount, t.date, t.note, t.flag, t.loan_id, t.recurring_id, t.transfer_id ?? null, t.paid_by, t.created_by, t.updated_by, sqliteTime(t.created_at), sqliteTime(t.updated_at)] as (string | number | null)[],
+        `INSERT INTO transactions (id, dompet_id, account_id, category_id, kind, amount, date, note, flag, loan_id, recurring_id, transfer_id, split_with, paid_by, created_by, updated_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [t.id, t.dompet_id, t.account_id, t.category_id, t.kind, t.amount, t.date, t.note, t.flag, t.loan_id, t.recurring_id, t.transfer_id ?? null,
+          Array.isArray(t.split_with) && t.split_with.length ? JSON.stringify(t.split_with) : null,
+          t.paid_by, t.created_by, t.updated_by, sqliteTime(t.created_at), sqliteTime(t.updated_at)] as (string | number | null)[],
       );
     for (const b of budgets)
       run("INSERT INTO budgets (id, dompet_id, name, amount, category_id, category_ids, member_id, exclude_category_ids, period, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [

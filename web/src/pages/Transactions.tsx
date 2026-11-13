@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { q, type Kind, type Transaction } from "../db/repo";
+import { parseSplit, q, type Kind, type Transaction } from "../db/repo";
 import { currentMonth, formatDay, formatIDR, formatMonth, formatPeriodRange, shiftMonth } from "../lib/format";
 import { useCurrent, useDbVersion } from "../lib/hooks";
 import { Avatar, Badge, Button, Card, Empty, Money } from "../components/ui";
@@ -53,7 +53,14 @@ export function TxRow({ t, onClick, showDate }: { t: Transaction; onClick: () =>
               {t.account_name}
               {t.note && t.category_name && ` · ${t.parent_category_name ? `${t.parent_category_name} › ` : ""}${t.category_name}`}
             </span>
-            {t.flag && <span className="rounded-full bg-slate-100 px-1.5 text-[10px] font-semibold text-slate-500">{t.flag === "transfer" ? "transfer" : t.flag === "loan" ? "pinjaman" : "koreksi"}</span>}
+            {t.split_with && t.flag === "transfer" ? (
+              <span className="rounded-full bg-mint-100 px-1.5 text-[10px] font-semibold text-mint-600">lunas patungan</span>
+            ) : (
+              t.flag && <span className="rounded-full bg-slate-100 px-1.5 text-[10px] font-semibold text-slate-500">{t.flag === "transfer" ? "transfer" : t.flag === "loan" ? "pinjaman" : "koreksi"}</span>
+            )}
+            {t.split_with && !t.flag && (
+              <span className="rounded-full bg-brand-50 px-1.5 text-[10px] font-semibold text-brand-700">👥 dibagi {parseSplit(t.split_with)?.length ?? ""}</span>
+            )}
           </span>
         </span>
         <span className="flex flex-col items-end">

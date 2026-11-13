@@ -84,6 +84,49 @@ export interface Category {
 
 export type TxFlag = "transfer" | "adjustment" | "loan" | null;
 
+/** One member's share of a split expense, in the account's minor units. */
+export interface SplitShare {
+  m: string;
+  a: number;
+}
+
+export function parseSplit(json: string | null | undefined): SplitShare[] | null {
+  if (!json) return null;
+  try {
+    const v = JSON.parse(json) as SplitShare[];
+    return Array.isArray(v) && v.length ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Equal shares that add up exactly (the first ones get the leftover units). */
+export function splitEqually(amount: number, memberIds: string[]): SplitShare[] {
+  const n = memberIds.length;
+  if (n === 0 || amount <= 0) return [];
+  const base = Math.floor(amount / n);
+  const rest = amount - base * n;
+  return memberIds.map((m, i) => ({ m, a: base + (i < rest ? 1 : 0) }));
+}
+
+/** Fewest payments that settle everyone (greedy: biggest debtor pays biggest creditor). */
+export function settleUp(nets: { id: string; net: number }[]): { from: string; to: string; amount: number }[] {
+  const creditors = nets.filter((n) => n.net > 0).map((n) => ({ ...n })).sort((a, b) => b.net - a.net);
+  const debtors = nets.filter((n) => n.net < 0).map((n) => ({ ...n, net: -n.net })).sort((a, b) => b.net - a.net);
+  const out: { from: string; to: string; amount: number }[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < debtors.length && j < creditors.length) {
+    const pay = Math.min(debtors[i].net, creditors[j].net);
+    if (pay > 0) out.push({ from: debtors[i].id, to: creditors[j].id, amount: pay });
+    debtors[i].net -= pay;
+    creditors[j].net -= pay;
+    if (debtors[i].net <= 0) i++;
+    if (creditors[j].net <= 0) j++;
+  }
+  return out;
+}
+
 export interface Transaction {
   id: string;
   dompet_id: string;
@@ -95,6 +138,8 @@ export interface Transaction {
   note: string;
   flag: TxFlag;
   transfer_id: string | null;
+  /** JSON SplitShare[] when the expense is shared between members. */
+  split_with: string | null;
   paid_by: string | null;
   created_by: string | null;
   updated_by: string | null;
@@ -621,6 +666,39 @@ export const q = {
     return { amount: all.reduce((s, b) => s + b.limit, 0), spent, combined: all.length, name: `Gabungan ${all.length} anggaran` };
   },
 
+  /**
+   * Patungan balances in rupiah: paid = what each member paid for split
+   * expenses (and settlements), owed = their shares. net > 0: others owe them.
+   * Only shared accounts count, so everyone sees the same numbers.
+   */
+  splitBalances(dompetId: string) {
+    const rows = all<{ id: string; flag: TxFlag; paid_by: string | null; split_with: string; amount: number; amount_base: number }>(
+      `SELECT t.id, t.flag, t.paid_by, t.split_with, t.amount, ${BASE_AMOUNT} AS amount_base
+       FROM transactions t JOIN accounts a ON a.id = t.account_id
+       WHERE t.dompet_id = $d AND t.split_with IS NOT NULL AND t.kind = 'expense' AND a.visibility = 'shared'`,
+      { $d: dompetId },
+    );
+    // Shared expenses (paid / share) and settlements (sent / received) kept apart for display.
+    const sum = { paid: new Map<string, number>(), owed: new Map<string, number>(), sent: new Map<string, number>(), received: new Map<string, number>() };
+    const add = (mp: Map<string, number>, k: string, v: number) => mp.set(k, (mp.get(k) ?? 0) + v);
+    for (const r of rows) {
+      const shares = parseSplit(r.split_with);
+      if (!shares || !r.paid_by || r.amount <= 0) continue;
+      const rate = r.amount_base / r.amount;
+      const settle = r.flag === "transfer";
+      add(settle ? sum.sent : sum.paid, r.paid_by, r.amount_base);
+      for (const x of shares) add(settle ? sum.received : sum.owed, x.m, x.a * rate);
+    }
+    const v = (mp: Map<string, number>, k: string) => Math.round(mp.get(k) ?? 0);
+    return q.members(dompetId).map((m) => {
+      const paid = v(sum.paid, m.id);
+      const owed = v(sum.owed, m.id);
+      const sent = v(sum.sent, m.id);
+      const received = v(sum.received, m.id);
+      return { id: m.id, name: m.name, emoji: m.emoji, colour: m.colour, paid, owed, sent, received, net: paid - owed + sent - received };
+    });
+  },
+
   /** Savings goals you can see (one linked to someone's private account is theirs only). */
   goals(dompetId: string, me: string): Goal[] {
     const balances = new Map(q.accounts(dompetId, me).map((a) => [a.id, a.balance_base]));
@@ -998,7 +1076,11 @@ export const m = {
   // --- transactions --------------------------------------------------------
   saveTransaction(
     actorId: string,
-    data: { id?: string; kind: Kind; amount: number; account_id: string; category_id: string | null; date: string; note: string; paid_by: string },
+    data: {
+      id?: string; kind: Kind; amount: number; account_id: string; category_id: string | null; date: string; note: string; paid_by: string;
+      /** Who the expense is for (shares add up to `amount`); null = not split. */
+      split?: SplitShare[] | null;
+    },
   ) {
     const actor = actorOf(actorId);
     if (!can.addTransaction(actor.role)) throw new PermissionError("Peran 'Hanya lihat' tidak bisa mencatat transaksi.");
@@ -1011,6 +1093,18 @@ export const m = {
     if (!acc) throw new Error("Pilih akun.");
     if (acc.visibility === "private" && acc.owner_member_id !== actor.id) throw new PermissionError("Itu akun pribadi orang lain.");
     const note = data.note.trim().slice(0, 140);
+    const split = data.split?.length ? data.split : null;
+    if (split) {
+      if (data.kind !== "expense") throw new Error("Hanya pengeluaran yang bisa dibagi.");
+      if (acc.visibility !== "shared") throw new Error("Akun pribadi tidak bisa dipakai untuk patungan.");
+      const memberIds = new Set(q.members(actor.dompet_id).map((x) => x.id));
+      if (new Set(split.map((x) => x.m)).size !== split.length || split.some((x) => !memberIds.has(x.m)))
+        throw new Error("Pilih anggota untuk dibagi.");
+      if (split.some((x) => !Number.isInteger(x.a) || x.a <= 0)) throw new Error("Setiap bagian harus lebih dari 0.");
+      const sum = split.reduce((t, x) => t + x.a, 0);
+      if (sum !== data.amount) throw new Error(`Total bagian ${formatMoney(sum, acc.currency)} belum sama dengan ${formatMoney(data.amount, acc.currency)}.`);
+    }
+    const splitJson = split ? JSON.stringify(split) : null;
 
     if (data.id) {
       const existing = get<{ created_by: string | null; holder: string | null }>(
@@ -1024,22 +1118,22 @@ export const m = {
 
     const cat = data.category_id ? get<{ name: string; icon: string }>("SELECT name, icon FROM categories WHERE id = ?", [data.category_id]) : undefined;
     const payer = q.member(data.paid_by);
-    const what = `${data.kind === "expense" ? "pengeluaran" : "pemasukan"} ${formatMoney(data.amount, acc.currency)}${cat ? ` · ${cat.icon} ${cat.name}` : ""}${payer && payer.id !== actor.id ? ` (dibayar ${payer.name})` : ""}`;
+    const what = `${data.kind === "expense" ? "pengeluaran" : "pemasukan"} ${formatMoney(data.amount, acc.currency)}${cat ? ` · ${cat.icon} ${cat.name}` : ""}${payer && payer.id !== actor.id ? ` (dibayar ${payer.name})` : ""}${split ? `, dibagi ${split.length} orang` : ""}`;
 
     return write((run) => {
       if (data.id) {
         run(
           `UPDATE transactions SET kind = ?, amount = ?, account_id = ?, category_id = ?, date = ?, note = ?,
-             paid_by = ?, updated_by = ?, updated_at = datetime('now')
+             paid_by = ?, split_with = ?, updated_by = ?, updated_at = datetime('now')
            WHERE id = ? AND dompet_id = ?`,
-          [data.kind, data.amount, data.account_id, data.category_id, data.date, note, data.paid_by, actor.id, data.id, actor.dompet_id],
+          [data.kind, data.amount, data.account_id, data.category_id, data.date, note, data.paid_by, splitJson, actor.id, data.id, actor.dompet_id],
         );
         if (acc.visibility === "shared") log(run, actor, `mengubah ${what}`);
       } else {
         run(
-          `INSERT INTO transactions (id, dompet_id, account_id, category_id, kind, amount, date, note, paid_by, created_by, updated_by)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [uid(), actor.dompet_id, data.account_id, data.category_id, data.kind, data.amount, data.date, note, data.paid_by, actor.id, actor.id],
+          `INSERT INTO transactions (id, dompet_id, account_id, category_id, kind, amount, date, note, paid_by, split_with, created_by, updated_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [uid(), actor.dompet_id, data.account_id, data.category_id, data.kind, data.amount, data.date, note, data.paid_by, splitJson, actor.id, actor.id],
         );
         if (acc.visibility === "shared") log(run, actor, `mencatat ${what}`);
       }
@@ -1058,13 +1152,16 @@ export const m = {
       transferId?: string; fromAccountId: string; toAccountId: string; amount: number; fee: number; date: string; note: string;
       /** Amount received, in the destination's currency (only when currencies differ). */
       toAmount?: number;
+      /** Settling a patungan debt: debtor pays creditor. Kept as is when editing and left out. */
+      settle?: { debtor: string; creditor: string } | null;
     },
   ) {
     const actor = actorOf(actorId);
     if (!can.addTransaction(actor.role)) throw new PermissionError("Peran 'Hanya lihat' tidak bisa membuat transfer.");
     if (!Number.isInteger(data.amount) || data.amount <= 0) throw new Error("Jumlah harus lebih dari 0.");
     if (!Number.isInteger(data.fee) || data.fee < 0) throw new Error("Biaya admin tidak valid.");
-    if (data.fromAccountId === data.toAccountId) throw new Error("Pilih dua akun yang berbeda.");
+    // A settlement paid in cash outside the app may use one account for both sides (balance unchanged).
+    if (data.fromAccountId === data.toAccountId && !data.settle) throw new Error("Pilih dua akun yang berbeda.");
     if (!/^\d{4}-\d{2}-\d{2}$/.test(data.date)) throw new Error("Tanggal tidak valid.");
     const visible = q.accounts(actor.dompet_id, actor.id);
     const from = visible.find((a) => a.id === data.fromAccountId);
@@ -1085,18 +1182,41 @@ export const m = {
     }
     const transferId = data.transferId ?? uid();
     const extra = data.note.trim().slice(0, 100);
+    // Settlement: the outgoing side is paid by the debtor and fully "for" the creditor.
+    let settle = data.settle;
+    if (settle === undefined && data.transferId) {
+      const prev = get<{ paid_by: string | null; split_with: string | null }>(
+        "SELECT paid_by, split_with FROM transactions WHERE dompet_id = ? AND transfer_id = ? AND flag = 'transfer' AND kind = 'expense'",
+        [actor.dompet_id, data.transferId],
+      );
+      const prevSplit = parseSplit(prev?.split_with);
+      settle = prev?.paid_by && prevSplit?.length === 1 ? { debtor: prev.paid_by, creditor: prevSplit[0].m } : null;
+    }
+    if (settle) {
+      const memberIds = new Set(q.members(actor.dompet_id).map((x) => x.id));
+      if (!memberIds.has(settle.debtor) || !memberIds.has(settle.creditor) || settle.debtor === settle.creditor) throw new Error("Pilih siapa membayar siapa.");
+      if (from.visibility !== "shared" || to.visibility !== "shared") throw new Error("Pelunasan patungan harus lewat akun bersama.");
+    }
     return write((run) => {
       if (data.transferId) run("DELETE FROM transactions WHERE dompet_id = ? AND transfer_id = ?", [actor.dompet_id, transferId]);
-      const insert = (accountId: string, kind: Kind, amount: number, note: string, flag: TxFlag) =>
+      const insert = (accountId: string, kind: Kind, amount: number, note: string, flag: TxFlag, paidBy = actor.id, split: string | null = null) =>
         run(
-          `INSERT INTO transactions (id, dompet_id, account_id, category_id, kind, amount, date, note, flag, transfer_id, paid_by, created_by, updated_by)
-           VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [uid(), actor.dompet_id, accountId, kind, amount, data.date, note.slice(0, 140), flag, transferId, actor.id, actor.id, actor.id],
+          `INSERT INTO transactions (id, dompet_id, account_id, category_id, kind, amount, date, note, flag, transfer_id, paid_by, split_with, created_by, updated_by)
+           VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [uid(), actor.dompet_id, accountId, kind, amount, data.date, note.slice(0, 140), flag, transferId, paidBy, split, actor.id, actor.id],
         );
-      insert(from.id, "expense", data.amount, `Transfer ke ${to.name}${extra ? " · " + extra : ""}`, "transfer");
+      const names = settle ? { d: q.member(settle.debtor)?.name ?? "", c: q.member(settle.creditor)?.name ?? "" } : null;
+      insert(
+        from.id, "expense", data.amount,
+        settle && names ? `Lunas patungan: ${names.d} → ${names.c}${extra ? " · " + extra : ""}` : `Transfer ke ${to.name}${extra ? " · " + extra : ""}`,
+        "transfer",
+        settle ? settle.debtor : actor.id,
+        settle ? JSON.stringify([{ m: settle.creditor, a: data.amount }]) : null,
+      );
       insert(to.id, "income", toAmount, `Transfer dari ${from.name}${extra ? " · " + extra : ""}`, "transfer");
       if (data.fee > 0) insert(from.id, "expense", data.fee, `Biaya transfer ke ${to.name}`, null);
-      if (from.visibility === "shared" && to.visibility === "shared")
+      if (settle && names) log(run, actor, `mencatat ${names.d} melunasi patungan ${formatMoney(data.amount, from.currency)} ke ${names.c}`);
+      else if (from.visibility === "shared" && to.visibility === "shared")
         log(run, actor, `${data.transferId ? "mengubah transfer" : "mentransfer"} ${formatMoney(data.amount, from.currency)}${sameCurrency ? "" : ` (${formatMoney(toAmount, to.currency)})`} dari ${from.name} ke ${to.name}`);
       return transferId;
     });

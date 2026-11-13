@@ -23,11 +23,12 @@ import { Reports } from "./pages/Reports";
 import { Menu } from "./pages/Menu";
 import { Admin } from "./pages/Admin";
 import { Trash } from "./pages/Trash";
+import { Patungan } from "./pages/Patungan";
 import { PlanBanner, READ_ONLY_MESSAGE } from "./components/PlanBanner";
 import { setWriteGuard } from "./db/database";
 import { setPeriodStartDay } from "./lib/format";
 
-const PAGES = ["beranda", "riwayat", "laporan", "menu", "anggaran", "keluarga", "akun", "kategori", "rutin", "pinjaman", "tujuan", "sampah", "admin"] as const;
+const PAGES = ["beranda", "riwayat", "laporan", "menu", "anggaran", "keluarga", "akun", "kategori", "rutin", "pinjaman", "tujuan", "sampah", "patungan", "admin"] as const;
 type PageId = (typeof PAGES)[number];
 
 const NAV: { id: PageId; label: string; icon: string }[] = [
@@ -195,6 +196,7 @@ export default function App() {
           {page === "rutin" && <Recurring />}
           {page === "pinjaman" && <Loans />}
           {page === "sampah" && <Trash />}
+          {page === "patungan" && <Patungan onOpenTx={openTx} />}
           {page === "admin" && cloudMode && <Admin />}
         </main>
       </div>

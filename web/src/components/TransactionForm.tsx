@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { deleteWithUndo } from "../lib/undo";
-import { m, q, type Kind, type Transaction } from "../db/repo";
+import { m, parseSplit, q, type Kind, type Transaction } from "../db/repo";
+import { computeSplit, initialSplit, SplitEditor, type SplitState } from "./SplitEditor";
 import { can } from "../lib/permissions";
 import { formatCompact, todayISO } from "../lib/format";
 import { currencyInfo, formatMoney, isBase, moneyInputText, parseMoney } from "../lib/currency";
@@ -118,9 +119,14 @@ function FormBody({
   const amount = parseMoney(amountText, currency);
   const isMine = !editing || editing.created_by === me.id;
   const allowed = editing ? can.editTransaction(me.role, isMine, editing.account_holder_id === me.id) : can.addTransaction(me.role);
-  const valid = Number.isFinite(amount) && amount > 0 && accountId;
 
   const selectedAccount = useMemo(() => accounts.find((a) => a.id === accountId), [accounts, accountId]);
+  const [split, setSplit] = useState<SplitState>(() =>
+    initialSplit(parseSplit(editing?.split_with), members, editing?.amount ?? 0, editing?.account_currency ?? "IDR"),
+  );
+  const canSplit = kind === "expense" && selectedAccount?.visibility === "shared" && members.length > 1;
+  const splitResult = computeSplit(canSplit ? split : { ...split, on: false }, amount, currency);
+  const valid = Number.isFinite(amount) && amount > 0 && accountId && !(canSplit && split.on && !splitResult.shares);
 
   async function save() {
     const ok = await attempt(
@@ -134,6 +140,7 @@ function FormBody({
           date,
           note,
           paid_by: paidBy,
+          split: splitResult.shares,
         }),
       editing ? "Transaksi diperbarui" : "Tercatat! Keluarga bisa langsung lihat.",
     );
@@ -247,6 +254,8 @@ function FormBody({
             <p className="mt-1.5 text-xs text-violet-600 dark:text-violet-300">🔒 Akun pribadi: transaksi ini hanya terlihat olehmu.</p>
           )}
         </div>
+
+        {canSplit && <SplitEditor value={split} onChange={setSplit} members={members} amount={amount} currency={currency} payerId={paidBy} />}
 
       </fieldset>
 

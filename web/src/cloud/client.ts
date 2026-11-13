@@ -61,6 +61,7 @@ export function friendlyError(e: unknown): string {
     subscription_expired: "Langganan Dompet ini sudah berakhir, jadi hanya bisa dilihat. Perpanjang lewat admin untuk mencatat lagi.",
     invalid_plan: "Paket tidak dikenal.",
     invalid_months: "Jumlah bulan harus 1 sampai 36.",
+    invalid_split: "Pembagian patungan tidak cocok dengan jumlahnya. Cek lagi bagian tiap orang.",
     already_member: "Nomor ini sudah ada di Dompet ini.",
     name_required: "Isi nama panggilannya.",
     member_not_in_dompet: "Anggota itu tidak ada di Dompet ini.",

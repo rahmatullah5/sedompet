@@ -1,7 +1,7 @@
 // Spreadsheet-friendly exports (CSV, UTF-8 with BOM so Excel shows emoji and
 // accents correctly). Only rows the current member can see are exported.
 
-import { accountTypeLabel, q } from "../db/repo";
+import { accountTypeLabel, parseSplit, q } from "../db/repo";
 import { mq } from "../db/money";
 
 const FLAG_LABEL: Record<string, string> = { transfer: "Transfer", adjustment: "Koreksi saldo", loan: "Pinjaman" };
@@ -34,6 +34,9 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 export function transactionsCsv(dompetId: string, me: string): { csv: string; count: number } {
   const txs = q.transactions(dompetId, me);
+  const names = new Map(q.members(dompetId).map((m) => [m.id, m.name]));
+  const splitText = (json: string | null) =>
+    (parseSplit(json) ?? []).map((x) => `${names.get(x.m) ?? "?"} ${x.a}`).join("; ");
   const rows = [...txs].reverse().map((t) => [
     t.date,
     t.kind === "income" ? "Pemasukan" : "Pengeluaran",
@@ -47,11 +50,12 @@ export function transactionsCsv(dompetId: string, me: string): { csv: string; co
     t.note,
     t.flag ? FLAG_LABEL[t.flag] ?? t.flag : "",
     t.created_by_name ?? "",
+    splitText(t.split_with),
   ]);
   return {
     count: rows.length,
     csv: toCsv(
-      ["Tanggal", "Jenis", "Jumlah", "Mata uang", "Jumlah (Rp)", "Kategori", "Subkategori", "Akun", "Dibayar oleh", "Catatan", "Tipe", "Dicatat oleh"],
+      ["Tanggal", "Jenis", "Jumlah", "Mata uang", "Jumlah (Rp)", "Kategori", "Subkategori", "Akun", "Dibayar oleh", "Catatan", "Tipe", "Dicatat oleh", "Patungan (bagian)"],
       rows,
     ),
   };
