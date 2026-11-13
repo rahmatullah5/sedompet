@@ -1,4 +1,5 @@
 import { Avatar, MadeBy } from "../components/ui";
+import { SimulatedPurchases } from "../components/SimulatedPurchases";
 import { WA_ACTIVATE, WA_FEEDBACK, WA_SUBSCRIBE } from "../lib/contact";
 
 const FEATURES = [
@@ -245,6 +246,7 @@ export function Landing() {
         </p>
         <p className="mt-1 text-xs text-slate-400">Open source (GPL-3.0).</p>
       </footer>
+      <SimulatedPurchases />
     </div>
   );
 }
