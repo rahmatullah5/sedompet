@@ -1,5 +1,6 @@
 import type { q } from "../db/repo";
 import { formatCompact } from "../lib/format";
+import { formatMoney, isBase } from "../lib/currency";
 import { Icon } from "./Icon";
 import { cx } from "./ui";
 
@@ -37,7 +38,7 @@ export function SuggestionList({ items, onPick }: { items: Suggestion[]; onPick:
               </span>
             </span>
             <span className={cx("num shrink-0 text-sm font-bold", s.kind === "income" ? "text-mint-600" : "text-slate-800")}>
-              {formatCompact(s.amount)}
+              {isBase(s.account_currency) ? formatCompact(s.amount) : formatMoney(s.amount, s.account_currency)}
             </span>
           </button>
         </li>

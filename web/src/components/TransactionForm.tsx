@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { m, q, type Kind, type Transaction } from "../db/repo";
 import { can } from "../lib/permissions";
-import { formatCompact, formatIDR, parseAmount, todayISO } from "../lib/format";
+import { formatCompact, todayISO } from "../lib/format";
+import { currencyInfo, formatMoney, isBase, moneyInputText, parseMoney } from "../lib/currency";
 import { useCurrent, useDbVersion } from "../lib/hooks";
 import { attempt, Avatar, Button, cx, Field, Input, Modal, STICKY_ACTIONS } from "./ui";
 import { DatePicker } from "./DatePicker";
@@ -78,7 +79,7 @@ function FormBody({
   const accounts = q.accounts(dompet.id, me.id).filter((a) => a.visibility === "shared" || a.owner_member_id === me.id);
 
   const [kind, setKind] = useState<Kind>(editing?.kind ?? initialKind);
-  const [amountText, setAmountText] = useState(editing ? String(editing.amount) : "");
+  const [amountText, setAmountText] = useState(editing ? moneyInputText(editing.amount, editing.account_currency) : "");
   const [categoryId, setCategoryId] = useState<string | null>(editing?.category_id ?? null);
   // New entries start on an account you hold (if any), else the first one.
   const [accountId, setAccountId] = useState(
@@ -101,7 +102,7 @@ function FormBody({
   const applySuggestion = (s: Suggestion) => {
     setNote(s.note);
     setKind(s.kind);
-    setAmountText(String(s.amount));
+    setAmountText(moneyInputText(s.amount, accounts.find((a) => a.id === s.account_id)?.currency));
     setCategoryId(s.category_id);
     if (accounts.some((a) => a.id === s.account_id)) setAccountId(s.account_id);
     if (s.paid_by && members.some((m) => m.id === s.paid_by)) {
@@ -112,7 +113,8 @@ function FormBody({
   };
 
   const categories = q.categories(dompet.id, kind);
-  const amount = parseAmount(amountText);
+  const currency = accounts.find((a) => a.id === accountId)?.currency ?? "IDR";
+  const amount = parseMoney(amountText, currency);
   const isMine = !editing || editing.created_by === me.id;
   const allowed = editing ? can.editTransaction(me.role, isMine, editing.account_holder_id === me.id) : can.addTransaction(me.role);
   const valid = Number.isFinite(amount) && amount > 0 && accountId;
@@ -188,16 +190,16 @@ function FormBody({
           {showSuggest && <SuggestionList items={suggestions} onPick={applySuggestion} />}
         </div>
 
-        <Field label="Berapa?" hint={Number.isFinite(amount) && amount > 0 ? formatIDR(amount) : undefined}>
+        <Field label={isBase(currency) ? "Berapa?" : `Berapa? (${currencyInfo(currency).flag} ${currency})`} hint={Number.isFinite(amount) && amount > 0 ? formatMoney(amount, currency) : undefined}>
           <Input
             inputMode="decimal"
-            placeholder="25rb"
+            placeholder={isBase(currency) ? "25rb" : "12.50"}
             value={amountText}
             onChange={(e) => setAmountText(e.target.value)}
             className="py-2.5 text-center !text-3xl font-extrabold tracking-tight"
           />
         </Field>
-        <div className="-mt-2 flex flex-wrap justify-center gap-1.5">
+        <div className={isBase(currency) ? "-mt-2 flex flex-wrap justify-center gap-1.5" : "hidden"}>
           {QUICK.map((v) => (
             <button
               key={v}

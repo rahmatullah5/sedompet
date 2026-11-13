@@ -27,7 +27,7 @@ export function Menu() {
     "#/pinjaman": openLoans ? `${openLoans} berjalan` : null,
     "#/akun": `${accounts} akun`,
   };
-  const balance = q.accounts(dompet.id, me.id).reduce((s, a) => s + a.balance, 0);
+  const balance = q.accounts(dompet.id, me.id).reduce((s, a) => s + a.balance_base, 0);
   const { appAdmin } = useSyncExternalStore(cloudStore.subscribe, cloudStore.get);
   const items = appAdmin ? [...ITEMS, { href: "#/admin", icon: "🛡️", title: "Admin", hint: "Kode aktivasi & nomor" }] : ITEMS;
 

@@ -85,7 +85,7 @@ function useForecast() {
   const expenseEnd = totals.expense + restOfMonth.expense + dailyVar * remainingDays;
   const incomeEnd = totals.income + restOfMonth.income + dailyVarIncome * remainingDays;
 
-  const balanceNow = q.accounts(dompet.id, me.id).reduce((s, a) => s + a.balance, 0);
+  const balanceNow = q.accounts(dompet.id, me.id).reduce((s, a) => s + a.balance_base, 0);
   const balanceEnd = balanceNow + (incomeEnd - totals.income) - (expenseEnd - totals.expense);
 
   // Next 3 months: recurring items + typical variable flow (30-day equivalents).
@@ -116,8 +116,18 @@ function useForecast() {
     ...monthlyFamily,
     amount: monthlyFamily.period === "monthly" ? monthlyFamily.amount : Math.round(monthlyFamily.amount * (monthlyFamily.period === "weekly" ? dim / 7 : dim)),
   };
+  // Every budget, projected to month end by the same growth as the family
+  // forecast above (falls back to this month's pace when nothing is spent yet).
+  const growth = totals.expense > 0 ? expenseEnd / totals.expense : daysInMonth / day;
+  const budgetOutlook = q
+    .budgets(dompet.id, month, { wholeMonth: true })
+    .map((b) => {
+      const projected = Math.round(b.spent * growth);
+      return { id: b.id, name: b.name, limit: b.limit, spent: b.spent, projected, over: projected - b.limit };
+    })
+    .sort((a, b) => b.over / b.limit - a.over / a.limit);
   return {
-    month, day, daysInMonth, totals, dailyVar, expenseEnd, incomeEnd, balanceNow, balanceEnd, restOfMonth, trajectory, overall,
+    month, day, daysInMonth, totals, dailyVar, expenseEnd, incomeEnd, balanceNow, balanceEnd, restOfMonth, trajectory, overall, budgetOutlook,
     incomeBasis, setIncomeBasis, avgIncomePerMonth, excludedIncomeCategories: v90.excludedIncomeCategories,
   };
 }
@@ -129,6 +139,9 @@ export function Reports() {
   useDbVersion();
   const f = useForecast();
   const overBudget = f.overall && f.expenseEnd > f.overall.amount;
+  const atRisk = f.budgetOutlook.filter((b) => b.over > 0);
+  const daysLeft = Math.max(1, f.daysInMonth - f.day);
+  const warn = overBudget || atRisk.length > 0;
 
   return (
     <div className="space-y-5">
@@ -152,19 +165,30 @@ export function Reports() {
             <p className="text-xs text-slate-500">sekarang {formatCompact(f.balanceNow)}</p>
           </div>
         </div>
-        <p
-          className={cx(
-            "mt-4 rounded-2xl px-4 py-3 text-sm",
-            overBudget ? "bg-red-50 text-red-800" : "bg-mint-100 text-slate-700",
+        <div className={cx("mt-4 space-y-2 rounded-2xl px-4 py-3 text-sm", warn ? "bg-red-50 text-red-800" : "bg-mint-100 text-slate-700")}>
+          <p>
+            {warn ? "⚠️ " : "✅ "}
+            {f.overall && overBudget
+              ? `Dengan kebiasaan sekarang, total pengeluaran bisa lewat anggaran ${formatIDR(Math.round(f.expenseEnd - f.overall.amount))}. Kurangi sekitar ${formatIDR(Math.ceil((f.expenseEnd - f.overall.amount) / daysLeft))} per hari.`
+              : f.budgetOutlook.length === 0
+                ? `Rata-rata belanja harian keluarga ${formatIDR(Math.round(f.dailyVar))}. Buat anggaran supaya ada pembanding.`
+                : atRisk.length > 0
+                  ? `${atRisk.length} dari ${f.budgetOutlook.length} anggaran diperkirakan lewat di akhir bulan:`
+                  : `Semua ${f.budgetOutlook.length} anggaran diperkirakan aman sampai akhir bulan. Lanjutkan!`}
+          </p>
+          {atRisk.length > 0 && (
+            <ul className="space-y-1">
+              {atRisk.map((b) => (
+                <li key={b.id} className="flex flex-wrap items-baseline justify-between gap-x-2 rounded-xl bg-white/70 px-3 py-1.5">
+                  <span className="font-semibold">{b.name}</span>
+                  <span className="num text-xs">
+                    ≈ {formatCompact(b.projected)} / {formatCompact(b.limit)} · lebih {formatIDR(b.over)} · kurangi ≈ {formatIDR(Math.ceil(b.over / daysLeft))}/hari
+                  </span>
+                </li>
+              ))}
+            </ul>
           )}
-        >
-          {overBudget ? "⚠️ " : "✅ "}
-          {f.overall
-            ? overBudget
-              ? `Dengan kebiasaan sekarang, pengeluaran bisa lewat anggaran ${formatIDR(Math.round(f.expenseEnd - f.overall.amount))}. Kurangi sekitar ${formatIDR(Math.ceil((f.expenseEnd - f.overall.amount) / Math.max(1, f.daysInMonth - f.day)))} per hari.`
-              : `Diperkirakan masih di bawah anggaran ${formatCompact(f.overall.amount)}. Lanjutkan!`
-            : `Rata-rata belanja harian keluarga ${formatIDR(Math.round(f.dailyVar))}. Buat anggaran "Total bulanan" supaya ada pembanding.`}
-        </p>
+        </div>
         {f.restOfMonth.items.length > 0 && (
           <p className="mt-2 text-xs text-slate-500">
             Sudah termasuk {f.restOfMonth.items.length} tagihan/pemasukan rutin yang belum jatuh tempo bulan ini.

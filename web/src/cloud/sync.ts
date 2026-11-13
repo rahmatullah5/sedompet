@@ -84,7 +84,13 @@ const pick = (r: Row, keys: string[]) => Object.fromEntries(keys.map((k) => [k, 
 function toServer(t: Synced, r: Row): Row {
   switch (t) {
     case "accounts":
-      return { ...pick(r, ["id", "dompet_id", "name", "type", "opening_balance", "colour", "icon", "visibility", "owner_member_id", "holder_member_id", "created_by"]), archived: !!r.archived };
+      return {
+        ...pick(r, ["id", "dompet_id", "name", "type", "opening_balance", "colour", "icon", "visibility", "owner_member_id", "holder_member_id", "created_by"]),
+        archived: !!r.archived,
+        // Needs migration 20261119000000_account_currency.sql.
+        currency: r.currency || "IDR",
+        fx_rate: r.fx_rate ?? 1,
+      };
     case "categories":
       return pick(r, ["id", "dompet_id", "name", "icon", "colour", "kind", "parent_id", "sort_order"]);
     case "transactions":
@@ -295,9 +301,9 @@ export async function pullAll(): Promise<void> {
     );
     for (const a of accounts)
       run(
-        `INSERT INTO accounts (id, dompet_id, name, type, opening_balance, colour, icon, visibility, owner_member_id, holder_member_id, archived, created_by, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [a.id, a.dompet_id, a.name, a.type, a.opening_balance, a.colour, a.icon, a.visibility, a.owner_member_id, a.holder_member_id ?? null, a.archived ? 1 : 0, a.created_by, sqliteTime(a.created_at)] as (string | number | null)[],
+        `INSERT INTO accounts (id, dompet_id, name, type, opening_balance, currency, fx_rate, colour, icon, visibility, owner_member_id, holder_member_id, archived, created_by, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [a.id, a.dompet_id, a.name, a.type, a.opening_balance, (a.currency as string) || "IDR", a.fx_rate == null ? 1 : Number(a.fx_rate), a.colour, a.icon, a.visibility, a.owner_member_id, a.holder_member_id ?? null, a.archived ? 1 : 0, a.created_by, sqliteTime(a.created_at)] as (string | number | null)[],
       );
     const cats = [...categories].sort((x, y) => Number(!!x.parent_id) - Number(!!y.parent_id));
     for (const c of cats)

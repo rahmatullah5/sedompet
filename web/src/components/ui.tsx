@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { formatIDR } from "../lib/format";
+import { formatMoney } from "../lib/currency";
 
 /** Save/cancel row that stays pinned to the bottom of a scrolling sheet. */
 export const STICKY_ACTIONS =
@@ -82,7 +82,7 @@ export function Avatar({ emoji, colour, size = 32, title }: { emoji: string; col
   );
 }
 
-export function Money({ amount, kind, className }: { amount: number; kind?: "income" | "expense"; className?: string }) {
+export function Money({ amount, kind, className, currency }: { amount: number; kind?: "income" | "expense"; className?: string; currency?: string }) {
   return (
     <span
       className={cx(
@@ -93,7 +93,7 @@ export function Money({ amount, kind, className }: { amount: number; kind?: "inc
       )}
     >
       {kind === "income" ? "+" : kind === "expense" ? "−" : ""}
-      {formatIDR(amount)}
+      {formatMoney(amount, currency)}
     </span>
   );
 }

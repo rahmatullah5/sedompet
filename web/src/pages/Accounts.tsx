@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { DatePicker } from "../components/DatePicker";
-import { m, q, type Account, type AccountType } from "../db/repo";
+import { accountTypeIcon, accountTypeLabel, BUILTIN_ACCOUNT_TYPES, m, q, type Account } from "../db/repo";
 import { Icon, IconPicker } from "../components/Icon";
 import { TransferBody } from "../components/TransferForm";
 import { can } from "../lib/permissions";
-import { formatIDR, parseAmount, todayISO } from "../lib/format";
+import { formatIDR, todayISO } from "../lib/format";
+import { CURRENCIES, currencyInfo, formatMoney, isBase, moneyInputText, parseMoney } from "../lib/currency";
 import { useCurrent, useDbVersion } from "../lib/hooks";
 import { attempt, Avatar, Badge, Button, Card, Field, Input, Modal, Money, Select, STICKY_ACTIONS } from "../components/ui";
 import { getMode } from "../cloud/client";
@@ -12,14 +13,75 @@ import { cloud } from "../cloud/sync";
 
 const CLOUD = getMode() === "cloud";
 
-const TYPE_LABEL: Record<AccountType, string> = {
-  cash: "💵 Tunai",
-  bank: "🏦 Bank",
-  ewallet: "📱 E-wallet",
-  savings: "🐷 Tabungan",
-};
 const COLOURS = ["#f47c5a", "#4f8ef7", "#2fb67c", "#8b74e8", "#e5689b", "#f5a524", "#8a7563"];
-const TYPE_ICON: Record<AccountType, string> = { cash: "💵", bank: "🏦", ewallet: "📱", savings: "🐷" };
+const NEW_TYPE = "__new__";
+
+/** "-2jt", "−150.000", "-12.50": a signed amount in `currency`'s minor units. */
+function parseSigned(text: string, currency: string) {
+  const t = text.trim().replace(/^−/, "-");
+  return t.startsWith("-") ? -parseMoney(t.slice(1), currency) : parseMoney(t, currency);
+}
+
+/** "16250", "16.250", "16.250,5", "16250.5", "0,0047" -> number. */
+function parseRate(text: string) {
+  const t = text.trim().replace(/\s/g, "");
+  if (!t) return NaN;
+  if (t.includes(",")) return Number(t.replace(/\./g, "").replace(",", "."));
+  if (/^\d{1,3}(\.\d{3})+$/.test(t)) return Number(t.replace(/\./g, ""));
+  return Number(t);
+}
+
+/** Accounts grouped by type, in first-seen order, with a rupiah subtotal. */
+function groupByType(accounts: Account[]) {
+  const groups = new Map<string, { type: string; accounts: Account[]; total: number }>();
+  for (const a of accounts) {
+    const g = groups.get(a.type) ?? { type: a.type, accounts: [], total: 0 };
+    g.accounts.push(a);
+    g.total += a.balance_base;
+    groups.set(a.type, g);
+  }
+  return [...groups.values()];
+}
+
+function Balance({ a }: { a: Account }) {
+  const negative = a.balance < 0;
+  return (
+    <span className="flex flex-col items-end">
+      <Money amount={a.balance} currency={a.currency} className={negative ? "text-red-600" : undefined} />
+      {!isBase(a.currency) && <span className="num text-[11px] text-slate-400">≈ {formatIDR(a.balance_base)}</span>}
+    </span>
+  );
+}
+
+/** Breakdown per account type: e.g. Kartu kredit −10 jt + Tunai 30 jt = 20 jt. */
+function TypeSummary({ accounts }: { accounts: Account[] }) {
+  const groups = groupByType(accounts).sort((x, y) => y.total - x.total);
+  const total = accounts.reduce((s, a) => s + a.balance_base, 0);
+  const foreign = accounts.some((a) => !isBase(a.currency));
+  if (groups.length < 2 && !foreign) return null;
+  return (
+    <Card title="Ringkasan per jenis">
+      <ul className="space-y-1.5">
+        {groups.map((g) => (
+          <li key={g.type} className="flex items-center gap-2 px-2 text-sm">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100">
+              <Icon value={accountTypeIcon(g.type)} size={16} />
+            </span>
+            <span className="flex-1 font-semibold text-slate-700">
+              {accountTypeLabel(g.type)} <span className="text-xs font-normal text-slate-400">· {g.accounts.length} akun</span>
+            </span>
+            <span className={`num font-bold ${g.total < 0 ? "text-red-600" : "text-slate-800"}`}>{formatIDR(g.total)}</span>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-2 flex items-center justify-between border-t border-slate-100 px-2 pt-2">
+        <span className="text-sm font-bold text-slate-800">Total posisi</span>
+        <span className={`num text-lg font-extrabold ${total < 0 ? "text-red-600" : "text-slate-800"}`}>{formatIDR(total)}</span>
+      </div>
+      {foreign && <p className="mt-1 px-2 text-xs text-slate-400">Akun mata uang asing dihitung ke Rupiah dengan kurs di masing-masing akun.</p>}
+    </Card>
+  );
+}
 
 export function Accounts() {
   useDbVersion();
@@ -34,7 +96,21 @@ export function Accounts() {
   const canEdit = (a: Account) =>
     manage || (a.visibility === "private" && a.owner_member_id === me.id) || (a.visibility === "shared" && a.holder_member_id === me.id);
 
-  const list = (items: Account[]) => (
+  const list = (items: Account[]) => {
+    const groups = groupByType(items);
+    return groups.map((g) => (
+      <div key={g.type}>
+        {groups.length > 1 && (
+          <p className="flex justify-between px-2 pt-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            <span>{accountTypeLabel(g.type)}</span>
+            <span className="num normal-case">{formatIDR(g.total)}</span>
+          </p>
+        )}
+        {rows(g.accounts)}
+      </div>
+    ));
+  };
+  const rows = (items: Account[]) => (
     <ul className="divide-y divide-slate-100 dark:divide-slate-800">
       {items.map((a) => (
         <li key={a.id} className="flex items-center gap-1">
@@ -44,12 +120,13 @@ export function Accounts() {
             className="flex w-full items-center gap-3 rounded-2xl px-2 py-3 text-left enabled:hover:bg-slate-50"
           >
             <span className="flex h-11 w-11 items-center justify-center rounded-2xl text-xl" style={{ background: `${a.colour}22` }}>
-              <Icon value={a.icon ?? TYPE_ICON[a.type]} size={26} />
+              <Icon value={a.icon ?? accountTypeIcon(a.type)} size={26} />
             </span>
             <span className="flex-1">
               <span className="block font-semibold text-slate-800">{a.name}</span>
               <span className="flex items-center gap-1 text-xs text-slate-500">
-                {TYPE_LABEL[a.type].split(" ").slice(1).join(" ")}
+                {accountTypeLabel(a.type)}
+                {!isBase(a.currency) && <span className="rounded-full bg-sky-50 px-1.5 font-semibold text-sky-700">{currencyInfo(a.currency).flag} {a.currency}</span>}
                 {a.visibility === "shared" && a.holder_name && (
                   <>
                     <span>·</span>
@@ -60,7 +137,7 @@ export function Accounts() {
                 )}
               </span>
             </span>
-            <Money amount={a.balance} />
+            <Balance a={a} />
           </button>
           {can.addTransaction(me.role) && (
             <button
@@ -90,8 +167,9 @@ export function Accounts() {
         )}
       </div>
       <div className="space-y-4">
+        <TypeSummary accounts={accounts} />
         <Card
-          title={`Akun bersama · ${formatIDR(shared.reduce((s, a) => s + a.balance, 0))}`}
+          title={`Akun bersama · ${formatIDR(shared.reduce((s, a) => s + a.balance_base, 0))}`}
           action={manage && <Button onClick={() => setEditing("new")}>+ Akun</Button>}
         >
           <p className="-mt-1 mb-2 px-2 text-xs text-slate-400">Saldo beda dengan aplikasi bank? Tekan ⚖️ untuk koreksi.</p>
@@ -141,12 +219,21 @@ function AccountFormBody({ account, initialVisibility, onClose }: { account: Acc
   const { me } = useCurrent();
   const manage = can.manage(me.role);
   const [name, setName] = useState(account?.name ?? "");
-  const [type, setType] = useState<AccountType>(account?.type ?? "bank");
-  const [opening, setOpening] = useState(account ? String(account.opening_balance) : "0");
+  const { dompet: dompetForTypes } = useCurrent();
+  const customTypes = q.customAccountTypes(dompetForTypes.id);
+  const [type, setType] = useState<string>(account?.type ?? "bank");
+  const [newType, setNewType] = useState("");
+  const [currency, setCurrency] = useState(account?.currency ?? "IDR");
+  const [rateText, setRateText] = useState(account && !isBase(account.currency) ? String(account.fx_rate) : "");
+  const [opening, setOpening] = useState(account ? moneyInputText(account.opening_balance, account.currency) : "0");
   const [colour, setColour] = useState(account?.colour ?? COLOURS[1]);
-  const [icon, setIcon] = useState<string>(account?.icon ?? TYPE_ICON[account?.type ?? "bank"]);
+  const [icon, setIcon] = useState<string>(account?.icon ?? accountTypeIcon(account?.type ?? "bank"));
+  const finalType = type === NEW_TYPE ? newType.trim() : type;
+  const rate = isBase(currency) ? 1 : parseRate(rateText);
+  // Stored amounts are minor units of the currency, so it's fixed once used.
+  const hasTx = !!account && q.transactions(account.dompet_id, me.id, { accountId: account.id, limit: 1 }).length > 0;
   const [visibility, setVisibility] = useState<"shared" | "private">(account?.visibility ?? initialVisibility ?? (manage ? "shared" : "private"));
-  const openingValue = opening.trim() === "" ? 0 : parseAmount(opening);
+  const openingValue = opening.trim() === "" ? 0 : parseSigned(opening, currency);
   const { members, dompet } = useCurrent();
   const currentHolder = account ? (account.holder_member_id ?? account.owner_member_id ?? null) : null;
   const [holderId, setHolderId] = useState<string | null>(currentHolder);
@@ -171,7 +258,7 @@ function AccountFormBody({ account, initialVisibility, onClose }: { account: Acc
           if (visibility === "private" && holderId !== me.id) return;
         }
         await m.saveAccount(me.id, {
-          id: account?.id, name, type, opening_balance: openingValue, colour, icon, visibility,
+          id: account?.id, name, type: finalType, opening_balance: openingValue, colour, icon, visibility, currency, fx_rate: rate,
           holder_member_id: visibility === "shared" && manage ? holderId : undefined,
         });
       },
@@ -192,27 +279,59 @@ function AccountFormBody({ account, initialVisibility, onClose }: { account: Acc
         <Input autoFocus value={name} maxLength={40} placeholder="mis. BCA Keluarga, GoPay Ibu" onChange={(e) => setName(e.target.value)} />
       </Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Jenis">
+        <Field label="Jenis / kelompok">
           <Select
             value={type}
             onChange={(e) => {
-              const t = e.target.value as AccountType;
+              const t = e.target.value;
               // Follow the type's default icon unless a custom one was chosen.
-              if (Object.values(TYPE_ICON).includes(icon)) setIcon(TYPE_ICON[t]);
+              const defaults = [...BUILTIN_ACCOUNT_TYPES.map((x) => x.icon), "👛"];
+              if (defaults.includes(icon)) setIcon(accountTypeIcon(t === NEW_TYPE ? "" : t));
               setType(t);
             }}
           >
-            {Object.entries(TYPE_LABEL).map(([k, v]) => (
-              <option key={k} value={k}>
-                {v}
+            {BUILTIN_ACCOUNT_TYPES.map((t) => (
+              <option key={t.key} value={t.key}>
+                {t.icon} {t.label}
+              </option>
+            ))}
+            {customTypes.map((t) => (
+              <option key={t} value={t}>
+                👛 {t}
+              </option>
+            ))}
+            <option value={NEW_TYPE}>➕ Jenis baru…</option>
+          </Select>
+        </Field>
+        <Field label="Mata uang" hint={hasTx ? "Tetap, sudah ada transaksi" : undefined}>
+          <Select value={currency} disabled={hasTx} onChange={(e) => setCurrency(e.target.value)}>
+            {CURRENCIES.map((c) => (
+              <option key={c.code} value={c.code}>
+                {c.flag} {c.code} · {c.name}
               </option>
             ))}
           </Select>
         </Field>
-        <Field label="Saldo awal" hint={Number.isFinite(openingValue) ? formatIDR(openingValue) : "Tidak valid"}>
+      </div>
+      {type === NEW_TYPE && (
+        <Field label="Nama jenis baru" hint="Akun dengan jenis sama dikelompokkan dan dijumlahkan.">
+          <Input autoFocus value={newType} maxLength={30} placeholder="mis. Emas, Reksa dana, Paylater" onChange={(e) => setNewType(e.target.value)} />
+        </Field>
+      )}
+      <div className="grid grid-cols-2 gap-3">
+        <Field
+          label={`Saldo awal${isBase(currency) ? "" : ` (${currency})`}`}
+          hint={Number.isFinite(openingValue) ? formatMoney(openingValue, currency) : "Tidak valid"}
+        >
           <Input inputMode="decimal" value={opening} onChange={(e) => setOpening(e.target.value)} />
         </Field>
+        {!isBase(currency) && (
+          <Field label={`Kurs 1 ${currency} = Rp`} hint={Number.isFinite(rate) && rate > 0 ? formatIDR(rate) : "Isi kurs"}>
+            <Input inputMode="decimal" value={rateText} placeholder="mis. 16250" onChange={(e) => setRateText(e.target.value)} />
+          </Field>
+        )}
       </div>
+      {finalType === "credit" && <p className="-mt-1 text-xs text-slate-400">Tagihan kartu kredit: isi saldo awal negatif, mis. -2jt.</p>}
       <div>
         <span className="mb-1.5 block text-sm font-semibold text-slate-700">Ikon</span>
         <IconPicker value={icon} onChange={setIcon} />
@@ -310,7 +429,7 @@ function AccountFormBody({ account, initialVisibility, onClose }: { account: Acc
           <Button variant="secondary" onClick={onClose}>
             Batal
           </Button>
-          <Button type="submit" disabled={!name.trim() || !Number.isFinite(openingValue)}>
+          <Button type="submit" disabled={!name.trim() || !finalType || !Number.isFinite(openingValue) || !(rate > 0)}>
             Simpan
           </Button>
         </div>
@@ -323,7 +442,7 @@ function CorrectionForm({ account, onClose }: { account: Account; onClose: () =>
   const { me } = useCurrent();
   const [text, setText] = useState("");
   const [date, setDate] = useState(todayISO());
-  const actual = text.trim().startsWith("-") ? -parseAmount(text.trim().slice(1)) : parseAmount(text);
+  const actual = parseSigned(text, account.currency);
   const diff = Number.isFinite(actual) ? Math.round(actual) - account.balance : NaN;
   return (
     <form
@@ -334,17 +453,17 @@ function CorrectionForm({ account, onClose }: { account: Account; onClose: () =>
       }}
     >
       <p className="text-sm text-slate-600">
-        Saldo <b>{account.name}</b> di Sedompet sekarang <b className="num">{formatIDR(account.balance)}</b>. Masukkan saldo yang sebenarnya
+        Saldo <b>{account.name}</b> di Sedompet sekarang <b className="num">{formatMoney(account.balance, account.currency)}</b>. Masukkan saldo yang sebenarnya
         (lihat di aplikasi bank/e-wallet).
       </p>
       <Field label="Saldo sebenarnya">
-        <Input autoFocus inputMode="decimal" value={text} placeholder="mis. 2.350.000" onChange={(e) => setText(e.target.value)} className="py-3 text-center !text-2xl font-extrabold" />
+        <Input autoFocus inputMode="decimal" value={text} placeholder={isBase(account.currency) ? "mis. 2.350.000" : "mis. 1250.75"} onChange={(e) => setText(e.target.value)} className="py-3 text-center !text-2xl font-extrabold" />
       </Field>
       {Number.isFinite(diff) && text.trim() !== "" && (
         <p className={`rounded-2xl px-4 py-2.5 text-sm ${diff === 0 ? "bg-slate-100 text-slate-600" : "bg-sun-100 text-slate-700"}`}>
           {diff === 0
             ? "Sudah sama. Tidak perlu koreksi."
-            : `Akan dicatat koreksi ${diff > 0 ? "+" : "−"}${formatIDR(Math.abs(diff))}. Tidak dihitung sebagai pemasukan atau pengeluaran.`}
+            : `Akan dicatat koreksi ${diff > 0 ? "+" : "−"}${formatMoney(Math.abs(diff), account.currency)}. Tidak dihitung sebagai pemasukan atau pengeluaran.`}
         </p>
       )}
       <DatePicker label="Per tanggal" value={date} max={todayISO()} onChange={setDate} />

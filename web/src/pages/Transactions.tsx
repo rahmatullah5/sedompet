@@ -47,7 +47,10 @@ export function TxRow({ t, onClick }: { t: Transaction; onClick: () => void }) {
             {t.flag && <span className="rounded-full bg-slate-100 px-1.5 text-[10px] font-semibold text-slate-500">{t.flag === "transfer" ? "transfer" : t.flag === "loan" ? "pinjaman" : "koreksi"}</span>}
           </span>
         </span>
-        <Money amount={t.amount} kind={t.kind} className="text-sm" />
+        <span className="flex flex-col items-end">
+          <Money amount={t.amount} kind={t.kind} currency={t.account_currency} className="text-sm" />
+          {t.account_currency !== "IDR" && <span className="num text-[11px] text-slate-400">≈ {formatIDR(t.amount_base)}</span>}
+        </span>
       </button>
     </li>
   );
@@ -82,8 +85,8 @@ export function Transactions({ onOpenTx }: { onOpenTx: (t: Transaction) => void 
     accountIds,
     kind: kind || undefined,
   });
-  const income = txs.filter((t) => t.kind === "income").reduce((s, t) => s + t.amount, 0);
-  const expense = txs.filter((t) => t.kind === "expense").reduce((s, t) => s + t.amount, 0);
+  const income = txs.filter((t) => t.kind === "income").reduce((s, t) => s + t.amount_base, 0);
+  const expense = txs.filter((t) => t.kind === "expense").reduce((s, t) => s + t.amount_base, 0);
 
   const groups = new Map<string, Transaction[]>();
   for (const t of txs) groups.set(t.date, [...(groups.get(t.date) ?? []), t]);
@@ -217,7 +220,7 @@ export function Transactions({ onOpenTx }: { onOpenTx: (t: Transaction) => void 
         </Card>
       ) : (
         [...groups.entries()].map(([date, list]) => {
-          const dayNet = list.reduce((s, t) => s + (t.kind === "income" ? t.amount : -t.amount), 0);
+          const dayNet = list.reduce((s, t) => s + (t.kind === "income" ? t.amount_base : -t.amount_base), 0);
           return (
             <Card key={date} className="p-2 sm:p-3">
               <div className="flex justify-between px-2 pb-1 text-xs font-medium text-slate-500">

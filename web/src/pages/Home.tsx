@@ -25,8 +25,8 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction) => void; g
   const { dompet, me, members } = useCurrent();
   const month = currentMonth();
   const accounts = q.accounts(dompet.id, me.id);
-  const sharedTotal = accounts.filter((a) => a.visibility === "shared").reduce((s, a) => s + a.balance, 0);
-  const privateTotal = accounts.filter((a) => a.visibility === "private").reduce((s, a) => s + a.balance, 0);
+  const sharedTotal = accounts.filter((a) => a.visibility === "shared").reduce((s, a) => s + a.balance_base, 0);
+  const privateTotal = accounts.filter((a) => a.visibility === "private").reduce((s, a) => s + a.balance_base, 0);
   const totals = q.monthTotals(dompet.id, me.id, month);
   const byMember = q.spendingByMember(dompet.id, me.id, month);
   const topCats = q.spendingByCategory(dompet.id, me.id, month).slice(0, 3);

@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { m, q } from "../db/repo";
 import { can } from "../lib/permissions";
-import { formatCompact, formatIDR, parseAmount, todayISO } from "../lib/format";
+import { formatCompact, todayISO } from "../lib/format";
+import { currencyInfo, formatMoney, isBase, minorFactor, moneyInputText, parseMoney } from "../lib/currency";
 import { useCurrent, useDbVersion } from "../lib/hooks";
 import { attempt, Button, cx, Field, Input, STICKY_ACTIONS } from "./ui";
 import { AccountPicker } from "./Pickers";
@@ -33,14 +34,27 @@ export function TransferBody({
 
   const [fromId, setFromId] = useState(existing?.fromAccountId ?? initialFrom ?? accounts[0]?.id ?? "");
   const [toId, setToId] = useState(existing?.toAccountId ?? accounts.find((a) => a.id !== (existing?.fromAccountId ?? initialFrom ?? accounts[0]?.id))?.id ?? "");
-  const [amountText, setAmountText] = useState(existing ? String(existing.amount) : "");
-  const [feeText, setFeeText] = useState(existing?.fee ? String(existing.fee) : "");
+  const curOf = (id: string | undefined) => accounts.find((a) => a.id === id)?.currency ?? "IDR";
+  const [amountText, setAmountText] = useState(existing ? moneyInputText(existing.amount, curOf(existing.fromAccountId)) : "");
+  const [toAmountText, setToAmountText] = useState(existing ? moneyInputText(existing.toAmount, curOf(existing.toAccountId)) : "");
+  const [feeText, setFeeText] = useState(existing?.fee ? moneyInputText(existing.fee, curOf(existing.fromAccountId)) : "");
   const [date, setDate] = useState(existing?.date ?? todayISO());
   const [note, setNote] = useState(existing?.note ?? "");
-  const amount = parseAmount(amountText);
-  const fee = feeText.trim() ? parseAmount(feeText) : 0;
   const from = accounts.find((a) => a.id === fromId);
-  const valid = Number.isFinite(amount) && amount > 0 && Number.isFinite(fee) && fee >= 0 && fromId && toId && fromId !== toId;
+  const to = accounts.find((a) => a.id === toId);
+  const fromCur = from?.currency ?? "IDR";
+  const toCur = to?.currency ?? "IDR";
+  const cross = fromCur !== toCur;
+  const amount = parseMoney(amountText, fromCur);
+  const fee = feeText.trim() ? parseMoney(feeText, fromCur) : 0;
+  // Received amount: typed, else estimated from the accounts' rates to rupiah.
+  const estimate =
+    from && to && amount > 0
+      ? Math.round(((amount / minorFactor(fromCur)) * (isBase(fromCur) ? 1 : from.fx_rate)) / (isBase(toCur) ? 1 : to.fx_rate) * minorFactor(toCur))
+      : NaN;
+  const toAmount = !cross ? amount : toAmountText.trim() ? parseMoney(toAmountText, toCur) : estimate;
+  const valid =
+    Number.isFinite(amount) && amount > 0 && Number.isFinite(fee) && fee >= 0 && fromId && toId && fromId !== toId && Number.isFinite(toAmount) && toAmount > 0;
   const allowed = can.addTransaction(me.role);
 
   const pickFrom = (id: string) => {
@@ -50,7 +64,7 @@ export function TransferBody({
 
   async function save() {
     const ok = await attempt(
-      () => m.saveTransfer(me.id, { transferId: transferId ?? undefined, fromAccountId: fromId, toAccountId: toId, amount, fee, date, note }),
+      () => m.saveTransfer(me.id, { transferId: transferId ?? undefined, fromAccountId: fromId, toAccountId: toId, amount, toAmount, fee, date, note }),
       transferId ? "Transfer diperbarui" : "Transfer tercatat",
     );
     if (ok) onClose();
@@ -86,19 +100,33 @@ export function TransferBody({
         </div>
         <AccountPicker label="Ke akun" accounts={accounts.filter((a) => a.id !== fromId)} value={toId} onChange={setToId} />
 
-        <Field label="Berapa?" hint={amount > 0 ? formatIDR(amount) : undefined}>
+        <Field label={cross ? `Berapa? (${currencyInfo(fromCur).flag} ${fromCur})` : "Berapa?"} hint={amount > 0 ? formatMoney(amount, fromCur) : undefined}>
           <Input
             inputMode="decimal"
-            placeholder="500rb"
+            placeholder={isBase(fromCur) ? "500rb" : "100.00"}
             value={amountText}
             onChange={(e) => setAmountText(e.target.value)}
             className="py-2.5 text-center !text-3xl font-extrabold tracking-tight"
           />
         </Field>
-        {from && amount > from.balance && <p className="-mt-2 text-xs text-amber-700">Saldo {from.name} hanya {formatIDR(from.balance)}.</p>}
+        {from && amount > from.balance && <p className="-mt-2 text-xs text-amber-700">Saldo {from.name} hanya {formatMoney(from.balance, fromCur)}.</p>}
+        {cross && (
+          <Field
+            label={`Diterima di ${to?.name ?? "tujuan"} (${currencyInfo(toCur).flag} ${toCur})`}
+            hint={Number.isFinite(toAmount) && toAmount > 0 ? `${formatMoney(toAmount, toCur)}${toAmountText.trim() ? "" : " · perkiraan dari kurs akun"}` : "Isi jumlah yang masuk"}
+          >
+            <Input
+              inputMode="decimal"
+              value={toAmountText}
+              placeholder={Number.isFinite(estimate) ? moneyInputText(estimate, toCur) : ""}
+              onChange={(e) => setToAmountText(e.target.value)}
+              className="text-center !text-xl font-bold"
+            />
+          </Field>
+        )}
 
         <div>
-          <span className="mb-1.5 block text-sm font-semibold text-slate-700">Biaya admin (opsional)</span>
+          <span className="mb-1.5 block text-sm font-semibold text-slate-700">Biaya admin (opsional{isBase(fromCur) ? "" : `, dalam ${fromCur}`})</span>
           <div className="flex flex-wrap items-center gap-1.5">
             <button
               type="button"
@@ -107,7 +135,7 @@ export function TransferBody({
             >
               Gratis
             </button>
-            {QUICK_FEES.map((f) => (
+            {(isBase(fromCur) ? QUICK_FEES : []).map((f) => (
               <button
                 key={f}
                 type="button"

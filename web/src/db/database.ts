@@ -91,10 +91,36 @@ function open(bytes: Uint8Array | null): Database {
     if (!cols.includes(column)) next.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
   }
   next.exec("CREATE INDEX IF NOT EXISTS categories_parent ON categories(parent_id)");
+  relaxAccountType(next);
   next.run("INSERT OR REPLACE INTO meta(key, value) VALUES ('schema_version', ?)", [
     String(SCHEMA_VERSION),
   ]);
   return next;
+}
+
+/**
+ * Older databases only allowed four account types. SQLite can't drop a CHECK
+ * constraint, so rebuild the table (foreign keys off, so nothing cascades).
+ */
+function relaxAccountType(d: Database) {
+  const sql = String(d.exec("SELECT sql FROM sqlite_master WHERE type='table' AND name='accounts'")[0]?.values[0]?.[0] ?? "");
+  if (!sql.includes("type IN ('cash'")) return;
+  const cols = (d.exec("PRAGMA table_info(accounts)")[0]?.values ?? []).map((r) => String(r[1])).join(", ");
+  d.exec("PRAGMA foreign_keys = OFF");
+  try {
+    d.exec("BEGIN");
+    d.exec(sql.replace(/CREATE TABLE (IF NOT EXISTS )?"?accounts"?/, "CREATE TABLE accounts_new").replace(/CHECK \(type IN \([^)]*\)\)/, "CHECK (length(type) BETWEEN 1 AND 30)"));
+    d.exec(`INSERT INTO accounts_new (${cols}) SELECT ${cols} FROM accounts`);
+    d.exec("DROP TABLE accounts");
+    d.exec("ALTER TABLE accounts_new RENAME TO accounts");
+    d.exec("CREATE INDEX IF NOT EXISTS accounts_dompet ON accounts(dompet_id)");
+    d.exec("COMMIT");
+  } catch (e) {
+    d.exec("ROLLBACK");
+    console.error("accounts upgrade failed", e);
+  } finally {
+    d.exec("PRAGMA foreign_keys = ON");
+  }
 }
 
 function notify() {

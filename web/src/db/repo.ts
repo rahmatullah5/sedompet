@@ -3,6 +3,7 @@
 import { all, get, write } from "./database";
 import { can, PermissionError, type Role } from "../lib/permissions";
 import { currentMonth, formatIDR, parseAmount, toISODate, todayISO } from "../lib/format";
+import { baseSql, CURRENCIES, formatMoney, isBase, toBase } from "../lib/currency";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -25,7 +26,22 @@ export interface Member {
   phone?: string | null;
 }
 
-export type AccountType = "cash" | "bank" | "ewallet" | "savings";
+/** Built-in keys, or any custom group name the family typed. */
+export type AccountType = "cash" | "bank" | "ewallet" | "savings" | "credit" | "investment" | (string & {});
+
+export const BUILTIN_ACCOUNT_TYPES: { key: string; label: string; icon: string }[] = [
+  { key: "cash", label: "Tunai", icon: "💵" },
+  { key: "bank", label: "Bank", icon: "🏦" },
+  { key: "ewallet", label: "E-wallet", icon: "📱" },
+  { key: "savings", label: "Tabungan", icon: "🐷" },
+  { key: "credit", label: "Kartu kredit", icon: "💳" },
+  { key: "investment", label: "Investasi", icon: "📈" },
+];
+const BUILTIN_BY_KEY = new Map(BUILTIN_ACCOUNT_TYPES.map((t) => [t.key, t]));
+/** Display name of an account type ("Bank", or the custom name as typed). */
+export const accountTypeLabel = (type: string) => BUILTIN_BY_KEY.get(type)?.label ?? type;
+/** Default icon for an account type. */
+export const accountTypeIcon = (type: string) => BUILTIN_BY_KEY.get(type)?.icon ?? "👛";
 
 export interface Account {
   id: string;
@@ -33,6 +49,10 @@ export interface Account {
   name: string;
   type: AccountType;
   opening_balance: number;
+  /** ISO code; amounts on this account are minor units of it. */
+  currency: string;
+  /** Rupiah per 1 unit of `currency` (1 for IDR). */
+  fx_rate: number;
   colour: string;
   icon: string | null;
   visibility: "shared" | "private";
@@ -41,7 +61,10 @@ export interface Account {
   holder_name: string | null;
   holder_emoji: string | null;
   holder_colour: string | null;
+  /** In the account's own currency. */
   balance: number;
+  /** Balance converted to rupiah, for totals. */
+  balance_base: number;
 }
 
 export type Kind = "expense" | "income";
@@ -74,6 +97,9 @@ export interface Transaction {
   updated_by: string | null;
   // joined
   account_name: string;
+  account_currency: string;
+  /** `amount` converted to rupiah. */
+  amount_base: number;
   account_visibility: "shared" | "private";
   account_holder_id: string | null;
   category_name: string | null;
@@ -146,6 +172,8 @@ function listFilter(
 
 /** Spending stats ignore transfers and balance corrections. */
 const REAL = `t.flag IS NULL`;
+/** t.amount in rupiah (accounts joined as `a`). */
+const BASE_AMOUNT = baseSql("t.amount");
 /** Top-level category of a transaction (subcategories roll up). */
 const TOP_CAT = `COALESCE(c.parent_id, c.id)`;
 
@@ -174,7 +202,7 @@ export const q = {
   member: (id: string) => get<Member>("SELECT * FROM members WHERE id = ?", [id]),
 
   accounts: (dompetId: string, me: string) =>
-    all<Account>(
+    all<Omit<Account, "balance_base">>(
       `SELECT a.*, h.name AS holder_name, h.emoji AS holder_emoji, h.colour AS holder_colour,
          a.opening_balance + COALESCE((
            SELECT SUM(CASE t.kind WHEN 'income' THEN t.amount ELSE -t.amount END)
@@ -184,7 +212,13 @@ export const q = {
        WHERE a.dompet_id = $d AND a.archived = 0 AND ${VISIBLE_ACCOUNT}
        ORDER BY a.visibility = 'private', a.created_at`,
       { $d: dompetId, $me: me },
-    ),
+    ).map((a): Account => ({ ...a, currency: a.currency || "IDR", fx_rate: a.fx_rate ?? 1, balance_base: toBase(a.balance, a.currency, a.fx_rate) })),
+
+  /** Custom account types already used in this Dompet (for the type picker). */
+  customAccountTypes: (dompetId: string) =>
+    all<{ type: string }>("SELECT DISTINCT type FROM accounts WHERE dompet_id = ? ORDER BY type", [dompetId])
+      .map((r) => r.type)
+      .filter((t) => !BUILTIN_BY_KEY.has(t)),
 
   categories: (dompetId: string, kind?: Kind) =>
     all<Category>(
@@ -230,7 +264,8 @@ export const q = {
       termParams[`$d${i}`] = digits.length >= 3 ? `%${digits}%` : "__no_match__";
     });
     return all<Transaction>(
-      `SELECT t.*, a.name AS account_name, a.visibility AS account_visibility,
+      `SELECT t.*, a.name AS account_name, COALESCE(a.currency, 'IDR') AS account_currency, ${baseSql("t.amount")} AS amount_base,
+              a.visibility AS account_visibility,
               COALESCE(a.holder_member_id, a.owner_member_id) AS account_holder_id,
               c.name AS category_name, COALESCE(c.icon, pc.icon) AS category_icon,
               COALESCE(pc.colour, c.colour) AS category_colour, pc.name AS parent_category_name,
@@ -287,12 +322,13 @@ export const q = {
       category_icon: string | null;
       category_name: string | null;
       account_name: string;
+      account_currency: string;
       account_visibility: "shared" | "private";
       paid_by_name: string | null;
     }>(
       `SELECT t.note, t.kind, t.amount, t.category_id, t.account_id, t.paid_by, t.date,
               COALESCE(c.icon, pc.icon) AS category_icon, c.name AS category_name,
-              a.name AS account_name, a.visibility AS account_visibility, p.name AS paid_by_name
+              a.name AS account_name, COALESCE(a.currency, 'IDR') AS account_currency, a.visibility AS account_visibility, p.name AS paid_by_name
        FROM transactions t
        JOIN accounts a ON a.id = t.account_id
        LEFT JOIN categories c ON c.id = t.category_id
@@ -332,6 +368,8 @@ export const q = {
       fromAccountId: out.account_id,
       toAccountId: into.account_id,
       amount: out.amount,
+      /** Amount received (differs from `amount` across currencies). */
+      toAmount: into.amount,
       fee: fee?.amount ?? 0,
       date: out.date,
       note: out.note.replace(/^Transfer( ke [^·]+)?( · )?/, ""),
@@ -342,8 +380,8 @@ export const q = {
   monthTotals(dompetId: string, me: string, month: string) {
     return (
       get<{ income: number; expense: number }>(
-        `SELECT COALESCE(SUM(CASE WHEN t.kind='income' THEN t.amount END), 0) AS income,
-                COALESCE(SUM(CASE WHEN t.kind='expense' THEN t.amount END), 0) AS expense
+        `SELECT COALESCE(SUM(CASE WHEN t.kind='income' THEN ${BASE_AMOUNT} END), 0) AS income,
+                COALESCE(SUM(CASE WHEN t.kind='expense' THEN ${BASE_AMOUNT} END), 0) AS expense
          FROM transactions t JOIN accounts a ON a.id = t.account_id
          WHERE t.dompet_id = $d AND ${VISIBLE_ACCOUNT} AND ${REAL} AND substr(t.date, 1, 7) = $month`,
         { $d: dompetId, $me: me, $month: month },
@@ -354,11 +392,11 @@ export const q = {
   spendingByMember(dompetId: string, me: string, month: string) {
     return all<{ id: string; name: string; emoji: string; colour: string; total: number }>(
       `SELECT m.id, m.name, m.emoji, m.colour,
-              COALESCE(SUM(t.amount), 0) AS total
+              COALESCE(SUM(${BASE_AMOUNT}), 0) AS total
        FROM members m
-       LEFT JOIN transactions t ON t.paid_by = m.id AND t.kind = 'expense' AND ${REAL}
+       LEFT JOIN (transactions t JOIN accounts a ON a.id = t.account_id AND a.dompet_id = $d AND ${VISIBLE_ACCOUNT})
+         ON t.paid_by = m.id AND t.kind = 'expense' AND ${REAL}
          AND substr(t.date, 1, 7) = $month
-         AND t.account_id IN (SELECT a.id FROM accounts a WHERE a.dompet_id = $d AND ${VISIBLE_ACCOUNT})
        WHERE m.dompet_id = $d
        GROUP BY m.id ORDER BY total DESC`,
       { $d: dompetId, $me: me, $month: month },
@@ -368,7 +406,7 @@ export const q = {
   spendingByCategory(dompetId: string, me: string, month: string) {
     return all<{ id: string | null; name: string; icon: string; colour: string; total: number }>(
       `SELECT top.id, COALESCE(top.name, 'Tanpa kategori') AS name, COALESCE(top.icon, '📦') AS icon,
-              COALESCE(top.colour, '#b29d8b') AS colour, SUM(t.amount) AS total
+              COALESCE(top.colour, '#b29d8b') AS colour, SUM(${BASE_AMOUNT}) AS total
        FROM transactions t
        JOIN accounts a ON a.id = t.account_id
        LEFT JOIN categories c ON c.id = t.category_id
@@ -387,8 +425,10 @@ export const q = {
    * week (Mon-Sun); for past months they show the whole month against the
    * equivalent limit (amount x days/7 or x days).
    */
-  budgets(dompetId: string, month: string) {
-    const isCurrent = month === currentMonth();
+  budgets(dompetId: string, month: string, opts: { wholeMonth?: boolean } = {}) {
+    // wholeMonth: month-to-date spending against the monthly-equivalent limit,
+    // for every period (used by forecasts).
+    const isCurrent = month === currentMonth() && !opts.wholeMonth;
     const [y, mo] = month.split("-").map(Number);
     const daysInMonth = new Date(y, mo, 0).getDate();
     const monthFrom = month + "-01";
@@ -404,7 +444,7 @@ export const q = {
               (SELECT json_group_array(x.icon) FROM json_each(b.category_ids) j JOIN categories x ON x.id = j.value) AS category_icons,
               m.name AS member_name, m.emoji AS member_emoji,
               COALESCE((
-                SELECT SUM(t.amount) FROM transactions t
+                SELECT SUM(${BASE_AMOUNT}) FROM transactions t
                 JOIN accounts a ON a.id = t.account_id AND a.visibility = 'shared'
                 LEFT JOIN categories c ON c.id = t.category_id
                 WHERE t.dompet_id = b.dompet_id AND t.kind = 'expense' AND ${REAL}
@@ -453,8 +493,8 @@ export const q = {
   monthlySeries(dompetId: string, me: string, months: string[]) {
     const rows = all<{ month: string; income: number; expense: number }>(
       `SELECT substr(t.date, 1, 7) AS month,
-              COALESCE(SUM(CASE WHEN t.kind='income' THEN t.amount END), 0) AS income,
-              COALESCE(SUM(CASE WHEN t.kind='expense' THEN t.amount END), 0) AS expense
+              COALESCE(SUM(CASE WHEN t.kind='income' THEN ${BASE_AMOUNT} END), 0) AS income,
+              COALESCE(SUM(CASE WHEN t.kind='expense' THEN ${BASE_AMOUNT} END), 0) AS expense
        FROM transactions t JOIN accounts a ON a.id = t.account_id
        WHERE t.dompet_id = $d AND ${VISIBLE_ACCOUNT} AND ${REAL}
          AND substr(t.date, 1, 7) BETWEEN $from AND $to
@@ -468,7 +508,7 @@ export const q = {
   /** Expense per day of a month: [{ day: 1..31, total }]. */
   dailyExpense(dompetId: string, me: string, month: string) {
     return all<{ day: number; total: number }>(
-      `SELECT CAST(substr(t.date, 9, 2) AS INTEGER) AS day, SUM(t.amount) AS total
+      `SELECT CAST(substr(t.date, 9, 2) AS INTEGER) AS day, SUM(${BASE_AMOUNT}) AS total
        FROM transactions t JOIN accounts a ON a.id = t.account_id
        WHERE t.dompet_id = $d AND ${VISIBLE_ACCOUNT} AND ${REAL} AND t.kind = 'expense'
          AND substr(t.date, 1, 7) = $month
@@ -481,7 +521,7 @@ export const q = {
   netChangeSince(dompetId: string, me: string, from: string) {
     return all<{ month: string; net: number }>(
       `SELECT substr(t.date, 1, 7) AS month,
-              SUM(CASE t.kind WHEN 'income' THEN t.amount ELSE -t.amount END) AS net
+              SUM(CASE t.kind WHEN 'income' THEN ${BASE_AMOUNT} ELSE -${BASE_AMOUNT} END) AS net
        FROM transactions t JOIN accounts a ON a.id = t.account_id
        WHERE t.dompet_id = $d AND ${VISIBLE_ACCOUNT} AND substr(t.date, 1, 7) >= $from
        GROUP BY month`,
@@ -674,7 +714,10 @@ export const m = {
   // --- accounts ------------------------------------------------------------
   saveAccount(
     actorId: string,
-    data: { id?: string; name: string; type: AccountType; opening_balance: number; colour: string; icon?: string | null; visibility: "shared" | "private"; holder_member_id?: string | null },
+    data: {
+      id?: string; name: string; type: AccountType; opening_balance: number; colour: string; icon?: string | null;
+      visibility: "shared" | "private"; holder_member_id?: string | null; currency?: string; fx_rate?: number;
+    },
   ) {
     const actor = actorOf(actorId);
     const existing = data.id
@@ -688,13 +731,18 @@ export const m = {
     if (!(can.manage(actor.role) || holdsShared || (ownsPrivate && can.addPrivateAccount(actor.role)))) throw new PermissionError();
     if (!Number.isFinite(data.opening_balance)) throw new Error("Saldo awal tidak valid.");
     const name = requireText(data.name, "Nama akun");
+    const type = requireText(data.type, "Jenis akun", 30);
+    const currency = data.currency ?? "IDR";
+    if (!CURRENCIES.some((c) => c.code === currency)) throw new Error("Mata uang tidak didukung.");
+    const fxRate = isBase(currency) ? 1 : (data.fx_rate ?? NaN);
+    if (!Number.isFinite(fxRate) || fxRate <= 0) throw new Error("Isi kurs ke Rupiah (lebih dari 0).");
     return write((run) => {
       if (data.id) {
         run(
-          `UPDATE accounts SET name = ?, type = ?, opening_balance = ?, colour = ?, icon = ?, visibility = ?,
+          `UPDATE accounts SET name = ?, type = ?, opening_balance = ?, colour = ?, icon = ?, visibility = ?, currency = ?, fx_rate = ?,
              owner_member_id = CASE WHEN ? = 'private' THEN COALESCE(owner_member_id, ?) ELSE NULL END
            WHERE id = ? AND dompet_id = ?`,
-          [name, data.type, data.opening_balance, data.colour, data.icon ?? null, data.visibility, data.visibility, actor.id, data.id, actor.dompet_id],
+          [name, type, data.opening_balance, data.colour, data.icon ?? null, data.visibility, currency, fxRate, data.visibility, actor.id, data.id, actor.dompet_id],
         );
         // Holder changes on shared accounts are an admin decision.
         if (can.manage(actor.role) && data.visibility === "shared" && data.holder_member_id !== undefined) {
@@ -703,10 +751,10 @@ export const m = {
         log(run, actor, `mengubah akun ${name}`);
       } else {
         run(
-          `INSERT INTO accounts (id, dompet_id, name, type, opening_balance, colour, icon, visibility, owner_member_id, holder_member_id, created_by)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO accounts (id, dompet_id, name, type, opening_balance, currency, fx_rate, colour, icon, visibility, owner_member_id, holder_member_id, created_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
-            uid(), actor.dompet_id, name, data.type, data.opening_balance, data.colour, data.icon ?? null, data.visibility,
+            uid(), actor.dompet_id, name, type, data.opening_balance, currency, fxRate, data.colour, data.icon ?? null, data.visibility,
             data.visibility === "private" ? actor.id : null,
             data.visibility === "private" ? actor.id : (data.holder_member_id ?? null),
             actor.id,
@@ -736,7 +784,7 @@ export const m = {
         [uid(), actor.dompet_id, accountId, diff > 0 ? "income" : "expense", Math.abs(diff), date, actor.id, actor.id, actor.id],
       );
       if (acc.visibility === "shared")
-        log(run, actor, `mengoreksi saldo ${acc.name} menjadi ${formatIDR(Math.round(actualBalance))} (${diff > 0 ? "+" : "−"}${formatIDR(Math.abs(diff))})`);
+        log(run, actor, `mengoreksi saldo ${acc.name} menjadi ${formatMoney(Math.round(actualBalance), acc.currency)} (${diff > 0 ? "+" : "−"}${formatMoney(Math.abs(diff), acc.currency)})`);
       return diff;
     });
   },
@@ -841,8 +889,8 @@ export const m = {
     if (!can.addTransaction(actor.role)) throw new PermissionError("Peran 'Hanya lihat' tidak bisa mencatat transaksi.");
     if (!Number.isInteger(data.amount) || data.amount <= 0) throw new Error("Jumlah harus lebih dari 0.");
     if (!/^\d{4}-\d{2}-\d{2}$/.test(data.date)) throw new Error("Tanggal tidak valid.");
-    const acc = get<{ visibility: string; owner_member_id: string | null }>(
-      "SELECT visibility, owner_member_id FROM accounts WHERE id = ? AND dompet_id = ?",
+    const acc = get<{ visibility: string; owner_member_id: string | null; currency: string }>(
+      "SELECT visibility, owner_member_id, currency FROM accounts WHERE id = ? AND dompet_id = ?",
       [data.account_id, actor.dompet_id],
     );
     if (!acc) throw new Error("Pilih akun.");
@@ -861,7 +909,7 @@ export const m = {
 
     const cat = data.category_id ? get<{ name: string; icon: string }>("SELECT name, icon FROM categories WHERE id = ?", [data.category_id]) : undefined;
     const payer = q.member(data.paid_by);
-    const what = `${data.kind === "expense" ? "pengeluaran" : "pemasukan"} ${formatIDR(data.amount)}${cat ? ` · ${cat.icon} ${cat.name}` : ""}${payer && payer.id !== actor.id ? ` (dibayar ${payer.name})` : ""}`;
+    const what = `${data.kind === "expense" ? "pengeluaran" : "pemasukan"} ${formatMoney(data.amount, acc.currency)}${cat ? ` · ${cat.icon} ${cat.name}` : ""}${payer && payer.id !== actor.id ? ` (dibayar ${payer.name})` : ""}`;
 
     return write((run) => {
       if (data.id) {
@@ -891,7 +939,11 @@ export const m = {
    */
   saveTransfer(
     actorId: string,
-    data: { transferId?: string; fromAccountId: string; toAccountId: string; amount: number; fee: number; date: string; note: string },
+    data: {
+      transferId?: string; fromAccountId: string; toAccountId: string; amount: number; fee: number; date: string; note: string;
+      /** Amount received, in the destination's currency (only when currencies differ). */
+      toAmount?: number;
+    },
   ) {
     const actor = actorOf(actorId);
     if (!can.addTransaction(actor.role)) throw new PermissionError("Peran 'Hanya lihat' tidak bisa membuat transfer.");
@@ -906,6 +958,9 @@ export const m = {
     for (const a of [from, to]) {
       if (a.visibility === "private" && a.owner_member_id !== actor.id) throw new PermissionError("Itu akun pribadi orang lain.");
     }
+    const sameCurrency = from.currency === to.currency;
+    const toAmount = sameCurrency ? data.amount : (data.toAmount ?? NaN);
+    if (!Number.isInteger(toAmount) || toAmount <= 0) throw new Error(`Isi jumlah yang diterima di ${to.name}.`);
     if (data.transferId) {
       const existing = q.transfer(actor.dompet_id, data.transferId);
       if (!existing) throw new Error("Transfer tidak ditemukan.");
@@ -924,10 +979,10 @@ export const m = {
           [uid(), actor.dompet_id, accountId, kind, amount, data.date, note.slice(0, 140), flag, transferId, actor.id, actor.id, actor.id],
         );
       insert(from.id, "expense", data.amount, `Transfer ke ${to.name}${extra ? " · " + extra : ""}`, "transfer");
-      insert(to.id, "income", data.amount, `Transfer dari ${from.name}${extra ? " · " + extra : ""}`, "transfer");
+      insert(to.id, "income", toAmount, `Transfer dari ${from.name}${extra ? " · " + extra : ""}`, "transfer");
       if (data.fee > 0) insert(from.id, "expense", data.fee, `Biaya transfer ke ${to.name}`, null);
       if (from.visibility === "shared" && to.visibility === "shared")
-        log(run, actor, `${data.transferId ? "mengubah transfer" : "mentransfer"} ${formatIDR(data.amount)} dari ${from.name} ke ${to.name}`);
+        log(run, actor, `${data.transferId ? "mengubah transfer" : "mentransfer"} ${formatMoney(data.amount, from.currency)}${sameCurrency ? "" : ` (${formatMoney(toAmount, to.currency)})`} dari ${from.name} ke ${to.name}`);
       return transferId;
     });
   },
@@ -945,15 +1000,15 @@ export const m = {
 
   deleteTransaction(actorId: string, txId: string) {
     const actor = actorOf(actorId);
-    const tx = get<{ created_by: string | null; amount: number; visibility: string; holder: string | null }>(
-      "SELECT t.created_by, t.amount, a.visibility, COALESCE(a.holder_member_id, a.owner_member_id) AS holder FROM transactions t JOIN accounts a ON a.id = t.account_id WHERE t.id = ? AND t.dompet_id = ?",
+    const tx = get<{ created_by: string | null; amount: number; visibility: string; holder: string | null; currency: string }>(
+      "SELECT t.created_by, t.amount, a.visibility, a.currency, COALESCE(a.holder_member_id, a.owner_member_id) AS holder FROM transactions t JOIN accounts a ON a.id = t.account_id WHERE t.id = ? AND t.dompet_id = ?",
       [txId, actor.dompet_id],
     );
     if (!tx) return Promise.resolve();
     if (!can.editTransaction(actor.role, tx.created_by === actor.id, tx.holder === actor.id)) throw new PermissionError("Anggota hanya bisa menghapus catatan sendiri.");
     return write((run) => {
       run("DELETE FROM transactions WHERE id = ?", [txId]);
-      if (tx.visibility === "shared") log(run, actor, `menghapus transaksi ${formatIDR(tx.amount)}`);
+      if (tx.visibility === "shared") log(run, actor, `menghapus transaksi ${formatMoney(tx.amount, tx.currency)}`);
     });
   },
 

@@ -4,7 +4,8 @@
 // Dompets (Family, Kos Bareng, Trip Bali...). The same shape is what phase 2
 // will sync to Postgres, so `created_by` / `paid_by` are already here.
 //
-// Money is stored as INTEGER rupiah (no decimals) to avoid float rounding.
+// Money is stored as INTEGER minor units of the account's currency (rupiah
+// for IDR) to avoid float rounding; see lib/currency.ts.
 
 export const SCHEMA_VERSION = 2;
 
@@ -40,8 +41,12 @@ CREATE TABLE IF NOT EXISTS accounts (
   id               TEXT PRIMARY KEY,
   dompet_id        TEXT NOT NULL REFERENCES dompets(id) ON DELETE CASCADE,
   name             TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 40),
-  type             TEXT NOT NULL CHECK (type IN ('cash','bank','ewallet','savings')),
-  opening_balance  INTEGER NOT NULL DEFAULT 0,
+  -- Built-in key (cash, bank, ewallet, savings, credit, investment) or a
+  -- custom group name typed by the family ("Kartu kredit", "Emas"...).
+  type             TEXT NOT NULL CHECK (length(type) BETWEEN 1 AND 30),
+  opening_balance  INTEGER NOT NULL DEFAULT 0,  -- minor units of \`currency\`
+  currency         TEXT NOT NULL DEFAULT 'IDR',
+  fx_rate          REAL NOT NULL DEFAULT 1,     -- rupiah per 1 unit of \`currency\`
   colour           TEXT NOT NULL,
   icon             TEXT,                  -- emoji or data: URL image; NULL = by type
   -- 'private' accounts (and their transactions) are only visible to owner_member_id
@@ -155,6 +160,8 @@ CREATE INDEX IF NOT EXISTS activity_dompet ON activity(dompet_id, created_at);
 export const COLUMN_UPGRADES: [table: string, column: string, definition: string][] = [
   ["members", "user_id", "TEXT"],
   ["accounts", "icon", "TEXT"],
+  ["accounts", "currency", "TEXT NOT NULL DEFAULT 'IDR'"],
+  ["accounts", "fx_rate", "REAL NOT NULL DEFAULT 1"],
   ["accounts", "holder_member_id", "TEXT REFERENCES members(id) ON DELETE SET NULL"],
   ["members", "phone", "TEXT"],
   ["categories", "parent_id", "TEXT REFERENCES categories(id) ON DELETE CASCADE"],

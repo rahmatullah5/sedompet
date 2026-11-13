@@ -1,10 +1,10 @@
 import { useState } from "react";
-import type { Account, AccountType, Category } from "../db/repo";
+import { accountTypeIcon, type Account, type Category } from "../db/repo";
 import { formatCompact } from "../lib/format";
+import { formatMoney, isBase } from "../lib/currency";
 import { Icon } from "./Icon";
 import { cx } from "./ui";
 
-const TYPE_ICON: Record<AccountType, string> = { cash: "💵", bank: "🏦", ewallet: "📱", savings: "🐷" };
 
 /**
  * Multi-select category icons for filtering. Selecting a parent includes its
@@ -115,7 +115,7 @@ export function MultiAccountPicker({ accounts, value, onChange }: { accounts: Ac
             )}
           >
             <span className="flex h-6 w-6 items-center justify-center rounded-full" style={{ background: on ? "rgba(255,255,255,0.15)" : `${a.colour}26` }}>
-              <Icon value={a.icon ?? TYPE_ICON[a.type]} size={15} />
+              <Icon value={a.icon ?? accountTypeIcon(a.type)} size={15} />
             </span>
             {a.visibility === "private" && "🔒 "}
             {a.name}
@@ -161,7 +161,7 @@ export function AccountPicker({
               >
                 <span className="flex w-full items-center justify-between">
                   <span className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ background: `${a.colour}26` }}>
-                    <Icon value={a.icon ?? TYPE_ICON[a.type]} size={18} />
+                    <Icon value={a.icon ?? accountTypeIcon(a.type)} size={18} />
                   </span>
                   {a.visibility === "private" ? (
                     <span className="text-xs">🔒</span>
@@ -172,7 +172,7 @@ export function AccountPicker({
                   ) : null}
                 </span>
                 <span className={cx("line-clamp-1 text-xs font-semibold leading-tight", on ? "text-brand-800" : "text-slate-700")}>{a.name}</span>
-                <span className="num text-[11px] text-slate-400">{formatCompact(a.balance)}</span>
+                <span className="num text-[11px] text-slate-400">{isBase(a.currency) ? formatCompact(a.balance) : formatMoney(a.balance, a.currency)}</span>
               </button>
             );
           })}

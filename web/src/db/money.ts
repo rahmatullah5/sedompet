@@ -3,7 +3,8 @@
 import { all, get, write } from "./database";
 import { q, type Kind } from "./repo";
 import { can, PermissionError } from "../lib/permissions";
-import { formatIDR, toISODate, todayISO } from "../lib/format";
+import { toISODate, todayISO } from "../lib/format";
+import { baseSql, formatMoney } from "../lib/currency";
 
 const uid = () => crypto.randomUUID();
 const VISIBLE = `(a.visibility = 'shared' OR a.owner_member_id = $me)`;
@@ -21,6 +22,7 @@ export interface Loan {
   amount: number;
   account_id: string;
   account_name: string;
+  account_currency: string;
   start_date: string;
   due_date: string | null;
   note: string;
@@ -41,6 +43,9 @@ export interface Recurring {
   amount: number;
   account_id: string;
   account_name: string;
+  account_currency: string;
+  /** `amount` in rupiah. */
+  amount_base: number;
   category_id: string | null;
   category_icon: string | null;
   category_name: string | null;
@@ -90,7 +95,7 @@ export const mq = {
   loans(dompetId: string, me: string) {
     // Principal: lent => expense, borrowed => income. Repayment is the opposite kind.
     return all<Loan>(
-      `SELECT l.*, a.name AS account_name, cb.name AS created_by_name,
+      `SELECT l.*, a.name AS account_name, COALESCE(a.currency, 'IDR') AS account_currency, cb.name AS created_by_name,
               COALESCE((SELECT SUM(t.amount) FROM transactions t
                         WHERE t.loan_id = l.id
                           AND t.kind = CASE l.direction WHEN 'lent' THEN 'income' ELSE 'expense' END), 0) AS repaid
@@ -105,7 +110,7 @@ export const mq = {
 
   recurring(dompetId: string, me: string) {
     return all<Recurring>(
-      `SELECT r.*, a.name AS account_name, c.icon AS category_icon, c.name AS category_name,
+      `SELECT r.*, a.name AS account_name, COALESCE(a.currency, 'IDR') AS account_currency, ${baseSql("r.amount")} AS amount_base, c.icon AS category_icon, c.name AS category_name,
               p.name AS paid_by_name
        FROM recurring r
        JOIN accounts a ON a.id = r.account_id
@@ -134,8 +139,8 @@ function actorOf(id: string) {
 }
 
 function visibleAccount(actor: { id: string; dompet_id: string }, accountId: string) {
-  const a = get<{ name: string; visibility: string; owner_member_id: string | null }>(
-    "SELECT name, visibility, owner_member_id FROM accounts WHERE id = ? AND dompet_id = ?",
+  const a = get<{ name: string; visibility: string; owner_member_id: string | null; currency: string }>(
+    "SELECT name, visibility, owner_member_id, currency FROM accounts WHERE id = ? AND dompet_id = ?",
     [accountId, actor.dompet_id],
   );
   if (!a) throw new Error("Pilih akun.");
@@ -189,7 +194,7 @@ export const mm = {
         flag: "loan",
         loan_id: id,
       });
-      logIfShared(run, acc.visibility, actor, data.direction === "lent" ? `meminjamkan ${formatIDR(data.amount)} ke ${who}` : `meminjam ${formatIDR(data.amount)} dari ${who}`);
+      logIfShared(run, acc.visibility, actor, data.direction === "lent" ? `meminjamkan ${formatMoney(data.amount, acc.currency)} ke ${who}` : `meminjam ${formatMoney(data.amount, acc.currency)} dari ${who}`);
       return id;
     });
   },
@@ -201,6 +206,7 @@ export const mm = {
     const loan = mq.loans(actor.dompet_id, actor.id).find((l) => l.id === loanId);
     if (!loan) throw new Error("Pinjaman tidak ditemukan.");
     const acc = visibleAccount(actor, data.account_id);
+    if (acc.currency !== loan.account_currency) throw new Error(`Bayar dari akun ber-mata uang ${loan.account_currency}, sama seperti pinjamannya.`);
     const remaining = loan.amount - loan.repaid;
     return write((run) => {
       insertTx(run, actor, {
@@ -218,8 +224,8 @@ export const mm = {
         acc.visibility,
         actor,
         loan.direction === "lent"
-          ? `menerima ${formatIDR(data.amount)} dari ${loan.counterparty}${data.amount >= remaining ? " (lunas 🎉)" : ""}`
-          : `membayar utang ${formatIDR(data.amount)} ke ${loan.counterparty}${data.amount >= remaining ? " (lunas 🎉)" : ""}`,
+          ? `menerima ${formatMoney(data.amount, acc.currency)} dari ${loan.counterparty}${data.amount >= remaining ? " (lunas 🎉)" : ""}`
+          : `membayar utang ${formatMoney(data.amount, acc.currency)} ke ${loan.counterparty}${data.amount >= remaining ? " (lunas 🎉)" : ""}`,
       );
     });
   },
@@ -268,7 +274,7 @@ export const mm = {
         );
         run("INSERT INTO activity (id, dompet_id, member_id, message) VALUES (?, ?, ?, ?)", [
           uid(), actor.dompet_id, actor.id,
-          `menambahkan ${data.kind === "expense" ? "tagihan rutin" : "pemasukan rutin"} ${name} ${formatIDR(data.amount)}`,
+          `menambahkan ${data.kind === "expense" ? "tagihan rutin" : "pemasukan rutin"} ${name} ${formatMoney(data.amount, visibleAccount(actor, data.account_id).currency)}`,
         ]);
       }
     });
@@ -302,7 +308,7 @@ export const mm = {
           recurring_id: r.id,
           paid_by: r.paid_by ?? actor.id,
         });
-        logIfShared(run, acc.visibility, actor, `${r.kind === "expense" ? "membayar" : "menerima"} ${r.name} ${formatIDR(amount)}`);
+        logIfShared(run, acc.visibility, actor, `${r.kind === "expense" ? "membayar" : "menerima"} ${r.name} ${formatMoney(amount, r.account_currency)}`);
       }
       const ended = r.end_date !== null && next > r.end_date;
       run("UPDATE recurring SET next_date = ?, active = ? WHERE id = ?", [next, ended ? 0 : 1, r.id]);
@@ -317,9 +323,10 @@ export function projectedRecurring(dompetId: string, me: string, from: string, t
   const items: { date: string; name: string; kind: Kind; amount: number }[] = [];
   for (const r of mq.recurring(dompetId, me)) {
     for (const date of occurrences(r, from, to)) {
-      if (r.kind === "income") income += r.amount;
-      else expense += r.amount;
-      items.push({ date, name: r.name, kind: r.kind, amount: r.amount });
+      const base = r.amount_base;
+      if (r.kind === "income") income += base;
+      else expense += base;
+      items.push({ date, name: r.name, kind: r.kind, amount: base });
     }
   }
   items.sort((a, b) => a.date.localeCompare(b.date));
@@ -348,8 +355,8 @@ export function variableTotals(dompetId: string, me: string, from: string, to: s
     : "";
   const row =
     get<{ income: number; expense: number }>(
-      `SELECT COALESCE(SUM(CASE WHEN t.kind='income' THEN t.amount END), 0) AS income,
-              COALESCE(SUM(CASE WHEN t.kind='expense' THEN t.amount END), 0) AS expense
+      `SELECT COALESCE(SUM(CASE WHEN t.kind='income' THEN ${baseSql("t.amount")} END), 0) AS income,
+              COALESCE(SUM(CASE WHEN t.kind='expense' THEN ${baseSql("t.amount")} END), 0) AS expense
        FROM transactions t JOIN accounts a ON a.id = t.account_id
        LEFT JOIN categories c ON c.id = t.category_id
        WHERE t.dompet_id = $d AND ${VISIBLE} AND t.flag IS NULL AND t.recurring_id IS NULL

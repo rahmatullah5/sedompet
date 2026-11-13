@@ -4,7 +4,8 @@ import { DatePicker } from "../components/DatePicker";
 import { q, type Kind } from "../db/repo";
 import { describeFrequency, mm, mq, occurrences, type Frequency, type Recurring as Rec } from "../db/money";
 import { can } from "../lib/permissions";
-import { formatCompact, formatDay, formatIDR, parseAmount, toISODate, todayISO } from "../lib/format";
+import { formatCompact, formatDay, formatIDR, toISODate, todayISO } from "../lib/format";
+import { formatMoney, isBase, moneyInputText, parseMoney } from "../lib/currency";
 import { useCurrent, useDbVersion } from "../lib/hooks";
 import { attempt, Badge, Button, Card, cx, Empty, Field, Input, Modal, Select, STICKY_ACTIONS } from "../components/ui";
 import { Icon, IconPicker } from "../components/Icon";
@@ -54,9 +55,9 @@ function projectWindow(items: Rec[], key: WindowKey) {
     const due: { name: string; amount: number; kind: Kind; date: string }[] = [];
     for (const r of items) {
       for (const date of occurrences(r, m.from, m.to)) {
-        if (r.kind === "income") income += r.amount;
-        else expense += r.amount;
-        due.push({ name: r.name, amount: r.amount, kind: r.kind, date });
+        if (r.kind === "income") income += r.amount_base;
+        else expense += r.amount_base;
+        due.push({ name: r.name, amount: r.amount_base, kind: r.kind, date });
       }
     }
     return { ...m, income, expense, due };
@@ -87,8 +88,8 @@ function savingHint(r: Rec): string | null {
   if (due < now) return null; // already due: shown in the due list above
   const perMonth = Math.ceil(r.amount / monthsLeft);
   return monthsLeft === 1
-    ? `Siapkan ${formatIDR(r.amount)} sebelum ${formatShort(r.next_date)}`
-    : `Sisihkan ≈ ${formatIDR(perMonth)}/bulan selama ${monthsLeft} bulan sampai ${formatShort(r.next_date)}`;
+    ? `Siapkan ${formatMoney(r.amount, r.account_currency)} sebelum ${formatShort(r.next_date)}`
+    : `Sisihkan ≈ ${formatMoney(perMonth, r.account_currency)}/bulan selama ${monthsLeft} bulan sampai ${formatShort(r.next_date)}`;
 }
 
 function OutlookCard({
@@ -174,7 +175,7 @@ export function DueList() {
               <span className="block truncate font-semibold text-slate-800">{r.name}</span>
               <span className="text-xs text-slate-500">
                 {formatDay(r.next_date)} · {r.kind === "income" ? "+" : "−"}
-                {formatIDR(r.amount)}
+                {formatMoney(r.amount, r.account_currency)}
               </span>
             </span>
             {canAct && (
@@ -233,7 +234,7 @@ export function Recurring() {
                 )}
                 {savingHint(r) && <span className="mt-0.5 block text-xs font-semibold text-amber-700">💡 {savingHint(r)}</span>}
               </span>
-              <span className={cx("num font-bold", r.kind === "income" ? "text-mint-600" : "text-slate-800")}>{formatIDR(r.amount)}</span>
+              <span className={cx("num font-bold", r.kind === "income" ? "text-mint-600" : "text-slate-800")}>{formatMoney(r.amount, r.account_currency)}</span>
             </button>
           </li>
         ))}
@@ -303,7 +304,7 @@ function RecurringForm({ item, kind, onClose }: { item: Rec | null; kind: Kind; 
   const categories = q.categories(dompet.id, kind);
   const [name, setName] = useState(item?.name ?? "");
   const [icon, setIcon] = useState(item?.icon ?? (kind === "income" ? "💼" : "🧾"));
-  const [amountText, setAmountText] = useState(item ? String(item.amount) : "");
+  const [amountText, setAmountText] = useState(item ? moneyInputText(item.amount, item.account_currency) : "");
   const [accountId, setAccountId] = useState(item?.account_id ?? accounts[0]?.id ?? "");
   const [categoryId, setCategoryId] = useState(item?.category_id ?? "");
   const [paidBy, setPaidBy] = useState(item?.paid_by ?? "");
@@ -311,14 +312,15 @@ function RecurringForm({ item, kind, onClose }: { item: Rec | null; kind: Kind; 
   const [every, setEvery] = useState(item?.every ?? 1);
   const [nextDate, setNextDate] = useState(item?.next_date ?? todayISO());
   const [endDate, setEndDate] = useState(item?.end_date ?? "");
-  const amount = parseAmount(amountText);
+  const currency = accounts.find((a) => a.id === accountId)?.currency ?? "IDR";
+  const amount = parseMoney(amountText, currency);
   const [moreOpen, setMoreOpen] = useState(!!item && !!(item.category_id || item.end_date || item.paid_by));
   // Suggest from earlier transactions of the same kind while typing a new item.
   const [showSuggest, setShowSuggest] = useState(false);
   const suggestions = showSuggest && !item ? q.suggestions(dompet.id, me.id, name, 5, kind) : [];
   const applySuggestion = (s: Suggestion) => {
     setName(s.note.slice(0, 60));
-    setAmountText(String(s.amount));
+    setAmountText(moneyInputText(s.amount, accounts.find((a) => a.id === s.account_id)?.currency));
     if (accounts.some((a) => a.id === s.account_id)) setAccountId(s.account_id);
     setCategoryId(s.category_id ?? "");
     if (s.paid_by && members.some((m) => m.id === s.paid_by)) setPaidBy(s.paid_by);
@@ -388,7 +390,7 @@ function RecurringForm({ item, kind, onClose }: { item: Rec | null; kind: Kind; 
         </Field>
         {showSuggest && <SuggestionList items={suggestions} onPick={applySuggestion} />}
       </div>
-      <Field label="Berapa?" hint={amount > 0 ? formatIDR(amount) : undefined}>
+      <Field label={isBase(currency) ? "Berapa?" : `Berapa? (${currency})`} hint={amount > 0 ? formatMoney(amount, currency) : undefined}>
         <Input inputMode="decimal" value={amountText} onChange={(e) => setAmountText(e.target.value)} />
       </Field>
       <FrequencyPicker frequency={frequency} every={every} onChange={(f, n) => (setFrequency(f), setEvery(n))} />

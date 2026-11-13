@@ -4,7 +4,8 @@ import { DatePicker } from "../components/DatePicker";
 import { q } from "../db/repo";
 import { mm, mq, type Loan, type LoanDirection } from "../db/money";
 import { can } from "../lib/permissions";
-import { formatDay, formatIDR, parseAmount, todayISO } from "../lib/format";
+import { formatDay, formatIDR, todayISO } from "../lib/format";
+import { formatMoney, isBase, moneyInputText, parseMoney, toBase } from "../lib/currency";
 import { useCurrent, useDbVersion } from "../lib/hooks";
 import { attempt, Badge, Button, Card, cx, Empty, Field, Input, Modal, Progress, STICKY_ACTIONS } from "../components/ui";
 
@@ -16,8 +17,10 @@ export function Loans() {
   const [paying, setPaying] = useState<Loan | null>(null);
   const open = loans.filter((l) => !l.settled);
   const done = loans.filter((l) => l.settled);
-  const owedToUs = open.filter((l) => l.direction === "lent").reduce((s, l) => s + l.amount - l.repaid, 0);
-  const weOwe = open.filter((l) => l.direction === "borrowed").reduce((s, l) => s + l.amount - l.repaid, 0);
+  const rate = new Map(q.accounts(dompet.id, me.id).map((a) => [a.id, a.fx_rate]));
+  const leftBase = (l: Loan) => toBase(l.amount - l.repaid, l.account_currency, rate.get(l.account_id));
+  const owedToUs = open.filter((l) => l.direction === "lent").reduce((s, l) => s + leftBase(l), 0);
+  const weOwe = open.filter((l) => l.direction === "borrowed").reduce((s, l) => s + leftBase(l), 0);
   const canAdd = can.addTransaction(me.role);
 
   return (
@@ -112,9 +115,9 @@ function LoanCard({ loan, onPay }: { loan: Loan; onPay?: () => void }) {
       </div>
       <div className="mt-2 flex items-center justify-between text-sm">
         <span className="num text-slate-600">
-          {formatIDR(loan.repaid)} <span className="text-slate-400">/ {formatIDR(loan.amount)}</span>
+          {formatMoney(loan.repaid, loan.account_currency)} <span className="text-slate-400">/ {formatMoney(loan.amount, loan.account_currency)}</span>
         </span>
-        {!loan.settled && <span className="num font-semibold text-slate-800">sisa {formatIDR(Math.max(0, left))}</span>}
+        {!loan.settled && <span className="num font-semibold text-slate-800">sisa {formatMoney(Math.max(0, left), loan.account_currency)}</span>}
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
         {onPay && !loan.settled && can.addTransaction(me.role) && <Button onClick={onPay}>{loan.direction === "lent" ? "Terima cicilan" : "Bayar cicilan"}</Button>}
@@ -146,7 +149,8 @@ function LoanForm({ direction, onClose }: { direction: LoanDirection; onClose: (
   const [date, setDate] = useState(todayISO());
   const [due, setDue] = useState("");
   const [note, setNote] = useState("");
-  const amount = parseAmount(amountText);
+  const currency = accounts.find((a) => a.id === accountId)?.currency ?? "IDR";
+  const amount = parseMoney(amountText, currency);
   return (
     <form
       className="space-y-3"
@@ -162,7 +166,7 @@ function LoanForm({ direction, onClose }: { direction: LoanDirection; onClose: (
       <Field label={direction === "lent" ? "Dipinjamkan ke siapa?" : "Pinjam dari siapa?"}>
         <Input autoFocus value={who} maxLength={60} placeholder="mis. Om Budi" onChange={(e) => setWho(e.target.value)} />
       </Field>
-      <Field label="Berapa?" hint={amount > 0 ? formatIDR(amount) : "Ketik 500rb atau 2jt"}>
+      <Field label={isBase(currency) ? "Berapa?" : `Berapa? (${currency})`} hint={amount > 0 ? formatMoney(amount, currency) : isBase(currency) ? "Ketik 500rb atau 2jt" : "mis. 100.50"}>
         <Input inputMode="decimal" value={amountText} onChange={(e) => setAmountText(e.target.value)} />
       </Field>
       <div className="space-y-3">
@@ -187,12 +191,14 @@ function LoanForm({ direction, onClose }: { direction: LoanDirection; onClose: (
 
 function PaymentForm({ loan, onClose }: { loan: Loan; onClose: () => void }) {
   const { dompet, me } = useCurrent();
-  const accounts = q.accounts(dompet.id, me.id);
+  // Repayments stay in the loan's currency.
+  const accounts = q.accounts(dompet.id, me.id).filter((a) => a.currency === loan.account_currency);
+  const cur = loan.account_currency;
   const left = Math.max(0, loan.amount - loan.repaid);
-  const [amountText, setAmountText] = useState(String(left));
+  const [amountText, setAmountText] = useState(moneyInputText(left, cur));
   const [accountId, setAccountId] = useState(loan.account_id);
   const [date, setDate] = useState(todayISO());
-  const amount = parseAmount(amountText);
+  const amount = parseMoney(amountText, cur);
   return (
     <form
       className="space-y-3"
@@ -202,15 +208,15 @@ function PaymentForm({ loan, onClose }: { loan: Loan; onClose: () => void }) {
       }}
     >
       <p className="text-sm text-slate-500">
-        Sisa {formatIDR(left)} {loan.direction === "lent" ? `dari ${loan.counterparty}` : `ke ${loan.counterparty}`}.
+        Sisa {formatMoney(left, cur)} {loan.direction === "lent" ? `dari ${loan.counterparty}` : `ke ${loan.counterparty}`}.
       </p>
-      <Field label="Jumlah" hint={amount > 0 ? formatIDR(amount) : undefined}>
+      <Field label="Jumlah" hint={amount > 0 ? formatMoney(amount, cur) : undefined}>
         <Input autoFocus inputMode="decimal" value={amountText} onChange={(e) => setAmountText(e.target.value)} />
       </Field>
       <div className="flex flex-wrap gap-1.5">
         {[left, Math.round(left / 2)].filter((v, i, a) => v > 0 && a.indexOf(v) === i).map((v) => (
-          <button key={v} type="button" onClick={() => setAmountText(String(v))} className={cx("rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-brand-100")}>
-            {v === left ? "Lunasi" : "Setengah"} · {formatIDR(v)}
+          <button key={v} type="button" onClick={() => setAmountText(moneyInputText(v, cur))} className={cx("rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-brand-100")}>
+            {v === left ? "Lunasi" : "Setengah"} · {formatMoney(v, cur)}
           </button>
         ))}
       </div>
