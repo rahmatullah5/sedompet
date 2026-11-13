@@ -9,6 +9,7 @@ import { DueList } from "./Recurring";
 import { Icon } from "../components/Icon";
 import { BudgetIcon } from "./Budgets";
 import { GoalRow } from "./Goals";
+import { StartChecklist } from "../components/StartChecklist";
 
 function greeting() {
   const h = new Date().getHours();
@@ -23,7 +24,7 @@ function daysLeftThisMonth() {
   return Math.round((Date.parse(periodRange(currentMonth()).to) - Date.parse(todayISO())) / 86_400_000) + 1;
 }
 
-export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction) => void; goTo: (page: string) => void }) {
+export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction | null) => void; goTo: (page: string) => void }) {
   useDbVersion();
   const { dompet, me, members } = useCurrent();
   const month = currentMonth();
@@ -142,6 +143,8 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction) => void; g
         budgetLeft={overall ? overall.amount - overall.spent : null}
         days={days}
       />
+
+      <StartChecklist onOpenTx={onOpenTx} />
 
       <DueList />
 

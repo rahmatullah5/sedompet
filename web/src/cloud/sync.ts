@@ -585,8 +585,15 @@ export const cloud = {
       sb.from("dompet_members").update({ display_name: yourName.trim().slice(0, 60), emoji }).eq("dompet_id", dompetId).eq("user_id", state.userId!).select("id").single(),
     );
     await pullAll();
-    setSession({ dompetId, memberId: (member as { id: string }).id }, { picked: true });
-    return { dompetId, ownerId: (member as { id: string }).id };
+    const ownerId = (member as { id: string }).id;
+    // First Dompet of this account: add the starter entry so the app isn't empty.
+    if (all<{ n: number }>("SELECT count(*) AS n FROM dompets")[0]?.n === 1) {
+      await refreshSubscription(); // now that there is a Dompet, the plan can be read
+      const { addStarterData } = await import("../db/starter");
+      await addStarterData(dompetId, ownerId, state.myPlan as never, state.myActiveUntil).catch((e) => console.warn("starter data", e));
+    }
+    setSession({ dompetId, memberId: ownerId }, { picked: true });
+    return { dompetId, ownerId };
   },
 
   async joinWithCode(code: string, yourName?: string) {
