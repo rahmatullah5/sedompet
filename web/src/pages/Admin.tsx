@@ -1,7 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { cloud, cloudStore, type ActivationCode, type AppPhone } from "../cloud/sync";
+import { cloud, cloudStore, type ActivationCode, type AppPhone, type PlanChoice } from "../cloud/sync";
 import { displayPhone, inviteLink } from "../cloud/client";
-import { attempt, Badge, Button, Card, cx, Empty, Field, Input, toast } from "../components/ui";
+import { attempt, Badge, Button, Card, cx, Empty, Field, Input, Select, toast } from "../components/ui";
 
 const fmt = new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", year: "numeric" });
 const day = (iso: string | null) => (iso ? fmt.format(new Date(iso)) : "—");
@@ -13,12 +13,34 @@ function codeStatus(c: ActivationCode): { label: string; tone: "brand" | "amber"
   return { label: "Siap dipakai", tone: "brand" };
 }
 
+const CODE_PLANS: { key: string; label: string; plan: PlanChoice }[] = [
+  { key: "tahunan-12", label: "Tahunan · 12 bulan", plan: { plan: "tahunan", months: 12 } },
+  { key: "bulanan-1", label: "Bulanan · 1 bulan", plan: { plan: "bulanan", months: 1 } },
+  { key: "bulanan-3", label: "Bulanan · 3 bulan", plan: { plan: "bulanan", months: 3 } },
+  { key: "gratis", label: "Gratis · tanpa batas", plan: { plan: "gratis" } },
+  { key: "none", label: "Tanpa paket (seperti dulu)", plan: null },
+];
+
+const PLAN_LABEL: Record<string, string> = { bulanan: "Bulanan", tahunan: "Tahunan", gratis: "Gratis", anggota: "Anggota undangan" };
+
+/** Plan badge + "s.d." date for a number (admin list). */
+function planInfo(p: AppPhone): { text: string; tone: "brand" | "amber" | "slate" | "violet" } {
+  if (!p.plan && !p.active_until) return { text: "Tanpa batas (lama)", tone: "slate" };
+  if (p.plan === "gratis") return { text: "Gratis", tone: "violet" };
+  const label = PLAN_LABEL[p.plan ?? ""] ?? p.plan ?? "Paket";
+  if (!p.active_until) return { text: label, tone: "slate" };
+  const days = Math.ceil((new Date(p.active_until).getTime() - Date.now()) / 86_400_000);
+  if (days <= 0) return { text: `${label} · habis ${day(p.active_until)}`, tone: "amber" };
+  return { text: `${label} · s.d. ${day(p.active_until)}${days <= 7 ? ` (${days} hari lagi)` : ""}`, tone: days <= 7 ? "amber" : "brand" };
+}
+
 /** App admin only: single-use activation codes and the list of numbers. */
 export function Admin() {
   const { appAdmin } = useSyncExternalStore(cloudStore.subscribe, cloudStore.get);
   const [codes, setCodes] = useState<ActivationCode[]>([]);
   const [phones, setPhones] = useState<AppPhone[]>([]);
   const [note, setNote] = useState("");
+  const [codePlan, setCodePlan] = useState("tahunan-12");
   const [busy, setBusy] = useState(false);
 
   const reload = async () => {
@@ -71,7 +93,7 @@ export function Admin() {
             e.preventDefault();
             setBusy(true);
             await attempt(async () => {
-              const c = await cloud.createActivationCode(note);
+              const c = await cloud.createActivationCode(note, CODE_PLANS.find((x) => x.key === codePlan)?.plan ?? null);
               setNote("");
               await reload();
               await share(c.code);
@@ -84,11 +106,24 @@ export function Admin() {
               <Input value={note} maxLength={80} placeholder="mis. Om Budi" onChange={(e) => setNote(e.target.value)} />
             </Field>
           </div>
+          <div className="min-w-48">
+            <Field label="Paket">
+              <Select value={codePlan} onChange={(e) => setCodePlan(e.target.value)}>
+                {CODE_PLANS.map((p) => (
+                  <option key={p.key} value={p.key}>
+                    {p.label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
           <Button type="submit" disabled={busy}>
             {busy ? "Membuat…" : "Buat & bagikan"}
           </Button>
         </form>
-        <p className="mt-2 text-xs text-slate-400">Berlaku 30 hari. Orangnya buka link, pilih “Daftar pertama kali”, isi nomor & PIN.</p>
+        <p className="mt-2 text-xs text-slate-400">
+          Kode berlaku 30 hari. Masa paket mulai dihitung saat orangnya daftar. Orangnya buka link, pilih “Daftar pertama kali”, isi nomor & PIN.
+        </p>
       </Card>
 
       <Card title={`Kode aktif (${open.length})`}>
@@ -100,7 +135,8 @@ export function Admin() {
               <li key={c.code} className="flex flex-wrap items-center gap-3 rounded-2xl bg-slate-50 p-3">
                 <span className="num text-lg font-extrabold tracking-[0.2em] text-slate-800">{c.code}</span>
                 <span className="min-w-0 flex-1 text-xs text-slate-500">
-                  {c.note ?? "—"} · s.d. {day(c.expires_at)}
+                  {c.note ?? "—"}
+                  {c.plan ? ` · ${PLAN_LABEL[c.plan] ?? c.plan}${c.months ? ` ${c.months} bln` : ""}` : ""} · berlaku s.d. {day(c.expires_at)}
                 </span>
                 <Button variant="ghost" className="px-2" onClick={() => share(c.code)}>
                   Bagikan
@@ -147,6 +183,39 @@ export function Admin() {
                   {p.registered ? `Login terakhir ${day(p.last_sign_in_at)}` : "Belum daftar"} · {p.dompets} Dompet
                   {p.note ? ` · ${p.note}` : ""}
                 </p>
+                {"plan" in p && (
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                    <Badge tone={planInfo(p).tone}>{planInfo(p).text}</Badge>
+                    {(
+                      [
+                        ["+1 bln", "bulanan", 1],
+                        ["+12 bln", "tahunan", 12],
+                        ["Gratis", "gratis", undefined],
+                        ["Stop", "berhenti", undefined],
+                      ] as const
+                    ).map(([label, plan, months]) => (
+                      <button
+                        key={label}
+                        type="button"
+                        className={cx(
+                          "rounded-full px-2.5 py-0.5 text-xs font-semibold",
+                          plan === "berhenti" ? "text-red-600 hover:bg-red-50" : "bg-slate-100 text-slate-600 hover:bg-slate-200",
+                        )}
+                        onClick={() => {
+                          const ask =
+                            plan === "berhenti"
+                              ? `Akhiri paket ${displayPhone(p.phone)} sekarang? Dompet miliknya jadi hanya bisa dilihat.`
+                              : plan === "gratis"
+                                ? `Jadikan ${displayPhone(p.phone)} gratis tanpa batas?`
+                                : `Tambah ${months} bulan untuk ${displayPhone(p.phone)}? Dihitung dari sisa masa aktif.`;
+                          if (confirm(ask)) void attempt(async () => (await cloud.setSubscription(p.phone, plan, months), await reload()), "Paket diperbarui");
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               <label className="flex items-center gap-2 text-sm font-semibold text-slate-600">
                 <input

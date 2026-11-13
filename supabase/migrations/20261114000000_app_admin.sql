@@ -116,6 +116,9 @@ begin
 end $$;
 
 -- Everyone who can log in (or was activated), for the admin page.
+-- (Dropped first: a later migration adds columns, and re-running this file
+-- must not fail on the changed return type.)
+drop function if exists public.app_list_phones();
 create or replace function public.app_list_phones()
 returns table (
   phone text, activated boolean, registered boolean, is_admin boolean, note text,

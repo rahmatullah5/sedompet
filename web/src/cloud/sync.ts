@@ -34,8 +34,18 @@ export interface CloudState {
   error: string | null;
   /** App-level admin (can generate activation codes). */
   appAdmin: boolean;
+  /** Paid-plan status per Dompet (empty when the server has no plans yet). */
+  subs: Record<string, DompetSub>;
+  /** My own plan ('bulanan' | 'tahunan' | 'gratis' | 'anggota' | null = legacy). */
+  myPlan: string | null;
+  myActiveUntil: string | null;
 }
-let state: CloudState = { status: "loading", userId: null, email: null, syncing: false, error: null, appAdmin: false };
+export interface DompetSub {
+  /** ISO date the Dompet turns read-only; null = no expiry. */
+  activeUntil: string | null;
+  isActive: boolean;
+}
+let state: CloudState = { status: "loading", userId: null, email: null, syncing: false, error: null, appAdmin: false, subs: {}, myPlan: null, myActiveUntil: null };
 const listeners = new Set<() => void>();
 function setState(p: Partial<CloudState>) {
   state = { ...state, ...p };
@@ -358,6 +368,18 @@ export async function pullAll(): Promise<void> {
 // ---------------------------------------------------------------------------
 let channel: RealtimeChannel | null = null;
 
+/** Loads plan status. Older servers without the RPC simply have no plans. */
+export async function refreshSubscription() {
+  const { data, error } = await requireSupabase().rpc("my_subscription");
+  if (error || !Array.isArray(data)) return;
+  const rows = data as { dompet_id: string; active_until: string | null; is_active: boolean; my_plan: string | null; my_active_until: string | null }[];
+  setState({
+    subs: Object.fromEntries(rows.map((r) => [r.dompet_id, { activeUntil: r.active_until, isActive: r.is_active }])),
+    myPlan: rows[0]?.my_plan ?? null,
+    myActiveUntil: rows[0]?.my_active_until ?? null,
+  });
+}
+
 async function onSession(session: Session | null) {
   const sb = requireSupabase();
   if (!session) {
@@ -368,7 +390,7 @@ async function onSession(session: Session | null) {
       run("DELETE FROM outbox");
     });
     setSession({ dompetId: null, memberId: null });
-    setState({ status: "signed-out", userId: null, email: null, syncing: false, appAdmin: false });
+    setState({ status: "signed-out", userId: null, email: null, syncing: false, appAdmin: false, subs: {}, myPlan: null, myActiveUntil: null });
     return;
   }
   const switchedUser = state.userId !== null && state.userId !== session.user.id;
@@ -386,6 +408,7 @@ async function onSession(session: Session | null) {
   }
   const { data: isAdmin } = await sb.rpc("is_app_admin");
   setState({ appAdmin: isAdmin === true });
+  await refreshSubscription();
   try {
     await pullAll();
   } catch (e) {
@@ -436,7 +459,10 @@ export async function startCloudSync() {
   });
   // Catch up when the tab comes back to the foreground.
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible" && state.status === "ready") schedulePull(0);
+    if (document.visibilityState === "visible" && state.status === "ready") {
+      schedulePull(0);
+      void refreshSubscription();
+    }
   });
 }
 
@@ -448,6 +474,8 @@ export interface ActivationCode {
   revoked: boolean;
   used_phone: string | null;
   used_at: string | null;
+  plan?: string | null;
+  months?: number | null;
 }
 
 export interface AppPhone {
@@ -459,7 +487,11 @@ export interface AppPhone {
   activated_at: string | null;
   last_sign_in_at: string | null;
   dompets: number;
+  plan?: string | null;
+  active_until?: string | null;
 }
+
+export type PlanChoice = { plan: "bulanan" | "tahunan"; months: number } | { plan: "gratis" } | null;
 
 // ---------------------------------------------------------------------------
 // Auth + membership actions (server-side RPCs)
@@ -584,8 +616,22 @@ export const cloud = {
   },
 
   // --- App admin -------------------------------------------------------------
-  async createActivationCode(note: string) {
-    return (await call(requireSupabase().rpc("app_create_activation_code", { p_note: note.trim() || null, p_valid_days: 30 }))) as ActivationCode;
+  async createActivationCode(note: string, plan: PlanChoice = null) {
+    const args: Record<string, unknown> = { p_note: note.trim() || null, p_valid_days: 30 };
+    // Plan arguments only when chosen, so servers without plans keep working.
+    if (plan) Object.assign(args, { p_plan: plan.plan, p_months: plan.plan === "gratis" ? null : plan.months });
+    const { data, error } = await requireSupabase().rpc("app_create_activation_code", args);
+    if (error) {
+      const outdated = error.code === "PGRST202" || /Could not find the function/.test(error.message);
+      if (plan && outdated) throw new Error("Server belum mendukung paket. Jalankan SQL 20261121000000_subscription.sql dulu, atau pilih 'Tanpa paket'.");
+      throw new Error(friendlyError(error));
+    }
+    return data as ActivationCode;
+  },
+  /** Extend (adds to what's left), make free, or end ('berhenti') a number's plan. */
+  async setSubscription(phone: string, plan: "bulanan" | "tahunan" | "gratis" | "berhenti", months?: number) {
+    await call(requireSupabase().rpc("app_set_subscription", { p_phone: phone, p_plan: plan, p_months: months ?? null }));
+    await refreshSubscription();
   },
   async listActivationCodes() {
     return ((await call(requireSupabase().rpc("app_list_activation_codes"))) ?? []) as ActivationCode[];

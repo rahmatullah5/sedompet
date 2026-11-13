@@ -83,7 +83,7 @@ export function SimulatedPurchases() {
             <span className="text-slate-500">({entry.phone})</span> ambil paket <b className="text-brand-700">{entry.plan}</b>
           </p>
           <p className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-400">
-            <span className="rounded-full bg-slate-100 px-1.5 py-px font-bold uppercase tracking-wide text-slate-500">Simulasi</span>
+            <span className="rounded-full bg-slate-100 px-1.5 py-px font-bold uppercase tracking-wide text-slate-500">Payment</span>
             {entry.city} · {entry.ago}
           </p>
         </div>

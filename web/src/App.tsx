@@ -23,6 +23,8 @@ import { Reports } from "./pages/Reports";
 import { Menu } from "./pages/Menu";
 import { Admin } from "./pages/Admin";
 import { Trash } from "./pages/Trash";
+import { PlanBanner, READ_ONLY_MESSAGE } from "./components/PlanBanner";
+import { setWriteGuard } from "./db/database";
 
 const PAGES = ["beranda", "riwayat", "laporan", "menu", "anggaran", "keluarga", "akun", "kategori", "rutin", "pinjaman", "tujuan", "sampah", "admin"] as const;
 type PageId = (typeof PAGES)[number];
@@ -94,6 +96,14 @@ export default function App() {
     document.title = dompet ? `${dompet.name} · Sedompet` : "Sedompet";
   }, [dompet]);
 
+  // Paid plans (cloud only): an ended plan makes this Dompet read-only.
+  const sub = cloudMode && dompet ? cloudState.subs[dompet.id] : undefined;
+  const readOnly = !!sub && !sub.isActive;
+  useEffect(() => {
+    setWriteGuard(readOnly ? () => READ_ONLY_MESSAGE : null);
+    return () => setWriteGuard(null);
+  }, [readOnly]);
+
   if (cloudMode && cloudState.status === "loading") return <CloudLoading />;
   if (cloudMode && cloudState.status === "not-activated") return <CloudNotActivated />;
   if (cloudMode && cloudState.status === "signed-out") {
@@ -132,7 +142,7 @@ export default function App() {
     setEditingTx(t);
     setTxOpen(true);
   };
-  const canAdd = can.addTransaction(me.role);
+  const canAdd = can.addTransaction(me.role) && !readOnly;
 
   return (
     <CurrentContext.Provider value={{ dompet, me, members }}>
@@ -169,6 +179,7 @@ export default function App() {
         </header>
 
         <main className="pt-2">
+          <PlanBanner sub={sub} isOwner={me.role === "owner"} />
           {page === "beranda" && <Home onOpenTx={openTx} goTo={goTo} />}
           {page === "riwayat" && <Transactions onOpenTx={openTx} />}
           {page === "anggaran" && <Budgets />}
@@ -195,7 +206,7 @@ export default function App() {
             <NavItem key={n.id} {...n} active={page === n.id} />
           ))}
           <button
-            onClick={() => (canAdd ? openTx(null) : toast("Peranmu 'Hanya lihat'. Minta orang tua untuk mencatat ya 🙂"))}
+            onClick={() => (canAdd ? openTx(null) : toast(readOnly ? READ_ONLY_MESSAGE : "Peranmu 'Hanya lihat'. Minta orang tua untuk mencatat ya 🙂"))}
             className={cx(
               "-mt-9 flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-full border-4 border-[#fff8f1] text-3xl font-light text-white shadow-lg transition active:scale-95",
               canAdd ? "bg-brand-600 shadow-brand-600/40 hover:bg-brand-700" : "bg-slate-300 shadow-none",

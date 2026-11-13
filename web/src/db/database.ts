@@ -27,6 +27,11 @@ let afterWrite: (() => void) | null = null;
 export function setAfterWrite(fn: (() => void) | null) {
   afterWrite = fn;
 }
+/** Returns a message when local writes are not allowed (e.g. plan ended). */
+let writeGuard: (() => string | null) | null = null;
+export function setWriteGuard(fn: (() => string | null) | null) {
+  writeGuard = fn;
+}
 let SQL: Awaited<ReturnType<typeof initSqlJs>> | null = null;
 
 // ---------------------------------------------------------------------------
@@ -192,6 +197,8 @@ export function get<T>(sql: string, params: Params = []): T | undefined {
  * Throwing inside `fn` rolls everything back.
  */
 export async function write<T>(fn: (run: (sql: string, params?: Params) => void) => T): Promise<T> {
+  const blocked = writeGuard?.();
+  if (blocked) throw new Error(blocked);
   const d = requireDb();
   d.exec("BEGIN");
   let result: T;

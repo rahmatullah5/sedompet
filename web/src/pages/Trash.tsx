@@ -14,7 +14,7 @@ export function Trash() {
 
   // Drop entries past the retention window (a write, so not during render).
   useEffect(() => {
-    void trash.purge(dompet.id);
+    trash.purge(dompet.id).catch(() => {}); // e.g. read-only Dompet
   }, [dompet.id]);
 
   return (
