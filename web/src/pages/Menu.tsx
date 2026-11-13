@@ -8,6 +8,7 @@ import { useSyncExternalStore } from "react";
 import { cloudStore } from "../cloud/sync";
 import { WA_FEEDBACK } from "../lib/contact";
 import { trash } from "../db/trash";
+import { netWorth } from "../db/networth";
 import { InstallCard } from "../components/InstallCard";
 
 const ITEMS = [
@@ -17,6 +18,7 @@ const ITEMS = [
   { href: "#/pinjaman", icon: "🤝", title: "Utang & Piutang", hint: "Pinjam-meminjam" },
   { href: "#/patungan", icon: "👥", title: "Patungan", hint: "Siapa utang ke siapa" },
   { href: "#/akun", icon: "💳", title: "Isi dompet", hint: "Tunai, bank, e-wallet" },
+  { href: "#/neraca", icon: "⚖️", title: "Neraca", hint: "Harta, utang, kekayaan bersih" },
   { href: "#/kategori", icon: "🏷️", title: "Kategori", hint: "Kategori & subkategori" },
   { href: "#/keluarga", icon: "👨‍👩‍👧", title: "Keluarga", hint: "Anggota & peran" },
   { href: "#/sampah", icon: "🗑️", title: "Sampah", hint: "Pulihkan yang terhapus" },
@@ -36,6 +38,7 @@ export function Menu() {
     "#/akun": `${accounts} akun`,
     "#/sampah": trashed ? `${trashed} bisa dipulihkan` : null,
     "#/patungan": owing ? `${owing} orang belum lunas` : null,
+    "#/neraca": `bersih ${formatCompact(netWorth(dompet.id, me.id).net)}`,
   };
   const balance = q.accounts(dompet.id, me.id).reduce((s, a) => s + a.balance_base, 0);
   const { appAdmin } = useSyncExternalStore(cloudStore.subscribe, cloudStore.get);

@@ -4,6 +4,8 @@ import { projectedRecurring, variableTotals } from "../db/money";
 import { currentMonth, formatCompact, formatIDR, formatMonth, formatPeriodRange, periodDay, periodRange, shiftMonth, toISODate, todayISO } from "../lib/format";
 import { useCurrent, useDbVersion } from "../lib/hooks";
 import { Card, cx } from "../components/ui";
+import { netWorth } from "../db/networth";
+import { netWorthTrend } from "./Neraca";
 import { Icon } from "../components/Icon";
 
 // Chart colours (validated: lightness/chroma pass; CVD 7.4 => secondary
@@ -215,6 +217,7 @@ export function Reports() {
       <PaceChart />
       <MonthlyChart />
       <CategoryChart />
+      <NetWorthCard />
 
       {/* 3-month outlook */}
       <Card title="3 bulan ke depan 🔮">
@@ -590,5 +593,31 @@ function TipRow({ colour, label, value, dashed }: { colour: string; label: strin
       <span className="num font-bold text-slate-800">{formatIDR(Math.round(value))}</span>
       <span className="text-xs text-slate-500">{label}</span>
     </p>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Net worth summary (full page: Neraca)
+// ---------------------------------------------------------------------------
+function NetWorthCard() {
+  const { dompet, me } = useCurrent();
+  const nw = netWorth(dompet.id, me.id);
+  const trend = netWorthTrend(dompet.id, me.id, 2);
+  const delta = nw.net - trend[0].net;
+  return (
+    <a href="#/neraca" className="block">
+      <Card title="Kekayaan bersih ⚖️" action={<span className="text-sm font-semibold text-brand-700">Neraca →</span>}>
+        <p className="num text-2xl font-extrabold text-slate-800">{formatIDR(nw.net)}</p>
+        <p className="mt-0.5 text-sm text-slate-500">
+          Harta {formatCompact(nw.totalAssets)} − Utang {formatCompact(nw.totalLiabilities)}
+          {delta !== 0 && (
+            <span className={delta > 0 ? "font-semibold text-mint-600" : "font-semibold text-red-600"}>
+              {" "}
+              · {delta > 0 ? "▲" : "▼"} {formatCompact(Math.abs(delta))} sejak akhir {formatMonth(trend[0].month).split(" ")[0]}
+            </span>
+          )}
+        </p>
+      </Card>
+    </a>
   );
 }
