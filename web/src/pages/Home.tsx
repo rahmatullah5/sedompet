@@ -1,4 +1,4 @@
-import { q, type Transaction } from "../db/repo";
+import { budgetCovers, q, type Transaction } from "../db/repo";
 import { currentMonth, formatCompact, formatIDR, formatMonth, timeAgo } from "../lib/format";
 import { useCurrent, useDbVersion } from "../lib/hooks";
 import { Avatar, Card, Empty, Progress } from "../components/ui";
@@ -31,8 +31,23 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction) => void; g
   const byMember = q.spendingByMember(dompet.id, me.id, month);
   const topCats = q.spendingByCategory(dompet.id, me.id, month).slice(0, 3);
   const budgets = q.budgets(dompet.id, month);
-  const overall = budgets.find((b) => !b.category_id && !b.category_ids && !b.member_id && b.period === "monthly");
-  const jars = budgets.filter((b) => b !== overall).slice(0, 4);
+  const family = budgets.find((b) => !b.category_id && !b.category_ids && !b.member_id && b.period === "monthly");
+  const jars = budgets.filter((b) => b !== family).slice(0, 4);
+  // No "Total bulanan" budget: combine every budget instead. Limits add up
+  // (monthly equivalent); spending counts each shared expense once, if any
+  // budget covers it.
+  const overall: { spent: number; amount: number; combined: number } | null = (() => {
+    if (family) return { spent: family.spent, amount: family.amount, combined: 0 };
+    const all = q.budgets(dompet.id, month, { wholeMonth: true });
+    if (all.length === 0) return null;
+    const parentOf = new Map(q.categories(dompet.id).map((c) => [c.id, c.parent_id]));
+    const spent = q
+      .transactions(dompet.id, me.id, { month, kind: "expense" })
+      .filter((t) => !t.flag && t.account_visibility === "shared")
+      .filter((t) => all.some((b) => budgetCovers(b, t.category_id, t.category_id ? (parentOf.get(t.category_id) ?? null) : null, t.paid_by)))
+      .reduce((s, t) => s + t.amount_base, 0);
+    return { spent, amount: all.reduce((s, b) => s + b.limit, 0), combined: all.length };
+  })();
   const activity = q.activity(dompet.id, 6);
   const recent = q.transactions(dompet.id, me.id, { limit: 4 });
   const familySpend = byMember.reduce((s, x) => s + x.total, 0);
@@ -98,6 +113,9 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction) => void; g
                 Bulan {formatMonth(month).split(" ")[0]} terpakai {formatCompact(overall.spent)} dari {formatCompact(overall.amount)}
               </p>
               <p className="mt-0.5 text-sm text-slate-500">{mood.text}</p>
+              {overall.combined > 0 && (
+                <p className="mt-1 text-xs text-slate-400">Gabungan {overall.combined} anggaran. Buat anggaran tanpa kategori untuk batas total.</p>
+              )}
               <div className="mt-3">
                 <Progress value={overall.spent} max={overall.amount} />
               </div>
