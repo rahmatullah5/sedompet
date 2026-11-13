@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { deleteWithUndo } from "../lib/undo";
 import { AccountPicker } from "../components/Pickers";
 import { DatePicker } from "../components/DatePicker";
 import { q } from "../db/repo";
@@ -130,7 +131,7 @@ function LoanCard({ loan, onPay }: { loan: Loan; onPay?: () => void }) {
           <Button
             variant="ghost"
             className="text-red-600"
-            onClick={() => confirm("Hapus pinjaman ini beserta semua cicilannya?") && attempt(() => mm.deleteLoan(me.id, loan.id), "Dihapus")}
+            onClick={() => confirm("Hapus pinjaman ini beserta semua cicilannya?") && deleteWithUndo(() => mm.deleteLoan(me.id, loan.id), "Pinjaman dihapus", me)}
           >
             Hapus
           </Button>

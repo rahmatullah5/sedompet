@@ -1,6 +1,7 @@
 // Typed queries and permission-checked mutations over the SQLite database.
 
 import { all, get, write } from "./database";
+import { putInTrash, snapshot } from "./trash";
 import { can, PermissionError, type Role } from "../lib/permissions";
 import { currentMonth, formatIDR, parseAmount, toISODate, todayISO } from "../lib/format";
 import { baseSql, CURRENCIES, formatMoney, isBase, toBase } from "../lib/currency";
@@ -1093,20 +1094,27 @@ export const m = {
     const holder = (id: string) => visible.find((a) => a.id === id)?.holder_member_id === actor.id;
     if (!can.editTransaction(actor.role, existing.createdBy === actor.id, holder(existing.fromAccountId) || holder(existing.toAccountId)))
       throw new PermissionError("Anggota hanya bisa menghapus transfer sendiri.");
-    return write((run) => run("DELETE FROM transactions WHERE dompet_id = ? AND transfer_id = ?", [actor.dompet_id, transferId]));
+    const label = `transfer ${formatMoney(existing.amount, visible.find((a) => a.id === existing.fromAccountId)?.currency)}`;
+    const rows = snapshot("transactions", "dompet_id = ? AND transfer_id = ?", [actor.dompet_id, transferId]);
+    return write((run) => {
+      run("DELETE FROM transactions WHERE dompet_id = ? AND transfer_id = ?", [actor.dompet_id, transferId]);
+      return putInTrash(run, actor.dompet_id, actor.id, label, [rows]);
+    });
   },
 
   deleteTransaction(actorId: string, txId: string) {
     const actor = actorOf(actorId);
-    const tx = get<{ created_by: string | null; amount: number; visibility: string; holder: string | null; currency: string }>(
-      "SELECT t.created_by, t.amount, a.visibility, a.currency, COALESCE(a.holder_member_id, a.owner_member_id) AS holder FROM transactions t JOIN accounts a ON a.id = t.account_id WHERE t.id = ? AND t.dompet_id = ?",
+    const tx = get<{ created_by: string | null; amount: number; note: string; visibility: string; holder: string | null; currency: string }>(
+      "SELECT t.created_by, t.amount, t.note, a.visibility, a.currency, COALESCE(a.holder_member_id, a.owner_member_id) AS holder FROM transactions t JOIN accounts a ON a.id = t.account_id WHERE t.id = ? AND t.dompet_id = ?",
       [txId, actor.dompet_id],
     );
     if (!tx) return Promise.resolve();
     if (!can.editTransaction(actor.role, tx.created_by === actor.id, tx.holder === actor.id)) throw new PermissionError("Anggota hanya bisa menghapus catatan sendiri.");
+    const rows = snapshot("transactions", "id = ?", [txId]);
     return write((run) => {
       run("DELETE FROM transactions WHERE id = ?", [txId]);
       if (tx.visibility === "shared") log(run, actor, `menghapus transaksi ${formatMoney(tx.amount, tx.currency)}`);
+      return putInTrash(run, actor.dompet_id, actor.id, `transaksi ${formatMoney(tx.amount, tx.currency)}${tx.note ? ` · ${tx.note}` : ""}`, [rows]);
     });
   },
 
@@ -1184,12 +1192,20 @@ export const m = {
   deleteGoal(actorId: string, goalId: string) {
     const actor = actorOf(actorId);
     if (!can.manage(actor.role)) throw new PermissionError();
-    return write((run) => run("DELETE FROM goals WHERE id = ? AND dompet_id = ?", [goalId, actor.dompet_id]));
+    const rows = snapshot("goals", "id = ? AND dompet_id = ?", [goalId, actor.dompet_id]);
+    return write((run) => {
+      run("DELETE FROM goals WHERE id = ? AND dompet_id = ?", [goalId, actor.dompet_id]);
+      return putInTrash(run, actor.dompet_id, actor.id, `tujuan ${String(rows.rows[0]?.name ?? "")}`, [rows]);
+    });
   },
 
   deleteBudget(actorId: string, budgetId: string) {
     const actor = actorOf(actorId);
     if (!can.manage(actor.role)) throw new PermissionError();
-    return write((run) => run("DELETE FROM budgets WHERE id = ? AND dompet_id = ?", [budgetId, actor.dompet_id]));
+    const rows = snapshot("budgets", "id = ? AND dompet_id = ?", [budgetId, actor.dompet_id]);
+    return write((run) => {
+      run("DELETE FROM budgets WHERE id = ? AND dompet_id = ?", [budgetId, actor.dompet_id]);
+      return putInTrash(run, actor.dompet_id, actor.id, `anggaran ${String(rows.rows[0]?.name ?? "")}`, [rows]);
+    });
   },
 };

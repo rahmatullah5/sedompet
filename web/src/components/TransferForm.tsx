@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { deleteWithUndo } from "../lib/undo";
 import { m, q } from "../db/repo";
 import { can } from "../lib/permissions";
 import { formatCompact, todayISO } from "../lib/format";
@@ -72,7 +73,7 @@ export function TransferBody({
 
   async function remove() {
     if (!transferId || !confirm("Hapus transfer ini (kedua sisinya)?")) return;
-    if (await attempt(() => m.deleteTransfer(me.id, transferId), "Transfer dihapus")) onClose();
+    if (await deleteWithUndo(() => m.deleteTransfer(me.id, transferId), "Transfer dihapus", me)) onClose();
   }
 
   if (accounts.length < 2) {

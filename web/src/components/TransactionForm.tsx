@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { deleteWithUndo } from "../lib/undo";
 import { m, q, type Kind, type Transaction } from "../db/repo";
 import { can } from "../lib/permissions";
 import { formatCompact, todayISO } from "../lib/format";
@@ -141,7 +142,7 @@ function FormBody({
 
   async function remove() {
     if (!editing || !confirm("Hapus transaksi ini?")) return;
-    if (await attempt(() => m.deleteTransaction(me.id, editing.id), "Transaksi dihapus")) onClose();
+    if (await deleteWithUndo(() => m.deleteTransaction(me.id, editing.id), "Transaksi dihapus", me)) onClose();
   }
 
   return (

@@ -171,19 +171,23 @@ interface Toast {
   id: number;
   text: string;
   tone: "ok" | "error";
+  /** Optional button, e.g. "Urungkan" after a delete. */
+  action?: { label: string; run: () => unknown };
 }
 let toasts: Toast[] = [];
 const toastListeners = new Set<() => void>();
 let nextToast = 1;
 
-export function toast(text: string, tone: Toast["tone"] = "ok") {
-  const t = { id: nextToast++, text, tone };
+function dismissToast(id: number) {
+  toasts = toasts.filter((x) => x.id !== id);
+  toastListeners.forEach((l) => l());
+}
+
+export function toast(text: string, tone: Toast["tone"] = "ok", action?: Toast["action"]) {
+  const t = { id: nextToast++, text, tone, action };
   toasts = [...toasts, t];
   toastListeners.forEach((l) => l());
-  setTimeout(() => {
-    toasts = toasts.filter((x) => x.id !== t.id);
-    toastListeners.forEach((l) => l());
-  }, 3500);
+  setTimeout(() => dismissToast(t.id), action ? 7000 : 3500);
 }
 
 /** Runs an action and shows its error as a toast instead of throwing. */
@@ -217,6 +221,18 @@ export function Toasts() {
           )}
         >
           {t.text}
+          {t.action && (
+            <button
+              type="button"
+              className="ml-3 rounded-full bg-white/20 px-3 py-1 font-bold hover:bg-white/30"
+              onClick={() => {
+                dismissToast(t.id);
+                void attempt(t.action!.run);
+              }}
+            >
+              {t.action.label}
+            </button>
+          )}
         </div>
       ))}
     </div>

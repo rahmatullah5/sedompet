@@ -1,7 +1,9 @@
-import { q, type Transaction } from "../db/repo";
-import { currentMonth, formatCompact, formatIDR, formatMonth, timeAgo } from "../lib/format";
+import { useState } from "react";
+import { q, type Account, type Transaction } from "../db/repo";
+import { projectedRecurring } from "../db/money";
+import { currentMonth, formatCompact, formatIDR, formatMonth, timeAgo, todayISO } from "../lib/format";
 import { useCurrent, useDbVersion } from "../lib/hooks";
-import { Avatar, Card, Empty, Progress } from "../components/ui";
+import { Avatar, Card, Empty, Modal, Progress } from "../components/ui";
 import { TxRow } from "./Transactions";
 import { DueList } from "./Recurring";
 import { Icon } from "../components/Icon";
@@ -14,6 +16,12 @@ function greeting() {
   if (h < 15) return "Selamat siang";
   if (h < 18) return "Selamat sore";
   return "Selamat malam";
+}
+
+function endOfMonthISO() {
+  const now = new Date();
+  const d = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 function daysLeftThisMonth() {
@@ -42,6 +50,13 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction) => void; g
   const recent = q.transactions(dompet.id, me.id, { limit: 4 });
   const familySpend = byMember.reduce((s, x) => s + x.total, 0);
   const days = daysLeftThisMonth();
+  const [explainOpen, setExplainOpen] = useState(false);
+  // Shared recurring items still to come this month (overdue ones included).
+  const scheduled = projectedRecurring(dompet.id, me.id, "1970-01-01", endOfMonthISO());
+  const sharedItems = scheduled.items.filter((i) => i.shared);
+  const scheduledOut = sharedItems.filter((i) => i.kind === "expense").reduce((s, i) => s + i.amount, 0);
+  const scheduledIn = sharedItems.filter((i) => i.kind === "income").reduce((s, i) => s + i.amount, 0);
+  const free = sharedTotal - scheduledOut;
 
   let mood: { emoji: string; text: string } | null = null;
   if (overall) {
@@ -91,6 +106,34 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction) => void; g
           </span>
         </span>
       </button>
+      <div className="-mt-3 flex items-center justify-between gap-2 px-2 text-xs">
+        <span className="text-slate-500">
+          {scheduledOut > 0 ? (
+            <>
+              Uang bebas ≈ <b className={free < 0 ? "text-red-600" : "text-slate-700"}>{formatIDR(free)}</b> setelah tagihan rutin bulan ini
+            </>
+          ) : (
+            "Tidak ada tagihan rutin tersisa bulan ini"
+          )}
+        </span>
+        <button onClick={() => setExplainOpen(true)} className="shrink-0 font-semibold text-brand-700 underline decoration-brand-200 underline-offset-2">
+          Kenapa segini?
+        </button>
+      </div>
+      <BalanceExplainer
+        open={explainOpen}
+        onClose={() => setExplainOpen(false)}
+        accounts={accounts}
+        sharedTotal={sharedTotal}
+        privateTotal={privateTotal}
+        income={totals.income}
+        expense={totals.expense}
+        items={sharedItems}
+        scheduledOut={scheduledOut}
+        scheduledIn={scheduledIn}
+        budgetLeft={overall ? overall.amount - overall.spent : null}
+        days={days}
+      />
 
       <DueList />
 
@@ -252,5 +295,92 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction) => void; g
         )}
       </Card>
     </div>
+  );
+}
+
+function BalanceExplainer(p: {
+  open: boolean;
+  onClose: () => void;
+  accounts: Account[];
+  sharedTotal: number;
+  privateTotal: number;
+  income: number;
+  expense: number;
+  items: { date: string; name: string; kind: "income" | "expense"; amount: number }[];
+  scheduledOut: number;
+  scheduledIn: number;
+  budgetLeft: number | null;
+  days: number;
+}) {
+  const shared = p.accounts.filter((a) => a.visibility === "shared");
+  const today = todayISO();
+  const free = p.sharedTotal - p.scheduledOut;
+  const Row = ({ label, value, strong, hint }: { label: string; value: string; strong?: boolean; hint?: string }) => (
+    <li className="flex items-baseline justify-between gap-3 py-1.5">
+      <span className={strong ? "font-bold text-slate-800" : "text-slate-600"}>
+        {label}
+        {hint && <span className="block text-xs font-normal text-slate-400">{hint}</span>}
+      </span>
+      <span className={`num shrink-0 ${strong ? "font-extrabold text-slate-800" : "font-semibold text-slate-700"}`}>{value}</span>
+    </li>
+  );
+  return (
+    <Modal open={p.open} onClose={p.onClose} title="Kenapa segini?">
+      <div className="space-y-5 text-sm">
+        <section>
+          <h3 className="mb-1 font-bold text-slate-800">Uang keluarga sekarang</h3>
+          <p className="mb-1 text-xs text-slate-500">Jumlah saldo semua akun bersama: saldo awal + semua pemasukan − semua pengeluaran, termasuk transfer.</p>
+          <ul className="divide-y divide-slate-100">
+            {shared.map((a) => (
+              <Row key={a.id} label={a.name} value={formatIDR(a.balance_base)} hint={a.currency !== "IDR" ? `${a.currency}, dikonversi ke rupiah` : undefined} />
+            ))}
+            <Row label="Total" value={formatIDR(p.sharedTotal)} strong />
+          </ul>
+          {p.privateTotal > 0 && <p className="mt-1 text-xs text-slate-500">Tabungan pribadimu ({formatIDR(p.privateTotal)}) tidak dihitung di sini dan hanya kamu yang melihatnya 🔒</p>}
+        </section>
+
+        <section>
+          <h3 className="mb-1 font-bold text-slate-800">Masuk & keluar bulan ini</h3>
+          <ul className="divide-y divide-slate-100">
+            <Row label="Masuk" value={`+${formatIDR(p.income)}`} />
+            <Row label="Keluar" value={`−${formatIDR(p.expense)}`} />
+          </ul>
+          <p className="mt-1 text-xs text-slate-500">Transfer antar akun, koreksi saldo dan pinjaman tidak dihitung sebagai pemasukan/pengeluaran, karena uangnya hanya pindah tempat.</p>
+        </section>
+
+        <section>
+          <h3 className="mb-1 font-bold text-slate-800">Uang bebas sampai akhir bulan</h3>
+          {p.items.length === 0 ? (
+            <p className="text-xs text-slate-500">Tidak ada tagihan atau pemasukan rutin yang tersisa bulan ini.</p>
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              <Row label="Uang keluarga sekarang" value={formatIDR(p.sharedTotal)} />
+              {p.items.map((i, idx) => (
+                <Row
+                  key={idx}
+                  label={i.name}
+                  hint={i.date < today ? "sudah jatuh tempo, belum dicatat" : `jatuh tempo ${i.date.slice(8)}/${i.date.slice(5, 7)}`}
+                  value={i.kind === "expense" ? `−${formatIDR(i.amount)}` : `(+${formatIDR(i.amount)})`}
+                />
+              ))}
+              <Row label="Uang bebas" value={formatIDR(free)} strong />
+            </ul>
+          )}
+          {p.scheduledIn > 0 && (
+            <p className="mt-1 text-xs text-slate-500">Pemasukan rutin (dalam kurung) belum ditambahkan, supaya hitungannya aman kalau telat masuk.</p>
+          )}
+        </section>
+
+        {p.budgetLeft !== null && (
+          <section>
+            <h3 className="mb-1 font-bold text-slate-800">Jatah per hari</h3>
+            <p className="text-slate-600">
+              Sisa anggaran {formatIDR(p.budgetLeft)} ÷ {p.days} hari tersisa (termasuk hari ini) ={" "}
+              <b className="num">{formatIDR(Math.max(0, Math.floor(p.budgetLeft / p.days)))}</b> per hari.
+            </p>
+          </section>
+        )}
+      </div>
+    </Modal>
   );
 }

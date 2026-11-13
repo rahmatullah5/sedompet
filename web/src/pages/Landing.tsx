@@ -6,7 +6,7 @@ const FEATURES = [
   { icon: "🛡️", title: "Peran yang pas", text: "Orang tua mengatur, anak cukup melihat. Anggota hanya bisa mengubah catatannya sendiri." },
   { icon: "🔒", title: "Tetap ada ruang pribadi", text: "Tabungan pribadi hanya terlihat oleh pemiliknya, tidak ikut tercampur ke anggaran keluarga." },
   { icon: "🐷", title: "Anggaran & uang saku", text: "Batas belanja per kategori, anggaran 'semua kecuali cicilan', dan uang saku tiap anak." },
-  { icon: "🔁", title: "Tagihan rutin & utang", text: "SPP, Netflix, listrik, gaji. Diingatkan saat jatuh tempo. Pinjam-meminjam tercatat rapi." },
+  { icon: "🔁", title: "Tagihan rutin & utang", text: "SPP, Netflix, listrik, gaji. Muncul di Beranda saat jatuh tempo, sekali ketuk langsung tercatat. Pinjam-meminjam tercatat rapi." },
   { icon: "🔮", title: "Laporan & perkiraan", text: "Ke mana uang pergi, laju belanja bulan ini, dan perkiraan saldo 3 bulan ke depan." },
 ];
 
@@ -146,7 +146,7 @@ export function Landing() {
       <section id="fitur" className="scroll-mt-20 bg-white/60 py-16">
         <div className="mx-auto max-w-6xl px-5">
           <h2 className="text-center text-3xl font-extrabold tracking-tight text-slate-800">Semua yang dibutuhkan keluarga</h2>
-          <p className="mx-auto mt-2 max-w-xl text-center text-slate-500">Dibuat untuk rumah tangga, kos bareng, sampai trip bareng teman.</p>
+          <p className="mx-auto mt-2 max-w-xl text-center text-slate-500">Bukan cuma untuk berdua: satu akun bisa punya Dompet keluarga, kos bareng, sampai trip bareng teman.</p>
           <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {FEATURES.map((f) => (
               <div key={f.title} className="rounded-3xl bg-white p-6 shadow-[0_8px_24px_-14px_rgba(120,72,40,0.3)]">
@@ -191,10 +191,11 @@ export function Landing() {
 
       {/* Trust */}
       <section className="mx-auto max-w-5xl px-5 pb-16">
-        <div className="grid gap-4 text-center sm:grid-cols-3">
+        <div className="grid gap-4 text-center sm:grid-cols-2 lg:grid-cols-4">
           {[
             ["🔐", "Data per keluarga", "Hanya anggota Dompet yang bisa melihat. Dijaga langsung oleh database."],
-            ["📴", "Tetap jalan saat sinyal hilang", "Data tersimpan di HP dan tersinkron lagi saat online."],
+            ["📴", "Tetap jalan saat sinyal hilang", "Pasang di layar utama HP. Data tersimpan di HP dan tersinkron lagi saat online."],
+            ["📤", "Datamu bisa dibawa pulang", "Unduh transaksi ke Excel / Google Sheets kapan saja. Salah hapus? Pulihkan dari Sampah."],
             ["🙅", "Tanpa iklan", "Uang keluargamu bukan bahan jualan."],
           ].map(([icon, title, text]) => (
             <div key={title} className="rounded-3xl bg-white/70 p-6">

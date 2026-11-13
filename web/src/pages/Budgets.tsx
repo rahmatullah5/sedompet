@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { deleteWithUndo } from "../lib/undo";
 import { MultiCategoryPicker } from "../components/Pickers";
 import { m, q, type Budget, type BudgetPeriod } from "../db/repo";
 import { can } from "../lib/permissions";
@@ -289,7 +290,7 @@ function BudgetFormBody({ budget, onClose }: { budget: Budget | null; onClose: (
             <Button
               variant="danger"
               onClick={async () => {
-                if (confirm(`Hapus anggaran ${budget.name}?`) && (await attempt(() => m.deleteBudget(me.id, budget.id), "Anggaran dihapus"))) onClose();
+                if (confirm(`Hapus anggaran ${budget.name}?`) && (await deleteWithUndo(() => m.deleteBudget(me.id, budget.id), "Anggaran dihapus", me))) onClose();
               }}
             >
               Hapus

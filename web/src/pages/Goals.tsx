@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { deleteWithUndo } from "../lib/undo";
 import { m, q, type Goal } from "../db/repo";
 import { can } from "../lib/permissions";
 import { formatCompact, formatIDR, parseAmount, todayISO } from "../lib/format";
@@ -189,7 +190,7 @@ function GoalForm({ goal, onClose }: { goal: Goal | null; onClose: () => void })
             <Button
               variant="danger"
               onClick={async () => {
-                if (confirm(`Hapus tujuan ${goal.name}? Saldo akun tidak berubah.`) && (await attempt(() => m.deleteGoal(me.id, goal.id), "Tujuan dihapus"))) onClose();
+                if (confirm(`Hapus tujuan ${goal.name}? Saldo akun tidak berubah.`) && (await deleteWithUndo(() => m.deleteGoal(me.id, goal.id), "Tujuan dihapus", me))) onClose();
               }}
             >
               Hapus

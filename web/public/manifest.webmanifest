@@ -1,0 +1,21 @@
+{
+  "name": "Sedompet: satu dompet keluarga",
+  "short_name": "Sedompet",
+  "description": "Satu dompet untuk keluarga dan teman: catat bareng, anggaran, tagihan rutin, utang piutang.",
+  "lang": "id",
+  "start_url": "/app",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#fff8f1",
+  "theme_color": "#ea6440",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ],
+  "shortcuts": [
+    { "name": "Catat transaksi", "url": "/app#/beranda", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Demo offline", "url": "/demo", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

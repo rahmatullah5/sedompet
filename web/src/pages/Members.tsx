@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { m, MEMBER_EMOJIS } from "../db/repo";
 import { exportFile, importFile, resetDatabase } from "../db/database";
 import { importCashew, type ImportSummary } from "../db/importCashew";
+import { exportAccounts, exportLoans, exportTransactions } from "../lib/exportCsv";
 import { can, ROLE_HINT, ROLE_LABEL, ROLES, type Role } from "../lib/permissions";
 import { setSession } from "../lib/session";
 import { displayPhone, getMode, setMode, cloudConfigured } from "../cloud/client";
@@ -264,7 +265,7 @@ function HowToDemo() {
 export function DataTools() {
   const fileRef = useRef<HTMLInputElement>(null);
   const cashewRef = useRef<HTMLInputElement>(null);
-  const { me } = useCurrent();
+  const { me, dompet } = useCurrent();
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<ImportSummary | null>(null);
 
@@ -281,6 +282,21 @@ export function DataTools() {
 
   return (
     <Card title="Data">
+      <div className="mb-4 rounded-2xl bg-mint-100/60 p-4">
+        <p className="font-bold text-slate-800">📊 Unduh ke Excel / Google Sheets</p>
+        <p className="mt-1 text-sm text-slate-600">
+          Data {dompet.name} yang bisa kamu lihat, dalam file <code>.csv</code>. Datamu milikmu, bawa ke mana saja.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button onClick={() => toast(`${exportTransactions(dompet, me.id).toLocaleString("id-ID")} transaksi diunduh`)}>⬇️ Transaksi</Button>
+          <Button variant="secondary" onClick={() => exportAccounts(dompet, me.id)}>
+            ⬇️ Saldo akun
+          </Button>
+          <Button variant="secondary" onClick={() => exportLoans(dompet, me.id)}>
+            ⬇️ Utang & piutang
+          </Button>
+        </div>
+      </div>
       <div className="mb-4 rounded-2xl bg-brand-50 p-4">
         <p className="font-bold text-slate-800">📦 Pindahan dari aplikasi lain?</p>
         <p className="mt-1 text-sm text-slate-600">
@@ -318,7 +334,8 @@ export function DataTools() {
         )}
       </div>
       <p className="mb-3 text-sm text-slate-500">
-        Unduh file <code>.sqlite</code> untuk dibuka di DB Browser / <code>sqlite3</code>, atau pindahkan ke browser lain.
+        <b>Backup lengkap:</b> unduh file <code>.sqlite</code> berisi semua Dompet di perangkat ini. Bisa dibuka di DB Browser / <code>sqlite3</code>
+        {CLOUD ? "." : ", atau diimpor lagi di browser lain."}
       </p>
       <div className="flex flex-wrap gap-2">
         <Button variant="secondary" onClick={download}>

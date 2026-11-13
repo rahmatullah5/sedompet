@@ -1,6 +1,7 @@
 // Loans (utang/piutang) and recurring items (langganan, tagihan, gaji).
 
 import { all, get, write } from "./database";
+import { putInTrash, snapshot } from "./trash";
 import { q, type Kind } from "./repo";
 import { can, PermissionError } from "../lib/permissions";
 import { toISODate, todayISO } from "../lib/format";
@@ -240,11 +241,15 @@ export const mm = {
 
   deleteLoan(actorId: string, loanId: string) {
     const actor = actorOf(actorId);
-    const loan = get<{ created_by: string | null }>("SELECT created_by FROM loans WHERE id = ? AND dompet_id = ?", [loanId, actor.dompet_id]);
+    const loan = get<{ created_by: string | null; counterparty: string }>("SELECT created_by, counterparty FROM loans WHERE id = ? AND dompet_id = ?", [loanId, actor.dompet_id]);
     if (!loan) return Promise.resolve();
     if (!can.editTransaction(actor.role, loan.created_by === actor.id)) throw new PermissionError();
-    // Its transactions go with it (ON DELETE CASCADE).
-    return write((run) => run("DELETE FROM loans WHERE id = ?", [loanId]));
+    // Its transactions go with it (ON DELETE CASCADE), so they go to the trash too.
+    const entries = [snapshot("loans", "id = ?", [loanId]), snapshot("transactions", "loan_id = ?", [loanId])];
+    return write((run) => {
+      run("DELETE FROM loans WHERE id = ?", [loanId]);
+      return putInTrash(run, actor.dompet_id, actor.id, `pinjaman ${loan.counterparty}`, entries);
+    });
   },
 
   // --- recurring -----------------------------------------------------------
@@ -284,7 +289,11 @@ export const mm = {
   deleteRecurring(actorId: string, id: string) {
     const actor = actorOf(actorId);
     if (!can.manage(actor.role)) throw new PermissionError();
-    return write((run) => run("DELETE FROM recurring WHERE id = ? AND dompet_id = ?", [id, actor.dompet_id]));
+    const rows = snapshot("recurring", "id = ? AND dompet_id = ?", [id, actor.dompet_id]);
+    return write((run) => {
+      run("DELETE FROM recurring WHERE id = ? AND dompet_id = ?", [id, actor.dompet_id]);
+      return putInTrash(run, actor.dompet_id, actor.id, `rutin ${String(rows.rows[0]?.name ?? "")}`, [rows]);
+    });
   },
 
   /** Record the due occurrence as a real transaction, then move to the next date. */

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { deleteWithUndo } from "../lib/undo";
 import { AccountPicker, CategoryPicker } from "../components/Pickers";
 import { DatePicker } from "../components/DatePicker";
 import { q, type Kind } from "../db/repo";
@@ -436,7 +437,7 @@ function RecurringForm({ item, kind, onClose }: { item: Rec | null; kind: Kind; 
       <div className={`${STICKY_ACTIONS} justify-between`}>
         <div>
           {item && (
-            <Button variant="danger" onClick={async () => confirm(`Hapus ${item.name}?`) && (await attempt(() => mm.deleteRecurring(me.id, item.id), "Dihapus")) && onClose()}>
+            <Button variant="danger" onClick={async () => confirm(`Hapus ${item.name}?`) && (await deleteWithUndo(() => mm.deleteRecurring(me.id, item.id), "Dihapus", me)) && onClose()}>
               Hapus
             </Button>
           )}

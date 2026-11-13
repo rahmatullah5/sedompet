@@ -169,6 +169,17 @@ CREATE TABLE IF NOT EXISTS activity (
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS activity_dompet ON activity(dompet_id, created_at);
+
+-- Local recycle bin (not synced): JSON copies of deleted rows, see db/trash.ts.
+CREATE TABLE IF NOT EXISTS trash (
+  id          TEXT PRIMARY KEY,
+  dompet_id   TEXT NOT NULL,
+  label       TEXT NOT NULL,
+  payload     TEXT NOT NULL,
+  deleted_by  TEXT,
+  deleted_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS trash_dompet ON trash(dompet_id, deleted_at);
 `;
 
 /** Columns added after v1, applied to databases created by older versions. */

@@ -7,6 +7,8 @@ import { DataTools } from "./Members";
 import { useSyncExternalStore } from "react";
 import { cloudStore } from "../cloud/sync";
 import { WA_FEEDBACK } from "../lib/contact";
+import { trash } from "../db/trash";
+import { InstallCard } from "../components/InstallCard";
 
 const ITEMS = [
   { href: "#/anggaran", icon: "🐷", title: "Anggaran", hint: "Batas belanja & uang saku" },
@@ -16,6 +18,7 @@ const ITEMS = [
   { href: "#/akun", icon: "💳", title: "Isi dompet", hint: "Tunai, bank, e-wallet" },
   { href: "#/kategori", icon: "🏷️", title: "Kategori", hint: "Kategori & subkategori" },
   { href: "#/keluarga", icon: "👨‍👩‍👧", title: "Keluarga", hint: "Anggota & peran" },
+  { href: "#/sampah", icon: "🗑️", title: "Sampah", hint: "Pulihkan yang terhapus" },
 ];
 
 export function Menu() {
@@ -24,10 +27,12 @@ export function Menu() {
   const due = mq.due(dompet.id, me.id).length;
   const openLoans = mq.loans(dompet.id, me.id).filter((l) => !l.settled).length;
   const accounts = q.accounts(dompet.id, me.id).length;
+  const trashed = trash.list(dompet.id).length;
   const badge: Record<string, string | null> = {
     "#/rutin": due ? `${due} jatuh tempo` : null,
     "#/pinjaman": openLoans ? `${openLoans} berjalan` : null,
     "#/akun": `${accounts} akun`,
+    "#/sampah": trashed ? `${trashed} bisa dipulihkan` : null,
   };
   const balance = q.accounts(dompet.id, me.id).reduce((s, a) => s + a.balance_base, 0);
   const { appAdmin } = useSyncExternalStore(cloudStore.subscribe, cloudStore.get);
@@ -55,6 +60,7 @@ export function Menu() {
           </a>
         ))}
       </div>
+      <InstallCard />
       <a
         href={WA_FEEDBACK}
         target="_blank"
