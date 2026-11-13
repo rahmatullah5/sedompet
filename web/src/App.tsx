@@ -55,6 +55,7 @@ export default function App() {
   const [page, setPage] = useState<PageId>(pageFromHash);
   const [txOpen, setTxOpen] = useState(false);
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
+  const [newTxDate, setNewTxDate] = useState<string | undefined>(undefined);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [newDompetOpen, setNewDompetOpen] = useState(false);
@@ -143,8 +144,9 @@ export default function App() {
     );
   }
 
-  const openTx = (t: Transaction | null) => {
+  const openTx = (t: Transaction | null, date?: string) => {
     setEditingTx(t);
+    setNewTxDate(date);
     setTxOpen(true);
   };
   const canAdd = can.addTransaction(me.role) && !readOnly;
@@ -186,7 +188,7 @@ export default function App() {
         <main className="pt-2">
           <PlanBanner sub={sub} isOwner={me.role === "owner"} />
           {page === "beranda" && <Home onOpenTx={openTx} goTo={goTo} />}
-          {page === "riwayat" && <Transactions onOpenTx={openTx} />}
+          {page === "riwayat" && <Transactions onOpenTx={openTx} onAddOnDate={canAdd ? (d) => openTx(null, d) : undefined} />}
           {page === "anggaran" && <Budgets />}
           {page === "tujuan" && <Goals />}
           {page === "keluarga" && <Members />}
@@ -228,7 +230,7 @@ export default function App() {
         </div>
       </nav>
 
-      <TransactionForm open={txOpen} onClose={() => setTxOpen(false)} editing={editingTx} />
+      <TransactionForm open={txOpen} onClose={() => setTxOpen(false)} editing={editingTx} initialDate={newTxDate} />
 
       <Modal open={switcherOpen} onClose={() => setSwitcherOpen(false)} title="Dompet kamu">
         <ul className="space-y-2">

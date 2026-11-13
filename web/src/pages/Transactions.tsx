@@ -5,6 +5,7 @@ import { useCurrent, useDbVersion } from "../lib/hooks";
 import { Avatar, Badge, Button, Card, Empty, Money } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { MultiAccountPicker, MultiCategoryPicker } from "../components/Pickers";
+import { SpendingCalendar } from "../components/SpendingCalendar";
 
 export function MonthNav({ month, setMonth }: { month: string; setMonth: (m: string) => void }) {
   const isCurrent = month === currentMonth();
@@ -93,10 +94,35 @@ function loadSort(): SortKey {
   }
 }
 
-export function Transactions({ onOpenTx }: { onOpenTx: (t: Transaction) => void }) {
+const CAL_KEY = "sedompet.riwayat.calendar";
+
+export function Transactions({ onOpenTx, onAddOnDate }: { onOpenTx: (t: Transaction) => void; onAddOnDate?: (iso: string) => void }) {
   useDbVersion();
   const { dompet, me, members } = useCurrent();
-  const [month, setMonth] = useState(currentMonth());
+  const [month, setMonthState] = useState(currentMonth());
+  const [day, setDay] = useState<string | null>(null);
+  const setMonth = (m: string) => {
+    setMonthState(m);
+    setDay(null);
+  };
+  const [showCal, setShowCalState] = useState(() => {
+    try {
+      return localStorage.getItem(CAL_KEY) !== "0";
+    } catch {
+      return true;
+    }
+  });
+  const toggleCal = () => {
+    setShowCalState((v) => {
+      try {
+        localStorage.setItem(CAL_KEY, v ? "0" : "1");
+      } catch {
+        /* ignore */
+      }
+      return !v;
+    });
+    setDay(null);
+  };
   const [paidByIds, setPaidByIds] = useState<string[]>([]);
   const [categoryIds, setCategoryIds] = useState<string[]>([]);
   const [accountIds, setAccountIds] = useState<string[]>([]);
@@ -146,8 +172,13 @@ export function Transactions({ onOpenTx }: { onOpenTx: (t: Transaction) => void 
       : byAmount
         ? [...txs].sort((a, b) => (sort === "largest" ? b.amount_base - a.amount_base : a.amount_base - b.amount_base))
         : txs;
+  // Calendar: everyday spending per date, following the filters above.
+  const dayTotals = new Map<string, number>();
+  for (const t of real) if (t.kind === "expense") dayTotals.set(t.date, (dayTotals.get(t.date) ?? 0) + t.amount_base);
+  const dayFilter = !searching && day;
+  const shown = dayFilter ? sorted.filter((t) => t.date === day) : sorted;
   const groups = new Map<string, Transaction[]>();
-  for (const t of sorted) groups.set(t.date, [...(groups.get(t.date) ?? []), t]);
+  for (const t of shown) groups.set(t.date, [...(groups.get(t.date) ?? []), t]);
   const filtered = paidByIds.length > 0 || activeFilters > 0 || kind !== "" || searching;
 
   return (
@@ -196,7 +227,29 @@ export function Transactions({ onOpenTx }: { onOpenTx: (t: Transaction) => void 
       <div className={`flex flex-wrap gap-2 text-sm ${searching ? "hidden" : ""}`}>
         <Badge tone="brand">Masuk {formatIDR(income)}</Badge>
         <Badge>Keluar {formatIDR(expense)}</Badge>
+        <button type="button" onClick={toggleCal} aria-pressed={showCal} className="ml-auto text-sm font-semibold text-brand-700">
+          📅 {showCal ? "Sembunyikan kalender" : "Kalender belanja"}
+        </button>
       </div>
+      {!searching && showCal && (
+        <Card className="pop-in p-3 sm:p-4">
+          <SpendingCalendar month={month} totals={dayTotals} selected={day} onSelect={setDay} />
+        </Card>
+      )}
+      {dayFilter && (
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-brand-50 px-3 py-2 text-sm">
+          <span className="font-semibold capitalize text-slate-800">{formatDay(day)}</span>
+          <span className="text-slate-500">· keluar {formatIDR(dayTotals.get(day) ?? 0)}</span>
+          <button type="button" onClick={() => setDay(null)} className="font-semibold text-slate-500 hover:underline">
+            ✕ Semua tanggal
+          </button>
+          {onAddOnDate && (
+            <button type="button" onClick={() => onAddOnDate(day)} className="ml-auto rounded-full bg-brand-600 px-3 py-1 text-xs font-bold text-white hover:bg-brand-700">
+              + Catat di tanggal ini
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 pb-1" role="group" aria-label="Filter anggota">
         <button
@@ -285,16 +338,16 @@ export function Transactions({ onOpenTx }: { onOpenTx: (t: Transaction) => void 
         )}
       </div>
 
-      {txs.length === 0 ? (
+      {shown.length === 0 ? (
         <Card>
-          <Empty icon="🔍" title={searching ? `Tidak ada yang cocok dengan “${search.trim()}”` : filtered ? "Tidak ada yang cocok" : "Belum ada transaksi bulan ini"}>
+          <Empty icon="🔍" title={searching ? `Tidak ada yang cocok dengan “${search.trim()}”` : dayFilter ? "Belum ada catatan di tanggal ini" : filtered ? "Tidak ada yang cocok" : "Belum ada transaksi bulan ini"}>
             {searching ? "Coba kata lain, nama orang, atau jumlah seperti 50rb." : null}
           </Empty>
         </Card>
       ) : byAmount ? (
         <Card className="p-2 sm:p-3">
           <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-            {sorted.map((t) => (
+            {shown.map((t) => (
               <TxRow key={t.id} t={t} showDate onClick={() => onOpenTx(t)} />
             ))}
           </ul>

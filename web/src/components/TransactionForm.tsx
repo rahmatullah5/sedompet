@@ -16,11 +16,11 @@ import { SuggestionList, type Suggestion } from "./Suggestions";
 
 const QUICK = [10_000, 25_000, 50_000, 100_000];
 
-export function TransactionForm({ open, onClose, editing }: { open: boolean; onClose: () => void; editing?: Transaction | null }) {
+export function TransactionForm({ open, onClose, editing, initialDate }: { open: boolean; onClose: () => void; editing?: Transaction | null; initialDate?: string }) {
   return (
     <Modal open={open} onClose={onClose} title={editing ? "Ubah transaksi" : "Catat transaksi"}>
       {/* Remount per transaction so the form starts from fresh values. */}
-      {open && <SheetBody key={editing?.id ?? "new"} onClose={onClose} editing={editing ?? null} />}
+      {open && <SheetBody key={editing?.id ?? `new${initialDate ?? ""}`} onClose={onClose} editing={editing ?? null} initialDate={initialDate} />}
     </Modal>
   );
 }
@@ -59,23 +59,25 @@ export function ModeSwitch({ value, onPick }: { value: Kind | "transfer"; onPick
 }
 
 /** Chooses between the normal transaction form and the transfer form. */
-function SheetBody({ onClose, editing }: { onClose: () => void; editing: Transaction | null }) {
+function SheetBody({ onClose, editing, initialDate }: { onClose: () => void; editing: Transaction | null; initialDate?: string }) {
   const [mode, setMode] = useState<Kind | "transfer">(editing?.transfer_id ? "transfer" : (editing?.kind ?? "expense"));
   if (mode === "transfer") {
     return <TransferBody transferId={editing?.transfer_id} onClose={onClose} modeSwitch={!editing && <ModeSwitch value="transfer" onPick={setMode} />} />;
   }
-  return <FormBody key={mode} onClose={onClose} editing={editing} initialKind={mode} onPickMode={editing ? undefined : setMode} />;
+  return <FormBody key={mode} onClose={onClose} editing={editing} initialKind={mode} initialDate={initialDate} onPickMode={editing ? undefined : setMode} />;
 }
 
 function FormBody({
   onClose,
   editing,
   initialKind,
+  initialDate,
   onPickMode,
 }: {
   onClose: () => void;
   editing: Transaction | null;
   initialKind: Kind;
+  initialDate?: string;
   onPickMode?: (k: Kind | "transfer") => void;
 }) {
   useDbVersion();
@@ -97,7 +99,7 @@ function FormBody({
     const holder = accounts.find((a) => a.id === id)?.holder_member_id;
     if (!payerTouched && holder) setPaidBy(holder);
   };
-  const [date, setDate] = useState(editing?.date ?? todayISO());
+  const [date, setDate] = useState(editing?.date ?? initialDate ?? todayISO());
   const [note, setNote] = useState(editing?.note ?? "");
   const [need, setNeed] = useState<"need" | "want" | null>(editing?.need ?? null);
   const [merchant, setMerchant] = useState(editing?.merchant ?? "");

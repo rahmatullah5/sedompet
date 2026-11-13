@@ -175,7 +175,7 @@ Sizing: S ≈ ≤1 day, M ≈ 2–4 days, L ≈ 1–2 weeks (solo dev).
 
 ### Phase 1 — Finance depth (week 3–6)
 
-> **Status (13 Nov 2026): 1.1–1.5 done.** Patungan with settle-up (split_with on transactions), payday month start (period_start_day), Neraca page with 6-month trend and per-owner view. Also shipped: paid plans with expiry (read-only Dompet when the plan ends). 1.3 shipped as: pecah ke beberapa kategori (incl. biaya admin line), kebutuhan/keinginan, tempat beli, foto nota (private storage bucket). 1.4: entries dated later don't move balances until their day, and uang bebas subtracts them with remaining bills. Next: 1.6 spending calendar, 1.7 cash-flow v2, 1.8 bulk entry.
+> **Status (13 Nov 2026): 1.1–1.6 done.** Patungan with settle-up (split_with on transactions), payday month start (period_start_day), Neraca page with 6-month trend and per-owner view. Also shipped: paid plans with expiry (read-only Dompet when the plan ends). 1.3 shipped as: pecah ke beberapa kategori (incl. biaya admin line), kebutuhan/keinginan, tempat beli, foto nota (private storage bucket). 1.4: entries dated later don't move balances until their day, and uang bebas subtracts them with remaining bills. 1.6: Kalender belanja in Riwayat (heatmap per budget month, tap a day to filter or add). Next: 1.7 cash-flow v2, 1.8 bulk entry.
 
 | # | Item | Size | Detail |
 |---|---|---|---|
