@@ -13,7 +13,7 @@ import { Icon, IconPicker } from "../components/Icon";
 import { SuggestionList, type Suggestion } from "../components/Suggestions";
 import { BillCalendar } from "../components/BillCalendar";
 
-const VIEW_KEY = "sedompet.bills.view";
+const VIEW_KEY = "sedompet.rutin.view";
 
 /** Monthly-equivalent amount, for the "per bulan" totals. */
 // ---------------------------------------------------------------------------
@@ -274,45 +274,67 @@ export function Recurring() {
 
       {items.some((r) => r.active) && <OutlookCard windowKey={windowKey} setWindowKey={setWindowKey} outlook={outlook} />}
 
-      <Card
-        title={
-          <span className="flex items-center gap-2">
-            🧾 Tagihan & langganan <Badge>{formatCompact(outlook.expense)} · {WINDOWS[windowKey].short}</Badge>
-          </span>
-        }
-        action={manage && <Button variant="secondary" onClick={() => setEditing("expense")}>+ Tagihan</Button>}
-      >
-        <div className="mb-2 grid grid-cols-2 gap-1 rounded-full bg-slate-100 p-1" role="radiogroup" aria-label="Tampilan tagihan">
-          {(
-            [
-              ["list", "☰ Daftar"],
-              ["calendar", "📅 Kalender"],
-            ] as const
-          ).map(([v, label]) => (
-            <button
-              key={v}
-              type="button"
-              role="radio"
-              aria-checked={billView === v}
-              onClick={() => setBillView(v)}
-              className={cx("rounded-full py-1.5 text-xs font-semibold transition", billView === v ? "bg-slate-800 text-white" : "text-slate-500")}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        {billView === "calendar" ? <BillCalendar dompetId={dompet.id} me={me.id} bills={bills} onOpen={manage ? setEditing : undefined} /> : list(bills)}
-      </Card>
-      <Card
-        title={
-          <span className="flex items-center gap-2">
-            💼 Pemasukan rutin <Badge tone="brand">{formatCompact(outlook.income)} · {WINDOWS[windowKey].short}</Badge>
-          </span>
-        }
-        action={manage && <Button variant="secondary" onClick={() => setEditing("income")}>+ Pemasukan</Button>}
-      >
-        {list(incomes)}
-      </Card>
+      <div className="grid grid-cols-2 gap-1 rounded-full bg-slate-100 p-1" role="radiogroup" aria-label="Tampilan rutin">
+        {(
+          [
+            ["list", "☰ Daftar"],
+            ["calendar", "📅 Kalender"],
+          ] as const
+        ).map(([v, label]) => (
+          <button
+            key={v}
+            type="button"
+            role="radio"
+            aria-checked={billView === v}
+            onClick={() => setBillView(v)}
+            className={cx("rounded-full py-1.5 text-xs font-semibold transition", billView === v ? "bg-slate-800 text-white" : "text-slate-500")}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {billView === "calendar" ? (
+        <Card
+          title="📅 Kalender rutin"
+          action={
+            manage && (
+              <div className="flex gap-1.5">
+                <Button variant="secondary" className="px-3" onClick={() => setEditing("expense")}>
+                  + Tagihan
+                </Button>
+                <Button variant="secondary" className="px-3" onClick={() => setEditing("income")}>
+                  + Pemasukan
+                </Button>
+              </div>
+            )
+          }
+        >
+          <BillCalendar dompetId={dompet.id} me={me.id} items={items} onOpen={manage ? setEditing : undefined} />
+        </Card>
+      ) : (
+        <>
+          <Card
+            title={
+              <span className="flex items-center gap-2">
+                🧾 Tagihan & langganan <Badge>{formatCompact(outlook.expense)} · {WINDOWS[windowKey].short}</Badge>
+              </span>
+            }
+            action={manage && <Button variant="secondary" onClick={() => setEditing("expense")}>+ Tagihan</Button>}
+          >
+            {list(bills)}
+          </Card>
+          <Card
+            title={
+              <span className="flex items-center gap-2">
+                💼 Pemasukan rutin <Badge tone="brand">{formatCompact(outlook.income)} · {WINDOWS[windowKey].short}</Badge>
+              </span>
+            }
+            action={manage && <Button variant="secondary" onClick={() => setEditing("income")}>+ Pemasukan</Button>}
+          >
+            {list(incomes)}
+          </Card>
+        </>
+      )}
       {!manage && <p className="text-center text-xs text-slate-400">Hanya pemilik/admin yang bisa mengatur yang rutin. Semua anggota bisa menandai “Bayar”.</p>}
       {items.length === 0 && !manage && <Empty icon="🔁" title="Belum ada yang rutin" />}
 
