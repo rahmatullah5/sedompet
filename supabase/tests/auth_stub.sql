@@ -25,3 +25,6 @@ create table auth.identities (id uuid primary key, user_id uuid references auth.
   unique (provider_id, provider));
 create schema if not exists extensions;
 create extension if not exists pgcrypto with schema extensions;
+-- Sessions (Supabase bumps updated_at/refreshed_at on token refresh).
+create table auth.sessions (id uuid primary key default gen_random_uuid(), user_id uuid references auth.users(id) on delete cascade,
+  created_at timestamptz, updated_at timestamptz, refreshed_at timestamp without time zone);

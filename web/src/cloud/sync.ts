@@ -522,6 +522,10 @@ export interface AppPhone {
   dompets: number;
   plan?: string | null;
   active_until?: string | null;
+  /** Newest of PIN login / session refresh (needs 20261126 migration). */
+  last_active_at?: string | null;
+  /** Newest transaction this person created, any Dompet. */
+  last_tx_at?: string | null;
 }
 
 export type PlanChoice = { plan: "bulanan" | "tahunan"; months: number } | { plan: "gratis" } | null;

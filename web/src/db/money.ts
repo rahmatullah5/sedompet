@@ -124,6 +124,16 @@ export const mq = {
     );
   },
 
+  /** Transactions recorded from a rutin item ("Bayar"/"Terima") in a date range. */
+  recurringPaid(dompetId: string, me: string, from: string, to: string) {
+    return all<{ recurring_id: string; date: string; amount_base: number; kind: Kind }>(
+      `SELECT t.recurring_id, t.date, ${baseSql("t.amount")} AS amount_base, t.kind
+       FROM transactions t JOIN accounts a ON a.id = t.account_id
+       WHERE t.dompet_id = $d AND ${VISIBLE} AND t.recurring_id IS NOT NULL AND t.date BETWEEN $from AND $to`,
+      { $d: dompetId, $me: me, $from: from, $to: to },
+    );
+  },
+
   /** Active items due today or earlier. */
   due(dompetId: string, me: string) {
     const today = todayISO();

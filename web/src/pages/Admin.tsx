@@ -6,6 +6,28 @@ import { attempt, Badge, Button, Card, cx, Empty, Field, Input, Select, toast } 
 const fmt = new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", year: "numeric" });
 const day = (iso: string | null) => (iso ? fmt.format(new Date(iso)) : "—");
 
+/** "hari ini" / "kemarin" / "5 hari lalu" / date, for activity lines. */
+function ago(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  const start = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const days = Math.round((start(new Date()) - start(d)) / 86_400_000);
+  if (days <= 0) return "hari ini";
+  if (days === 1) return "kemarin";
+  if (days < 30) return `${days} hari lalu`;
+  return day(iso);
+}
+
+/** Active = recorded a transaction in the last 7 days. */
+function activity(p: AppPhone): { text: string; tone: "brand" | "amber" | "slate" } | null {
+  if (!p.registered || !("last_tx_at" in p)) return null;
+  if (!p.last_tx_at) return { text: "Belum pernah mencatat", tone: "slate" };
+  const days = (Date.now() - new Date(p.last_tx_at).getTime()) / 86_400_000;
+  if (days <= 7) return { text: "Aktif", tone: "brand" };
+  if (days <= 30) return { text: "Jarang", tone: "amber" };
+  return { text: "Tidak aktif", tone: "slate" };
+}
+
 function codeStatus(c: ActivationCode): { label: string; tone: "brand" | "amber" | "slate" } {
   if (c.used_at) return { label: `Dipakai ${displayPhone(c.used_phone)}`, tone: "slate" };
   if (c.revoked) return { label: "Dibatalkan", tone: "slate" };
@@ -180,9 +202,15 @@ export function Admin() {
                   {displayPhone(p.phone)} {p.is_admin && <Badge tone="violet">admin</Badge>}
                 </p>
                 <p className="text-xs text-slate-500">
-                  {p.registered ? `Login terakhir ${day(p.last_sign_in_at)}` : "Belum daftar"} · {p.dompets} Dompet
+                  {p.registered ? `Terakhir buka ${ago(p.last_active_at ?? p.last_sign_in_at)}` : "Belum daftar"} · {p.dompets} Dompet
                   {p.note ? ` · ${p.note}` : ""}
                 </p>
+                {p.registered && "last_tx_at" in p && (
+                  <p className="text-xs text-slate-500">
+                    Transaksi terakhir {p.last_tx_at ? ago(p.last_tx_at) : "—"}{" "}
+                    {activity(p) && <Badge tone={activity(p)!.tone}>{activity(p)!.text}</Badge>}
+                  </p>
+                )}
                 {"plan" in p && (
                   <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                     <Badge tone={planInfo(p).tone}>{planInfo(p).text}</Badge>

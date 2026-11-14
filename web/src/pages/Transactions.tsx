@@ -5,7 +5,7 @@ import { useCurrent, useDbVersion } from "../lib/hooks";
 import { Avatar, Badge, Button, Card, Empty, Money } from "../components/ui";
 import { Icon } from "../components/Icon";
 import { MultiAccountPicker, MultiCategoryPicker } from "../components/Pickers";
-import { SpendingCalendar } from "../components/SpendingCalendar";
+import { SpendingCalendar, type DayFlow } from "../components/SpendingCalendar";
 
 export function MonthNav({ month, setMonth }: { month: string; setMonth: (m: string) => void }) {
   const isCurrent = month === currentMonth();
@@ -180,9 +180,14 @@ export function Transactions({
       : byAmount
         ? [...txs].sort((a, b) => (sort === "largest" ? b.amount_base - a.amount_base : a.amount_base - b.amount_base))
         : txs;
-  // Calendar: everyday spending per date, following the filters above.
-  const dayTotals = new Map<string, number>();
-  for (const t of real) if (t.kind === "expense") dayTotals.set(t.date, (dayTotals.get(t.date) ?? 0) + t.amount_base);
+  // Calendar: everyday income and spending per date, following the filters above.
+  const dayTotals = new Map<string, DayFlow>();
+  for (const t of real) {
+    const f = dayTotals.get(t.date) ?? { in: 0, out: 0 };
+    if (t.kind === "income") f.in += t.amount_base;
+    else f.out += t.amount_base;
+    dayTotals.set(t.date, f);
+  }
   const dayFilter = !searching && day;
   const shown = dayFilter ? sorted.filter((t) => t.date === day) : sorted;
   const groups = new Map<string, Transaction[]>();
@@ -241,7 +246,7 @@ export function Transactions({
           </button>
         )}
         <button type="button" onClick={toggleCal} aria-pressed={showCal} className={`${onBulk ? "" : "ml-auto "}text-sm font-semibold text-brand-700`}>
-          📅 {showCal ? "Sembunyikan kalender" : "Kalender belanja"}
+          📅 {showCal ? "Sembunyikan kalender" : "Kalender masuk-keluar"}
         </button>
       </div>
       {!searching && showCal && (
@@ -252,7 +257,9 @@ export function Transactions({
       {dayFilter && (
         <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-brand-50 px-3 py-2 text-sm">
           <span className="font-semibold capitalize text-slate-800">{formatDay(day)}</span>
-          <span className="text-slate-500">· keluar {formatIDR(dayTotals.get(day) ?? 0)}</span>
+          <span className="text-slate-500">
+            · masuk {formatIDR(dayTotals.get(day)?.in ?? 0)} · keluar {formatIDR(dayTotals.get(day)?.out ?? 0)}
+          </span>
           <button type="button" onClick={() => setDay(null)} className="font-semibold text-slate-500 hover:underline">
             ✕ Semua tanggal
           </button>

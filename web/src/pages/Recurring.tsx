@@ -11,6 +11,9 @@ import { useCurrent, useDbVersion } from "../lib/hooks";
 import { attempt, Badge, Button, Card, cx, Empty, Field, Input, Modal, Select, STICKY_ACTIONS } from "../components/ui";
 import { Icon, IconPicker } from "../components/Icon";
 import { SuggestionList, type Suggestion } from "../components/Suggestions";
+import { BillCalendar } from "../components/BillCalendar";
+
+const VIEW_KEY = "sedompet.bills.view";
 
 /** Monthly-equivalent amount, for the "per bulan" totals. */
 // ---------------------------------------------------------------------------
@@ -206,6 +209,21 @@ export function Recurring() {
   const incomes = items.filter((r) => r.kind === "income");
   const [windowKey, setWindowKey] = useState<WindowKey>("12");
   const outlook = projectWindow(items, windowKey);
+  const [billView, setBillViewState] = useState<"list" | "calendar">(() => {
+    try {
+      return localStorage.getItem(VIEW_KEY) === "calendar" ? "calendar" : "list";
+    } catch {
+      return "list";
+    }
+  });
+  const setBillView = (v: "list" | "calendar") => {
+    setBillViewState(v);
+    try {
+      localStorage.setItem(VIEW_KEY, v);
+    } catch {
+      /* private mode */
+    }
+  };
 
   const list = (rs: Rec[]) =>
     rs.length === 0 ? (
@@ -264,7 +282,26 @@ export function Recurring() {
         }
         action={manage && <Button variant="secondary" onClick={() => setEditing("expense")}>+ Tagihan</Button>}
       >
-        {list(bills)}
+        <div className="mb-2 grid grid-cols-2 gap-1 rounded-full bg-slate-100 p-1" role="radiogroup" aria-label="Tampilan tagihan">
+          {(
+            [
+              ["list", "☰ Daftar"],
+              ["calendar", "📅 Kalender"],
+            ] as const
+          ).map(([v, label]) => (
+            <button
+              key={v}
+              type="button"
+              role="radio"
+              aria-checked={billView === v}
+              onClick={() => setBillView(v)}
+              className={cx("rounded-full py-1.5 text-xs font-semibold transition", billView === v ? "bg-slate-800 text-white" : "text-slate-500")}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {billView === "calendar" ? <BillCalendar dompetId={dompet.id} me={me.id} bills={bills} onOpen={manage ? setEditing : undefined} /> : list(bills)}
       </Card>
       <Card
         title={
