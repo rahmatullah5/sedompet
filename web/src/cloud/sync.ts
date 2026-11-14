@@ -440,6 +440,7 @@ async function onSession(session: Session | null) {
     setState({ error: friendlyError(e) });
   }
   setState({ status: "ready" });
+  touchLastSeen();
   void joinPendingInvite();
   scheduleUpload();
   if (!channel) {
@@ -465,6 +466,16 @@ async function joinPendingInvite() {
   }
 }
 
+/** Tell the server this person has the app open (admin "Terakhir buka"). Best effort. */
+function touchLastSeen() {
+  void requireSupabase()
+    .rpc("touch_last_seen")
+    .then(
+      () => undefined,
+      () => undefined,
+    );
+}
+
 /** Call once at startup in cloud mode, after initDatabase("cloud"). */
 export async function startCloudSync() {
   const sb = requireSupabase();
@@ -487,6 +498,7 @@ export async function startCloudSync() {
     if (document.visibilityState === "visible" && state.status === "ready") {
       schedulePull(0);
       void refreshSubscription();
+      touchLastSeen();
     }
   });
 }

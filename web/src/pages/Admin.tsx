@@ -6,13 +6,16 @@ import { attempt, Badge, Button, Card, cx, Empty, Field, Input, Select, toast } 
 const fmt = new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", year: "numeric" });
 const day = (iso: string | null) => (iso ? fmt.format(new Date(iso)) : "—");
 
+const clock = new Intl.DateTimeFormat("id-ID", { hour: "2-digit", minute: "2-digit" });
+
 /** "hari ini" / "kemarin" / "5 hari lalu" / date, for activity lines. */
 function ago(iso: string | null | undefined): string {
   if (!iso) return "—";
   const d = new Date(iso);
   const start = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
   const days = Math.round((start(new Date()) - start(d)) / 86_400_000);
-  if (days <= 0) return "hari ini";
+  if (Date.now() - d.getTime() < 5 * 60_000) return "baru saja";
+  if (days <= 0) return `hari ini ${clock.format(d)}`;
   if (days === 1) return "kemarin";
   if (days < 30) return `${days} hari lalu`;
   return day(iso);

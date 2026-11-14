@@ -24,3 +24,18 @@ from app_list_phones() l;
 select last_active_at is not distinct from last_sign_in_at as ok_fallback
 from app_list_phones() where phone = '6281100000004';
 reset role;
+
+\echo == touch_last_seen: Kakak (3333) opens the app now
+update auth.users set last_sign_in_at = now() - interval '10 days' where id = '33333333-3333-3333-3333-333333333333';
+set role authenticated;
+set request.jwt.claim.sub = '33333333-3333-3333-3333-333333333333';
+select touch_last_seen();
+reset role;
+select last_seen_at > now() - interval '1 minute' as ok_touched from phone_access where phone = '6281100000003';
+set request.jwt.claim.sub = '99999999-9999-9999-9999-999999999999';
+select last_active_at > now() - interval '1 minute' as ok_active_now from app_list_phones() where phone = '6281100000003';
+\echo == anon cannot call it
+set role anon;
+\echo EXPECT ERROR
+select touch_last_seen();
+reset role;
