@@ -2,8 +2,8 @@ import { useState } from "react";
 import { q, type Account, type Transaction } from "../db/repo";
 import { projectedRecurring } from "../db/money";
 import { currentMonth, formatCompact, formatIDR, formatMonth, formatPeriodRange, periodRange, timeAgo, todayISO } from "../lib/format";
-import { useCurrent, useDbVersion } from "../lib/hooks";
-import { Avatar, Card, Empty, Modal, Progress } from "../components/ui";
+import { MASK, useCurrent, useDbVersion, useHideBalance } from "../lib/hooks";
+import { Avatar, Card, Empty, Modal, Progress, cx } from "../components/ui";
 import { TxRow } from "./Transactions";
 import { DueList } from "./Recurring";
 import { Icon } from "../components/Icon";
@@ -23,6 +23,35 @@ function greeting() {
 /** Days left in the current budget month, today included. */
 function daysLeftThisMonth() {
   return Math.round((Date.parse(periodRange(currentMonth()).to) - Date.parse(todayISO())) / 86_400_000) + 1;
+}
+
+/**
+ * How healthy this month's spending is against the budget: a colour sliding
+ * from green (barely used) to red (at or over the limit), plus emoji and
+ * message. level 0 aman, 1 waspada, 2 hampir habis, 3 lewat.
+ */
+function budgetHealth(spent: number, amount: number, days: number, hidden: boolean) {
+  const pct = amount > 0 ? spent / amount : spent > 0 ? 2 : 0;
+  const left = amount - spent;
+  const hue = Math.round(145 * (1 - Math.min(1, pct))); // 145 green → 0 red
+  const colour = `hsl(${hue} 75% 36%)`; // text
+  const bar = `hsl(${hue} 72% 46%)`;
+  const m = (v: number) => (hidden ? "••••" : formatIDR(v));
+  if (pct >= 1)
+    return { level: 3, pct, colour, bar, emoji: "😱", text: left < 0 ? `Sudah lewat ${m(-left)} dari rencana. Yuk rem dulu sampai akhir bulan.` : "Anggaran bulan ini sudah habis." };
+  if (pct >= 0.8) return { level: 2, pct, colour, bar, emoji: "😟", text: `Tinggal ${m(left)} untuk ${days} hari lagi (±${m(Math.floor(left / days))}/hari).` };
+  if (pct >= 0.5) return { level: 1, pct, colour, bar, emoji: "🙂", text: `Sudah lewat separuh. Sisa ${m(left)}, kira-kira ${m(Math.floor(left / days))} per hari.` };
+  return { level: 0, pct, colour, bar, emoji: "😊", text: `Masih aman! Sisa ${m(left)}, kira-kira ${m(Math.floor(left / days))} per hari.` };
+}
+
+function EyeIcon({ off }: { off: boolean }) {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
+      <circle cx="12" cy="12" r="3" />
+      {off && <path d="M3 3l18 18" />}
+    </svg>
+  );
 }
 
 export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction | null) => void; goTo: (page: string) => void }) {
@@ -47,6 +76,8 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction | null) => 
   const familySpend = byMember.reduce((s, x) => s + x.total, 0);
   const days = daysLeftThisMonth();
   const [explainOpen, setExplainOpen] = useState(false);
+  const [hidden, toggleHidden] = useHideBalance();
+  const money = (v: string) => (hidden ? MASK : v);
   // Shared recurring items still to come this month (overdue ones included).
   const scheduled = projectedRecurring(dompet.id, me.id, "1970-01-01", periodRange(month).to);
   const sharedItems = scheduled.items.filter((i) => i.shared);
@@ -65,17 +96,7 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction | null) => 
   ].sort((a, b) => a.date.localeCompare(b.date));
   const free = sharedTotal - scheduledOut - datedOut;
 
-  let mood: { emoji: string; text: string } | null = null;
-  if (overall) {
-    const pct = overall.spent / overall.amount;
-    const left = overall.amount - overall.spent;
-    mood =
-      pct > 1
-        ? { emoji: "😬", text: `Sudah lewat ${formatIDR(-left)} dari rencana. Yuk rem sedikit sampai akhir bulan.` }
-        : pct > 0.8
-          ? { emoji: "🤏", text: `Tinggal ${formatIDR(left)} untuk ${days} hari lagi. Hati-hati ya.` }
-          : { emoji: "😊", text: `Masih aman! Sisa ${formatIDR(left)}, kira-kira ${formatIDR(Math.floor(left / days))} per hari.` };
-  }
+  const health = overall ? budgetHealth(overall.spent, overall.amount, days, hidden) : null;
 
   return (
     <div className="space-y-5">
@@ -87,7 +108,8 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction | null) => 
       </div>
 
       {/* The shared wallet */}
-      <button onClick={() => goTo("akun")} className="pop-in relative block w-full overflow-hidden rounded-[2rem] bg-gradient-to-br from-brand-500 via-brand-600 to-brand-700 p-6 text-left text-white shadow-[0_18px_40px_-18px_rgba(212,80,46,0.7)]">
+      <div className="pop-in relative">
+      <button onClick={() => goTo("akun")} className="relative block w-full overflow-hidden rounded-[2rem] bg-gradient-to-br from-brand-500 via-brand-600 to-brand-700 p-6 text-left text-white shadow-[0_18px_40px_-18px_rgba(212,80,46,0.7)]">
         <span className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-white/10" />
         <span className="pointer-events-none absolute -bottom-16 right-10 h-40 w-40 rounded-full bg-sun-400/25" />
         <span className="relative flex items-center justify-between">
@@ -100,37 +122,48 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction | null) => 
             ))}
           </span>
         </span>
-        <span className="num relative mt-2 block text-4xl font-extrabold tracking-tight">{formatIDR(sharedTotal)}</span>
-        {privateTotal > 0 && <span className="relative mt-1 block text-xs text-brand-100">+ {formatIDR(privateTotal)} di tabungan pribadimu 🔒</span>}
+        <span className="num relative mt-2 block pr-12 text-4xl font-extrabold tracking-tight">{money(formatIDR(sharedTotal))}</span>
+        {privateTotal > 0 && <span className="relative mt-1 block text-xs text-brand-100">+ {money(formatIDR(privateTotal))} di tabungan pribadimu 🔒</span>}
         <span className="relative mt-5 grid grid-cols-2 gap-3">
           <span className="rounded-2xl bg-white/15 px-4 py-3">
             <span className="block text-xs text-brand-100">Masuk {formatPeriodRange(month) ? "periode ini" : "bulan ini"}</span>
-            <span className="num font-bold">+{formatCompact(totals.income)}</span>
+            <span className="num font-bold">{hidden ? "••••" : `+${formatCompact(totals.income)}`}</span>
           </span>
           <span className="rounded-2xl bg-white/15 px-4 py-3">
             <span className="block text-xs text-brand-100">Keluar {formatPeriodRange(month) ? "periode ini" : "bulan ini"}</span>
-            <span className="num font-bold">−{formatCompact(totals.expense)}</span>
-            {datedExpenseInPeriod > 0 && <span className="block text-[11px] text-brand-100">{formatCompact(datedExpenseInPeriod)} bertanggal nanti</span>}
+            <span className="num font-bold">{hidden ? "••••" : `−${formatCompact(totals.expense)}`}</span>
+            {datedExpenseInPeriod > 0 && !hidden && <span className="block text-[11px] text-brand-100">{formatCompact(datedExpenseInPeriod)} bertanggal nanti</span>}
           </span>
         </span>
       </button>
+      <button
+        type="button"
+        onClick={toggleHidden}
+        aria-pressed={hidden}
+        aria-label={hidden ? "Tampilkan saldo" : "Sembunyikan saldo"}
+        title={hidden ? "Tampilkan saldo" : "Sembunyikan saldo"}
+        className="absolute right-5 top-[3.4rem] flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white hover:bg-white/25"
+      >
+        <EyeIcon off={hidden} />
+      </button>
+      </div>
       <div className="-mt-3 flex items-center justify-between gap-2 px-2 text-xs">
         <span className="text-slate-500">
           {scheduledOut > 0 || datedOut !== 0 ? (
             <>
-              Uang bebas ≈ <b className={free < 0 ? "text-red-600" : "text-slate-700"}>{formatIDR(free)}</b> setelah{" "}
+              Uang bebas ≈ <b className={free < 0 && !hidden ? "text-red-600" : "text-slate-700"}>{money(formatIDR(free))}</b> setelah{" "}
               {scheduledOut > 0 && datedOut !== 0 ? "tagihan & catatan terjadwal" : scheduledOut > 0 ? "tagihan rutin" : "catatan terjadwal"} bulan ini
             </>
           ) : (
             "Tidak ada tagihan rutin tersisa bulan ini"
           )}
         </span>
-        <button onClick={() => setExplainOpen(true)} className="shrink-0 font-semibold text-brand-700 underline decoration-brand-200 underline-offset-2">
+        <button onClick={() => setExplainOpen(true)} hidden={hidden} className="shrink-0 font-semibold text-brand-700 underline decoration-brand-200 underline-offset-2">
           Kenapa segini?
         </button>
       </div>
       <BalanceExplainer
-        open={explainOpen}
+        open={explainOpen && !hidden}
         onClose={() => setExplainOpen(false)}
         accounts={accounts}
         sharedTotal={sharedTotal}
@@ -149,24 +182,51 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction | null) => 
 
       <DueList />
 
-      {overall && mood && (
-        <Card className="pop-in">
+      {overall && health && (
+        <Card className={cx("pop-in", health.level >= 2 && "ring-2", health.level === 2 && "ring-amber-200", health.level === 3 && "ring-red-200")}>
           <div className="flex gap-3">
-            <span className="text-4xl leading-none">{mood.emoji}</span>
+            <span className="text-4xl leading-none" aria-hidden>
+              {health.emoji}
+            </span>
             <div className="min-w-0 flex-1">
               <p className="font-bold text-slate-800">
-                Bulan {formatMonth(month).split(" ")[0]} terpakai {formatCompact(overall.spent)} dari {formatCompact(overall.amount)}
+                Bulan {formatMonth(month).split(" ")[0]} terpakai{" "}
+                <span className="num" style={{ color: health.colour }}>
+                  {hidden ? `${Math.round(health.pct * 100)}%` : formatCompact(overall.spent)}
+                </span>
+                {!hidden && <> dari {formatCompact(overall.amount)}</>}
               </p>
               {formatPeriodRange(month) && <p className="text-xs text-slate-400">Periode {formatPeriodRange(month)}</p>}
-              <p className="mt-0.5 text-sm text-slate-500">{mood.text}</p>
+              <p className="mt-0.5 text-sm text-slate-500">{health.text}</p>
               {overall.combined > 0 && (
                 <p className="mt-1 text-xs text-slate-400">Gabungan {overall.combined} anggaran. Buat anggaran tanpa kategori untuk batas total.</p>
               )}
               <div className="mt-3">
-                <Progress value={overall.spent} max={overall.amount} />
+                <Progress value={overall.spent} max={overall.amount} colour={health.bar} />
               </div>
             </div>
           </div>
+          {health.level >= 2 && (
+            <div role="alert" className={cx("mt-3 rounded-2xl px-4 py-3 text-sm", health.level === 3 ? "bg-red-50 text-red-800" : "bg-amber-50 text-amber-800")}>
+              <p className="font-bold">{health.level === 3 ? "⚠️ Anggaran sudah terlewati" : "⚠️ Anggaran hampir habis"}</p>
+              <ul className="mt-1 list-disc space-y-0.5 pl-5">
+                <li>Tunda belanja yang tidak mendesak sampai bulan depan.</li>
+                {topCats[0] && (
+                  <li>
+                    Cek pengeluaran terbesar: <b>{topCats[0].name}</b>.
+                  </li>
+                )}
+                <li>Kalau rencananya memang kurang, ubah jumlah anggaran.</li>
+              </ul>
+              <button
+                type="button"
+                onClick={() => goTo("anggaran")}
+                className={cx("mt-2 rounded-full px-3 py-1.5 text-xs font-bold text-white", health.level === 3 ? "bg-red-600" : "bg-amber-600")}
+              >
+                Atur anggaran
+              </button>
+            </div>
+          )}
         </Card>
       )}
 
@@ -220,7 +280,7 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction | null) => 
                   {x.name}
                   {x.id === me.id && <span className="text-xs font-semibold text-slate-400"> (kamu)</span>}
                 </p>
-                <p className="num text-sm font-semibold text-slate-600">{formatCompact(x.total)}</p>
+                <p className="num text-sm font-semibold text-slate-600">{hidden ? "••••" : formatCompact(x.total)}</p>
                 <div className="mt-2 h-1.5 rounded-full bg-slate-100">
                   <div className="h-1.5 rounded-full" style={{ width: `${share}%`, background: x.colour }} />
                 </div>
@@ -286,7 +346,7 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction | null) => 
                   <p className="mt-1 truncate font-bold text-slate-800">{b.name}</p>
                   {b.period !== "monthly" && <p className="text-[11px] font-semibold text-brand-700">{b.periodLabel.split(" (")[0]}</p>}
                   <p className={`num text-xs font-semibold ${left < 0 ? "text-red-600" : "text-slate-500"}`}>
-                    {left < 0 ? `lewat ${formatCompact(-left)}` : `sisa ${formatCompact(left)}`}
+                    {hidden ? `${Math.round((b.spent / Math.max(1, b.limit)) * 100)}% terpakai` : left < 0 ? `lewat ${formatCompact(-left)}` : `sisa ${formatCompact(left)}`}
                   </p>
                   <div className="mt-2">
                     <Progress value={b.spent} max={b.limit} />

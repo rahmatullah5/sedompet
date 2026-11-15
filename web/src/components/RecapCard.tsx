@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { recapText, weeklyRecap } from "../db/recap";
 import { formatCompact, formatIDR } from "../lib/format";
-import { useCurrent } from "../lib/hooks";
+import { MASK, useCurrent, useHideBalance } from "../lib/hooks";
 import { Card, cx, toast } from "./ui";
 
 /** "Rekap minggu ini / lalu" on Beranda, with sharing to WhatsApp. */
@@ -11,6 +11,8 @@ export function RecapCard({ budgetLine }: { budgetLine?: string }) {
   const [offset, setOffset] = useState(() => (new Date().getDay() === 1 ? -1 : 0));
   const r = weeklyRecap(dompet.id, offset);
   const text = recapText(r, dompet.name, { budgetLine });
+  const [hidden] = useHideBalance();
+  const c$ = (v: number) => (hidden ? "••••" : formatCompact(v));
   const max = Math.max(1, ...r.categories.map((c) => c.total));
 
   const share = async () => {
@@ -57,14 +59,14 @@ export function RecapCard({ budgetLine }: { budgetLine?: string }) {
         {r.inProgress ? " · sampai hari ini" : ""} · akun bersama
       </p>
       <div className="mt-1 flex flex-wrap items-end gap-x-3">
-        <span className="num text-2xl font-extrabold text-slate-800">{formatIDR(r.spent)}</span>
+        <span className="num text-2xl font-extrabold text-slate-800">{hidden ? MASK : formatIDR(r.spent)}</span>
         {r.change !== null && (
           <span className={cx("pb-1 text-sm font-semibold", r.change > 0 ? "text-red-600" : "text-mint-600")}>
             {r.change > 0 ? "▲" : r.change < 0 ? "▼" : "="} {Math.abs(r.change)}% vs minggu sebelumnya
           </span>
         )}
       </div>
-      <p className="text-xs text-slate-500">keluar dari {r.entries} catatan{r.income > 0 ? ` · masuk ${formatCompact(r.income)}` : ""}</p>
+      <p className="text-xs text-slate-500">keluar dari {r.entries} catatan{r.income > 0 ? ` · masuk ${c$(r.income)}` : ""}</p>
 
       {r.categories.length > 0 ? (
         <ul className="mt-3 space-y-1.5">
@@ -74,7 +76,7 @@ export function RecapCard({ budgetLine }: { budgetLine?: string }) {
                 <span className="text-slate-700">
                   {c.icon} {c.name}
                 </span>
-                <span className="num font-semibold text-slate-800">{formatCompact(c.total)}</span>
+                <span className="num font-semibold text-slate-800">{c$(c.total)}</span>
               </div>
               <div className="mt-0.5 h-1.5 rounded-full bg-slate-100">
                 <div className="h-1.5 rounded-full" style={{ width: `${(c.total / max) * 100}%`, background: "var(--color-brand-500)" }} />
@@ -87,7 +89,7 @@ export function RecapCard({ budgetLine }: { budgetLine?: string }) {
       )}
       {r.biggest && r.biggest.total > 0 && (
         <p className="mt-2 text-xs text-slate-500">
-          🔝 Terbesar: <b className="text-slate-700">{r.biggest.note || r.biggest.category || "Tanpa catatan"}</b> · {formatCompact(r.biggest.total)}
+          🔝 Terbesar: <b className="text-slate-700">{r.biggest.note || r.biggest.category || "Tanpa catatan"}</b> · {c$(r.biggest.total)}
         </p>
       )}
 

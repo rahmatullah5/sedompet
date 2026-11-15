@@ -3,7 +3,7 @@ import { deleteWithUndo } from "../lib/undo";
 import { m, q, type Goal } from "../db/repo";
 import { can } from "../lib/permissions";
 import { formatCompact, formatIDR, parseAmount, todayISO } from "../lib/format";
-import { useCurrent, useDbVersion } from "../lib/hooks";
+import { useCurrent, useDbVersion, useHideBalance } from "../lib/hooks";
 import { attempt, Badge, Button, Card, cx, Empty, Field, Input, Modal, Progress, Select, STICKY_ACTIONS } from "../components/ui";
 import { DatePicker } from "../components/DatePicker";
 import { Icon, IconPicker } from "../components/Icon";
@@ -28,6 +28,7 @@ export function goalStatus(g: Goal) {
 }
 
 export function GoalRow({ g, compact }: { g: Goal; compact?: boolean }) {
+  const [hideAmt] = useHideBalance();
   const s = goalStatus(g);
   return (
     <div>
@@ -42,7 +43,7 @@ export function GoalRow({ g, compact }: { g: Goal; compact?: boolean }) {
             {s.late && <Badge tone="amber">Lewat target</Badge>}
           </span>
           <span className="block text-xs text-slate-500">
-            {formatCompact(g.progress)} dari {formatCompact(g.target)} · {s.pct}%
+            {compact && hideAmt ? `${s.pct}%` : `${formatCompact(g.progress)} dari ${formatCompact(g.target)} · ${s.pct}%`}
             {g.target_date && ` · ${monthFmt.format(new Date(g.target_date + "T00:00"))}`}
           </span>
         </span>

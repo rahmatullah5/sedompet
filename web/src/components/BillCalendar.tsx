@@ -19,7 +19,7 @@ interface Entry {
 }
 
 const STATUS: Record<Status, { label: string; cell: string; chip: string }> = {
-  paid: { label: "Lunas", cell: "bg-mint-100", chip: "bg-mint-200 text-mint-700" },
+  paid: { label: "Lunas", cell: "bg-slate-200/70", chip: "bg-mint-200 text-mint-700" },
   late: { label: "Telat", cell: "bg-red-100", chip: "bg-red-200 text-red-800" },
   today: { label: "Hari ini", cell: "bg-sun-100", chip: "bg-sun-100 text-amber-700" },
   soon: { label: "Akan datang", cell: "bg-brand-100", chip: "bg-slate-100 text-slate-600" },
@@ -169,6 +169,9 @@ export function BillCalendar({
           const st = cellStatus(list);
           const isSel = sel === d;
           const hasIncome = list?.some((e) => e.rec.kind === "income");
+          // Net of the day: more coming in than going out reads green, whatever the status.
+          const net = (list ?? []).reduce((s, e) => s + (e.rec.kind === "income" ? e.amount : -e.amount), 0);
+          const cell = !st ? "bg-slate-50" : net > 0 ? "bg-mint-100" : STATUS[st].cell;
           const label = `${formatDay(d)}: ${
             list?.length ? list.map((e) => `${e.rec.name} ${e.rec.kind === "income" ? "+" : "−"}${formatIDR(e.amount)} (${statusLabel(e)})`).join(", ") : "tidak ada yang rutin"
           }`;
@@ -182,7 +185,7 @@ export function BillCalendar({
               onClick={() => setSelected(isSel ? null : d)}
               className={cx(
                 "relative flex aspect-square min-h-11 flex-col items-center justify-start gap-0.5 rounded-xl pt-1 transition active:scale-95",
-                st ? STATUS[st].cell : "bg-slate-50",
+                cell,
                 d === today && "ring-2 ring-slate-800 ring-offset-1",
                 isSel && "ring-2 ring-brand-700 ring-offset-2",
               )}
@@ -212,6 +215,12 @@ export function BillCalendar({
             {STATUS[s].label}
           </span>
         ))}
+        {filter !== "expense" && (
+          <span className="flex items-center gap-1">
+            <span className="h-2.5 w-2.5 rounded-sm border border-slate-200 bg-mint-100" />
+            Lebih banyak masuk
+          </span>
+        )}
         {filter === "all" && (
           <span className="flex items-center gap-1">
             <span className="h-1.5 w-1.5 rounded-full bg-mint-600" />

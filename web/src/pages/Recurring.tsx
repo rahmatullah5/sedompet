@@ -7,7 +7,7 @@ import { describeFrequency, mm, mq, occurrences, type Frequency, type Recurring 
 import { can } from "../lib/permissions";
 import { formatCompact, formatDay, formatIDR, toISODate, todayISO } from "../lib/format";
 import { formatMoney, isBase, moneyInputText, parseMoney } from "../lib/currency";
-import { useCurrent, useDbVersion } from "../lib/hooks";
+import { useCurrent, useDbVersion, useHideBalance } from "../lib/hooks";
 import { attempt, Badge, Button, Card, cx, Empty, Field, Input, Modal, Select, STICKY_ACTIONS } from "../components/ui";
 import { Icon, IconPicker } from "../components/Icon";
 import { SuggestionList, type Suggestion } from "../components/Suggestions";
@@ -164,6 +164,7 @@ function OutlookCard({
 export function DueList() {
   useDbVersion();
   const { dompet, me } = useCurrent();
+  const [hideAmt] = useHideBalance();
   const due = mq.due(dompet.id, me.id);
   if (due.length === 0) return null;
   const canAct = can.addTransaction(me.role);
@@ -179,7 +180,7 @@ export function DueList() {
               <span className="block truncate font-semibold text-slate-800">{r.name}</span>
               <span className="text-xs text-slate-500">
                 {formatDay(r.next_date)} · {r.kind === "income" ? "+" : "−"}
-                {formatMoney(r.amount, r.account_currency)}
+                {hideAmt ? "••••" : formatMoney(r.amount, r.account_currency)}
               </span>
             </span>
             {canAct && (
