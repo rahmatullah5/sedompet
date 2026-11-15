@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { accountTypeIcon, type Account, type Category } from "../db/repo";
+import { accountTypeIcon, q, type Account, type Category } from "../db/repo";
+import { setMainAccount, useCurrent, useMainAccount } from "../lib/hooks";
 import { formatCompact } from "../lib/format";
 import { formatMoney, isBase } from "../lib/currency";
 import { Icon } from "./Icon";
@@ -126,26 +127,52 @@ export function MultiAccountPicker({ accounts, value, onChange }: { accounts: Ac
   );
 }
 
-/** Horizontal row of tappable account cards (icon, name, balance). */
+/** Most used first (by number of transactions); ties keep their usual order. */
+function byUsage<T extends { id: string }>(list: T[], usage: Map<string, number>, extra?: (x: T) => number) {
+  const n = (x: T) => (usage.get(x.id) ?? 0) + (extra?.(x) ?? 0);
+  return list.map((x, i) => ({ x, i })).sort((a, b) => n(b.x) - n(a.x) || a.i - b.i).map((e) => e.x);
+}
+
+/**
+ * Account cards (icon, name, balance), most used first. With many accounts
+ * only the first few show plus "N lainnya", like the category picker. The
+ * member's "akun utama" carries a star; `mainControl` adds a link to change it.
+ */
 export function AccountPicker({
   accounts,
   value,
   onChange,
   label = "Akun",
+  mainControl,
 }: {
   accounts: Account[];
   value: string;
   onChange: (id: string) => void;
   label?: string;
+  mainControl?: boolean;
 }) {
+  const { dompet, me } = useCurrent();
+  const main = useMainAccount(me.id);
+  const [expanded, setExpanded] = useState(false);
+  const sorted = byUsage(accounts, q.usage(dompet.id));
+  const LIMIT = 5;
+  let shown = sorted;
+  if (!expanded && sorted.length > LIMIT + 1) {
+    shown = sorted.slice(0, LIMIT);
+    const sel = sorted.find((a) => a.id === value);
+    if (sel && !shown.includes(sel)) shown = [...shown.slice(0, LIMIT - 1), sel];
+  }
+  const hidden = sorted.length - shown.length;
+  const tileCls = "flex min-w-0 flex-col items-start gap-0.5 rounded-2xl border-2 p-2 text-left transition";
+
   return (
     <div>
       <span className="mb-1.5 block text-sm font-semibold text-slate-700">{label}</span>
       {accounts.length === 0 ? (
         <p className="rounded-2xl bg-slate-50 px-3 py-2 text-sm text-slate-500">Belum ada akun. Tambahkan di Menu → Isi dompet.</p>
       ) : (
-        <div className="no-scrollbar -mx-1 flex snap-x gap-2 overflow-x-auto px-1 pb-1" role="radiogroup" aria-label={label}>
-          {accounts.map((a) => {
+        <div className="grid grid-cols-3 gap-1.5" role="radiogroup" aria-label={label}>
+          {shown.map((a) => {
             const on = a.id === value;
             return (
               <button
@@ -154,29 +181,57 @@ export function AccountPicker({
                 role="radio"
                 aria-checked={on}
                 onClick={() => onChange(a.id)}
-                className={cx(
-                  "flex w-32 shrink-0 snap-start flex-col items-start gap-0.5 rounded-2xl border-2 p-2 text-left transition",
-                  on ? "border-brand-600 bg-brand-50 shadow-sm" : "border-transparent bg-slate-50 hover:bg-slate-100",
-                )}
+                className={cx(tileCls, on ? "border-brand-600 bg-brand-50 shadow-sm" : "border-transparent bg-slate-50 hover:bg-slate-100")}
               >
                 <span className="flex w-full items-center justify-between">
                   <span className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ background: `${a.colour}26` }}>
                     <Icon value={a.icon ?? accountTypeIcon(a.type)} size={18} />
                   </span>
-                  {a.visibility === "private" ? (
-                    <span className="text-xs">🔒</span>
-                  ) : a.holder_emoji ? (
-                    <span title={`Dipegang ${a.holder_name}`} className="text-sm leading-none">
-                      {a.holder_emoji}
-                    </span>
-                  ) : null}
+                  <span className="flex items-center gap-0.5 text-xs leading-none">
+                    {main === a.id && <span title="Akun utama">⭐</span>}
+                    {a.visibility === "private" ? (
+                      <span>🔒</span>
+                    ) : a.holder_emoji ? (
+                      <span title={`Dipegang ${a.holder_name}`} className="text-sm">
+                        {a.holder_emoji}
+                      </span>
+                    ) : null}
+                  </span>
                 </span>
                 <span className={cx("line-clamp-1 text-xs font-semibold leading-tight", on ? "text-brand-800" : "text-slate-700")}>{a.name}</span>
                 <span className="num text-[11px] text-slate-400">{isBase(a.currency) ? formatCompact(a.balance) : formatMoney(a.balance, a.currency)}</span>
               </button>
             );
           })}
+          {hidden > 0 && (
+            <button type="button" onClick={() => setExpanded(true)} className={cx(tileCls, "items-center justify-center border-transparent bg-slate-50 text-xs font-semibold text-slate-600 hover:bg-slate-100")}>
+              <span className="text-lg leading-none">➕</span>
+              {hidden} lainnya
+            </button>
+          )}
+          {expanded && sorted.length > LIMIT + 1 && (
+            <button type="button" onClick={() => setExpanded(false)} className={cx(tileCls, "items-center justify-center border-transparent bg-slate-50 text-xs font-semibold text-slate-600 hover:bg-slate-100")}>
+              <span className="text-lg leading-none">➖</span>
+              Ringkas
+            </button>
+          )}
         </div>
+      )}
+      {mainControl && value && (
+        <p className="mt-1 px-1 text-xs text-slate-500">
+          {main === value ? (
+            <>
+              ⭐ Akun utama: otomatis terpilih tiap catat baru.{" "}
+              <button type="button" className="font-semibold text-slate-600 underline" onClick={() => setMainAccount(me.id, null)}>
+                Lepas
+              </button>
+            </>
+          ) : (
+            <button type="button" className="font-semibold text-brand-700" onClick={() => setMainAccount(me.id, value)}>
+              ☆ Jadikan akun utama
+            </button>
+          )}
+        </p>
       )}
     </div>
   );
@@ -202,10 +257,13 @@ export function CategoryPicker({
   noneLabel?: string;
   noneIcon?: string;
 }) {
-  const parents = categories.filter((c) => !c.parent_id);
+  const { dompet } = useCurrent();
+  const usage = q.usage(dompet.id);
+  const subCount = (p: Category) => categories.filter((c) => c.parent_id === p.id).reduce((t, c) => t + (usage.get(c.id) ?? 0), 0);
+  const parents = byUsage(categories.filter((c) => !c.parent_id), usage, subCount);
   const selected = categories.find((c) => c.id === value);
   const parent = selected ? (selected.parent_id ? categories.find((c) => c.id === selected.parent_id) : selected) : undefined;
-  const subs = parent ? categories.filter((c) => c.parent_id === parent.id) : [];
+  const subs = parent ? byUsage(categories.filter((c) => c.parent_id === parent.id), usage) : [];
   const [expanded, setExpanded] = useState(false);
   // Show 7 tiles (+ "more"); the selected category always stays visible.
   const LIMIT = noneLabel ? 6 : 7;

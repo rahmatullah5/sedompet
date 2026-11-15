@@ -59,3 +59,34 @@ export function useHideBalance(): [boolean, () => void] {
 
 /** Mask for an amount while the balance is hidden. */
 export const MASK = "Rp ••••••";
+
+// "Akun utama": the account new entries start on, per member, remembered on
+// this device.
+const MAIN_KEY = (memberId: string) => `sedompet.mainAccount.${memberId}`;
+const mainListeners = new Set<() => void>();
+let mainVersion = 0;
+export function getMainAccount(memberId: string): string | null {
+  try {
+    return localStorage.getItem(MAIN_KEY(memberId));
+  } catch {
+    return null;
+  }
+}
+export function setMainAccount(memberId: string, accountId: string | null) {
+  try {
+    if (accountId) localStorage.setItem(MAIN_KEY(memberId), accountId);
+    else localStorage.removeItem(MAIN_KEY(memberId));
+  } catch {
+    /* private mode */
+  }
+  mainVersion++;
+  mainListeners.forEach((l) => l());
+}
+/** The member's main account id (re-renders when it changes). */
+export function useMainAccount(memberId: string): string | null {
+  useSyncExternalStore(
+    (l) => (mainListeners.add(l), () => mainListeners.delete(l)),
+    () => mainVersion,
+  );
+  return getMainAccount(memberId);
+}

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { m, q, type Kind } from "../db/repo";
 import { formatIDR, parseAmount, todayISO } from "../lib/format";
 import { parseMoney } from "../lib/currency";
-import { useCurrent, useDbVersion } from "../lib/hooks";
+import { useCurrent, useDbVersion, getMainAccount } from "../lib/hooks";
 import { attempt, Button, cx, Select, STICKY_ACTIONS } from "./ui";
 
 interface Row {
@@ -70,7 +70,7 @@ export function BulkBody({ onClose, modeSwitch }: { onClose: () => void; modeSwi
     const p = c.parent_id ? parents.get(c.parent_id) : null;
     return p ? `${p.icon} ${p.name} › ${c.name}` : `${c.icon} ${c.name}`;
   };
-  const defaultAccount = (accounts.find((a) => (a.holder_member_id ?? a.owner_member_id) === me.id) ?? accounts[0])?.id ?? "";
+  const defaultAccount = (accounts.find((a) => a.id === getMainAccount(me.id)) ?? accounts.find((a) => (a.holder_member_id ?? a.owner_member_id) === me.id) ?? accounts[0])?.id ?? "";
   // From earlier entries: the whole note first, then its words (longest first).
   const guessCategory = (note: string, kind: Kind) => {
     const words = note.trim().split(/\s+/).filter((x) => x.length >= 3).sort((a, b) => b.length - a.length);

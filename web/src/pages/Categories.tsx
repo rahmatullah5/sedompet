@@ -155,6 +155,7 @@ function CategoryForm({ editing, parents, onClose }: { editing: NonNullable<Edit
           </div>
         </div>
       )}
+      {c && <MergeSection category={c} onDone={onClose} />}
       <div className={`${STICKY_ACTIONS} justify-between`}>
         <div>
           {c && (
@@ -179,5 +180,67 @@ function CategoryForm({ editing, parents, onClose }: { editing: NonNullable<Edit
         </div>
       </div>
     </form>
+  );
+}
+
+/** "Gabungkan ke kategori lain": move everything into another category, then remove this one. */
+function MergeSection({ category: c, onDone }: { category: Category; onDone: () => void }) {
+  const { me } = useCurrent();
+  const [open, setOpen] = useState(false);
+  const [targetId, setTargetId] = useState("");
+  const all = q.categories(c.dompet_id, c.kind);
+  const subs = all.filter((x) => x.parent_id === c.id);
+  const parentName = (x: Category) => (x.parent_id ? all.find((p) => p.id === x.parent_id)?.name : null);
+  // Not itself, and not one of its own subcategories.
+  const targets = all.filter((x) => x.id !== c.id && x.parent_id !== c.id);
+  const target = targets.find((x) => x.id === targetId);
+  const used = q.usage(c.dompet_id);
+  const txCount = [c, ...subs].reduce((t, x) => t + (used.get(x.id) ?? 0), 0);
+  const label = (x: Category) => `${x.icon.startsWith("data:") ? "" : `${x.icon} `}${parentName(x) ? `${parentName(x)} → ` : ""}${x.name}`;
+
+  if (!open)
+    return (
+      <button type="button" onClick={() => setOpen(true)} className="text-sm font-semibold text-brand-700">
+        🔀 Gabungkan ke kategori lain
+      </button>
+    );
+  return (
+    <div className="space-y-2 rounded-2xl bg-slate-50 p-3">
+      <Field
+        label={`Gabungkan ${c.name} ke`}
+        hint={`${txCount} transaksi${subs.length ? ` (termasuk ${subs.length} subkategori)` : ""}, tagihan rutin dan anggarannya ikut pindah. ${c.name} lalu dihapus.`}
+      >
+        <Select value={targetId} onChange={(e) => setTargetId(e.target.value)}>
+          <option value="">— Pilih kategori tujuan —</option>
+          {targets.map((x) => (
+            <option key={x.id} value={x.id}>
+              {label(x)}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      {target && subs.length > 0 && (
+        <p className="text-xs text-slate-500">
+          {target.parent_id
+            ? `Subkategori ${subs.map((x) => x.name).join(", ")} ikut digabung ke ${target.name}.`
+            : `Subkategori ${subs.map((x) => x.name).join(", ")} pindah ke bawah ${target.name}.`}
+        </p>
+      )}
+      <div className="flex justify-end gap-2">
+        <Button variant="secondary" onClick={() => (setOpen(false), setTargetId(""))}>
+          Batal
+        </Button>
+        <Button
+          disabled={!target}
+          onClick={async () => {
+            if (!target) return;
+            if (!confirm(`Gabungkan ${c.name} ke ${target.name}? ${txCount} transaksi pindah ke ${target.name}. Tidak bisa dibatalkan.`)) return;
+            if (await attempt(() => m.mergeCategory(me.id, c.id, target.id), `${c.name} digabung ke ${target.name}`)) onDone();
+          }}
+        >
+          Gabungkan
+        </Button>
+      </div>
+    </div>
   );
 }

@@ -5,7 +5,7 @@ import { DatePicker } from "../components/DatePicker";
 import { q, type Kind } from "../db/repo";
 import { describeFrequency, mm, mq, occurrences, type Frequency, type Recurring as Rec } from "../db/money";
 import { can } from "../lib/permissions";
-import { formatCompact, formatDay, formatIDR, toISODate, todayISO } from "../lib/format";
+import { formatCompact, formatDay, formatIDR, getPeriodStartDay, toISODate, todayISO } from "../lib/format";
 import { formatMoney, isBase, moneyInputText, parseMoney } from "../lib/currency";
 import { useCurrent, useDbVersion, useHideBalance } from "../lib/hooks";
 import { attempt, Badge, Button, Card, cx, Empty, Field, Input, Modal, Select, STICKY_ACTIONS } from "../components/ui";
@@ -27,7 +27,7 @@ const WINDOWS: Record<WindowKey, { label: string; short: string; months: number 
   "12": { label: "12 bulan", short: "12 bulan", months: 12 },
 };
 
-const monthLabel = new Intl.DateTimeFormat("id-ID", { month: "short", year: "2-digit" });
+const monthLabel = new Intl.DateTimeFormat("id-ID", { month: "short", year: "numeric" });
 const shortDate = new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", year: "numeric" });
 const parseISO = (iso: string) => {
   const [y, m, d] = iso.split("-").map(Number);
@@ -37,23 +37,35 @@ function formatShort(iso: string) {
   return shortDate.format(parseISO(iso));
 }
 
-/** Months of this window: the current month (from today) plus following months. */
-function windowMonths(months: number) {
+const dayMonth = new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short" });
+const PROJ_START_KEY = "sedompet.rutin.projStart";
+
+/**
+ * Month-long periods starting on `startDay` (e.g. payday 27: 27 Nov – 26 Des),
+ * the first one being the period holding today, counted from today onward.
+ * Short months clamp the day (31 -> 30 Nov, 28/29 Feb).
+ */
+function windowMonths(months: number, startDay: number) {
   const now = new Date();
+  const startOf = (y: number, m: number) => new Date(y, m, Math.min(startDay, new Date(y, m + 1, 0).getDate()));
+  let first = startOf(now.getFullYear(), now.getMonth());
+  if (first > now) first = startOf(now.getFullYear(), now.getMonth() - 1);
+  const today = todayISO();
   return Array.from({ length: months }, (_, i) => {
-    const start = new Date(now.getFullYear(), now.getMonth() + i, 1);
-    const end = new Date(now.getFullYear(), now.getMonth() + i + 1, 0);
+    const start = startOf(first.getFullYear(), first.getMonth() + i);
+    const next = startOf(first.getFullYear(), first.getMonth() + i + 1);
+    const end = new Date(next.getFullYear(), next.getMonth(), next.getDate() - 1);
     return {
-      key: toISODate(start).slice(0, 7),
-      label: monthLabel.format(start),
-      from: i === 0 ? todayISO() : toISODate(start),
+      key: toISODate(start),
+      label: startDay === 1 ? monthLabel.format(start) : `${dayMonth.format(start)} – ${dayMonth.format(end)}`,
+      from: i === 0 ? today : toISODate(start),
       to: toISODate(end),
     };
   });
 }
 
-function projectWindow(items: Rec[], key: WindowKey) {
-  const months = windowMonths(WINDOWS[key].months).map((m) => {
+function projectWindow(items: Rec[], key: WindowKey, startDay: number) {
+  const months = windowMonths(WINDOWS[key].months, startDay).map((m) => {
     let income = 0;
     let expense = 0;
     const due: { name: string; amount: number; kind: Kind; date: string }[] = [];
@@ -99,10 +111,14 @@ function savingHint(r: Rec): string | null {
 function OutlookCard({
   windowKey,
   setWindowKey,
+  startDay,
+  setStartDay,
   outlook,
 }: {
   windowKey: WindowKey;
   setWindowKey: (k: WindowKey) => void;
+  startDay: number;
+  setStartDay: (d: number) => void;
   outlook: ReturnType<typeof projectWindow>;
 }) {
   const net = outlook.income - outlook.expense;
@@ -122,6 +138,21 @@ function OutlookCard({
           </button>
         ))}
       </div>
+      <label className="mt-2 flex items-center justify-between gap-2 px-1 text-xs text-slate-500">
+        <span>Hitungan bulan mulai tanggal (mis. tanggal gajian)</span>
+        <select
+          value={startDay}
+          onChange={(e) => setStartDay(Number(e.target.value))}
+          className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700"
+          aria-label="Mulai tanggal"
+        >
+          {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+            <option key={d} value={d}>
+              {d}
+            </option>
+          ))}
+        </select>
+      </label>
       <div className="mt-3 grid grid-cols-3 gap-2 text-center">
         <div className="rounded-2xl bg-slate-50 p-2">
           <p className="text-[11px] font-semibold text-slate-500">Tagihan</p>
@@ -133,20 +164,26 @@ function OutlookCard({
         </div>
         <div className={cx("rounded-2xl p-2", net < 0 ? "bg-red-50" : "bg-sun-100")}>
           <p className={cx("text-[11px] font-semibold", net < 0 ? "text-red-700" : "text-amber-700")}>Selisih</p>
-          <p className="num font-extrabold text-slate-800">{formatCompact(net)}</p>
+          <p className="num font-extrabold text-slate-800">{net > 0 ? "+" : net < 0 ? "−" : ""}{formatCompact(Math.abs(net))}</p>
         </div>
       </div>
       {outlook.months.length > 1 && (
         <ul className="mt-3 space-y-1.5">
           {outlook.months.map((m) => (
-            <li key={m.key} className="grid grid-cols-[3.5rem_1fr_auto] items-center gap-2 text-xs" title={m.due.map((d) => `${d.name} ${formatIDR(d.amount)}`).join(", ")}>
+            <li
+              key={m.key}
+              className={cx("grid items-center gap-2 text-xs", startDay === 1 ? "grid-cols-[3.5rem_1fr_auto]" : "grid-cols-[6.5rem_1fr_auto]")}
+              title={m.due.map((d) => `${d.name} ${d.kind === "income" ? "+" : "−"}${formatIDR(d.amount)}`).join(", ")}
+            >
               <span className="font-semibold capitalize text-slate-600">{m.label}</span>
               <span className="space-y-0.5">
                 <span className="block h-1.5 rounded-full bg-[#2fb67c]" style={{ width: `${(m.income / max) * 100}%` }} />
                 <span className="block h-1.5 rounded-full bg-[#f47c5a]" style={{ width: `${(m.expense / max) * 100}%` }} />
               </span>
-              <span className="num text-right text-slate-600">
-                {m.expense > 0 ? `−${formatCompact(m.expense)}` : "—"}
+              <span className={cx("num text-right font-semibold", m.income - m.expense > 0 ? "text-mint-700" : m.income - m.expense < 0 ? "text-red-700" : "text-slate-400")}>
+                {m.income === 0 && m.expense === 0
+                  ? "—"
+                  : `${m.income - m.expense > 0 ? "+" : m.income - m.expense < 0 ? "−" : ""}${formatCompact(Math.abs(m.income - m.expense))}`}
                 {m.due.some((d) => d.kind === "expense" && d.amount >= 5_000_000) && " ⚠️"}
               </span>
             </li>
@@ -154,7 +191,7 @@ function OutlookCard({
         </ul>
       )}
       <p className="mt-2 text-xs text-slate-400">
-        Dihitung dari tanggal jatuh tempo sebenarnya. Yang sudah berakhir tidak ikut dihitung. Hijau = pemasukan, oranye = tagihan, ⚠️ = ada tagihan besar.
+        Dihitung dari tanggal jatuh tempo sebenarnya. Yang sudah berakhir tidak ikut dihitung. Hijau = pemasukan, oranye = tagihan, angka kanan = selisih (masuk − tagihan), ⚠️ = ada tagihan besar.
       </p>
     </Card>
   );
@@ -209,7 +246,24 @@ export function Recurring() {
   const bills = items.filter((r) => r.kind === "expense");
   const incomes = items.filter((r) => r.kind === "income");
   const [windowKey, setWindowKey] = useState<WindowKey>("12");
-  const outlook = projectWindow(items, windowKey);
+  const [startDay, setStartDayState] = useState(() => {
+    try {
+      const v = Number(localStorage.getItem(PROJ_START_KEY));
+      if (v >= 1 && v <= 31) return v;
+    } catch {
+      /* private mode */
+    }
+    return getPeriodStartDay();
+  });
+  const setStartDay = (d: number) => {
+    setStartDayState(d);
+    try {
+      localStorage.setItem(PROJ_START_KEY, String(d));
+    } catch {
+      /* private mode */
+    }
+  };
+  const outlook = projectWindow(items, windowKey, startDay);
   const [billView, setBillViewState] = useState<"list" | "calendar">(() => {
     try {
       return localStorage.getItem(VIEW_KEY) === "calendar" ? "calendar" : "list";
@@ -273,7 +327,7 @@ export function Recurring() {
 
       <DueList />
 
-      {items.some((r) => r.active) && <OutlookCard windowKey={windowKey} setWindowKey={setWindowKey} outlook={outlook} />}
+      {items.some((r) => r.active) && <OutlookCard windowKey={windowKey} setWindowKey={setWindowKey} startDay={startDay} setStartDay={setStartDay} outlook={outlook} />}
 
       <div className="grid grid-cols-2 gap-1 rounded-full bg-slate-100 p-1" role="radiogroup" aria-label="Tampilan rutin">
         {(

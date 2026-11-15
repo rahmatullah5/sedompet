@@ -313,6 +313,19 @@ export const q = {
       { $d: dompetId, $me: me, $today: todayISO() },
     ).map((a): Account => ({ ...a, currency: a.currency || "IDR", fx_rate: a.fx_rate ?? 1, balance_base: toBase(a.balance, a.currency, a.fx_rate) })),
 
+  /** How many transactions use each account / category (for "most used first" pickers). */
+  usage(dompetId: string) {
+    const counts = new Map<string, number>();
+    for (const r of all<{ id: string; n: number }>(
+      `SELECT account_id AS id, COUNT(*) AS n FROM transactions WHERE dompet_id = $d GROUP BY account_id
+       UNION ALL
+       SELECT category_id AS id, COUNT(*) AS n FROM transactions WHERE dompet_id = $d AND category_id IS NOT NULL GROUP BY category_id`,
+      { $d: dompetId },
+    ))
+      counts.set(r.id, (counts.get(r.id) ?? 0) + r.n);
+    return counts;
+  },
+
   /** Custom account types already used in this Dompet (for the type picker). */
   customAccountTypes: (dompetId: string) =>
     all<{ type: string }>("SELECT DISTINCT type FROM accounts WHERE dompet_id = ? ORDER BY type", [dompetId])
@@ -1116,6 +1129,54 @@ export const m = {
         ]);
         log(run, actor, `menambahkan ${data.parent_id ? "subkategori" : "kategori"} ${name}`);
       }
+    });
+  },
+
+  /**
+   * Merge `sourceId` into `targetId`: its transactions, recurring items and
+   * budgets move to the target, then the source is removed. Subcategories of
+   * the source move under the target (or are merged into it too when the
+   * target is itself a subcategory, since there is only one level).
+   */
+  mergeCategory(actorId: string, sourceId: string, targetId: string) {
+    const actor = actorOf(actorId);
+    if (!can.manage(actor.role)) throw new PermissionError("Hanya pemilik/admin yang bisa menggabungkan kategori.");
+    type Row = { id: string; name: string; kind: Kind; parent_id: string | null; dompet_id: string };
+    const src = get<Row>("SELECT id, name, kind, parent_id, dompet_id FROM categories WHERE id = ?", [sourceId]);
+    const dst = get<Row>("SELECT id, name, kind, parent_id, dompet_id FROM categories WHERE id = ?", [targetId]);
+    if (!src || !dst || src.dompet_id !== actor.dompet_id || dst.dompet_id !== actor.dompet_id) throw new Error("Kategori tidak ditemukan.");
+    if (src.id === dst.id) throw new Error("Pilih kategori lain sebagai tujuan.");
+    if (src.kind !== dst.kind) throw new Error("Hanya bisa digabung dengan kategori sejenis (pengeluaran/pemasukan).");
+    if (dst.parent_id === src.id) throw new Error("Tidak bisa digabung ke subkategorinya sendiri.");
+    const subs = all<{ id: string }>("SELECT id FROM categories WHERE parent_id = ?", [src.id]).map((r) => r.id);
+    // Categories that disappear: the source, plus its subs when they cannot move under the target.
+    const gone = dst.parent_id ? [src.id, ...subs] : [src.id];
+    const marks = gone.map(() => "?").join(",");
+    const remap = (json: string | null) => {
+      if (!json) return json;
+      try {
+        const ids = (JSON.parse(json) as string[]).map((id) => (gone.includes(id) ? dst.id : id));
+        return JSON.stringify([...new Set(ids)]);
+      } catch {
+        return json;
+      }
+    };
+    const budgets = all<{ id: string; category_ids: string | null; exclude_category_ids: string | null }>(
+      "SELECT id, category_ids, exclude_category_ids FROM budgets WHERE dompet_id = ? AND (category_ids IS NOT NULL OR exclude_category_ids IS NOT NULL)",
+      [actor.dompet_id],
+    );
+    return write((run) => {
+      if (!dst.parent_id) run("UPDATE categories SET parent_id = ? WHERE parent_id = ?", [dst.id, src.id]);
+      run(`UPDATE transactions SET category_id = ?, updated_by = ?, updated_at = datetime('now') WHERE dompet_id = ? AND category_id IN (${marks})`, [dst.id, actor.id, actor.dompet_id, ...gone]);
+      run(`UPDATE recurring SET category_id = ? WHERE dompet_id = ? AND category_id IN (${marks})`, [dst.id, actor.dompet_id, ...gone]);
+      run(`UPDATE budgets SET category_id = ? WHERE dompet_id = ? AND category_id IN (${marks})`, [dst.id, actor.dompet_id, ...gone]);
+      for (const b of budgets) {
+        const ci = remap(b.category_ids);
+        const ex = remap(b.exclude_category_ids);
+        if (ci !== b.category_ids || ex !== b.exclude_category_ids) run("UPDATE budgets SET category_ids = ?, exclude_category_ids = ? WHERE id = ?", [ci, ex, b.id]);
+      }
+      run(`DELETE FROM categories WHERE dompet_id = ? AND id IN (${marks})`, [actor.dompet_id, ...gone]);
+      log(run, actor, `menggabungkan kategori ${src.name} ke ${dst.name}`);
     });
   },
 

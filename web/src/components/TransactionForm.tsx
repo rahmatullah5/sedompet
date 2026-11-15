@@ -7,7 +7,7 @@ import { CategoryLines, linesTotal, newLine, type Line } from "./CategoryLines";
 import { can } from "../lib/permissions";
 import { formatCompact, todayISO } from "../lib/format";
 import { currencyInfo, formatMoney, isBase, moneyInputText, parseMoney } from "../lib/currency";
-import { useCurrent, useDbVersion } from "../lib/hooks";
+import { useCurrent, useDbVersion, getMainAccount } from "../lib/hooks";
 import { attempt, Avatar, Button, cx, Field, Input, Modal, STICKY_ACTIONS } from "./ui";
 import { DatePicker } from "./DatePicker";
 import { AccountPicker, CategoryPicker } from "./Pickers";
@@ -125,10 +125,12 @@ function FormBody({
   const [kind, setKind] = useState<Kind>(editing?.kind ?? initialKind);
   const [amountText, setAmountText] = useState(editing ? moneyInputText(editing.amount, editing.account_currency) : "");
   const [categoryId, setCategoryId] = useState<string | null>(editing?.category_id ?? null);
-  // New entries start on an account you hold (if any), else the first one.
-  const [accountId, setAccountId] = useState(
-    editing?.account_id ?? (accounts.find((a) => (a.holder_member_id ?? a.owner_member_id) === me.id) ?? accounts[0])?.id ?? "",
-  );
+  // New entries start on your "akun utama", else an account you hold, else the first one.
+  const [accountId, setAccountId] = useState(() => {
+    if (editing) return editing.account_id;
+    const main = getMainAccount(me.id);
+    return (accounts.find((a) => a.id === main) ?? accounts.find((a) => (a.holder_member_id ?? a.owner_member_id) === me.id) ?? accounts[0])?.id ?? "";
+  });
   const [paidBy, setPaidBy] = useState(editing?.paid_by ?? me.id);
   const [payerTouched, setPayerTouched] = useState(!!editing);
   // Picking someone's account assumes they paid, until you choose otherwise.
@@ -299,7 +301,7 @@ function FormBody({
         )}
 
         <div className="space-y-3">
-          <AccountPicker accounts={accounts} value={accountId} onChange={pickAccount} />
+          <AccountPicker accounts={accounts} value={accountId} onChange={pickAccount} mainControl />
           <DatePicker label="Tanggal" value={date} onChange={setDate} />
           {date > todayISO() && (
             <p className="-mt-1 text-xs text-sky-700">
