@@ -79,6 +79,7 @@ export function TxRow({ t, onClick, showDate }: { t: Transaction; onClick: () =>
 }
 
 type SortKey = "newest" | "oldest" | "largest" | "smallest";
+const TRANSFER_KEY = "sedompet.riwayat.showTransfers";
 const SORTS: [SortKey, string][] = [
   ["newest", "Terbaru"],
   ["oldest", "Terlama"],
@@ -137,6 +138,23 @@ export function Transactions({
   const [accountIds, setAccountIds] = useState<string[]>([]);
   const [kind, setKind] = useState<"" | Kind>("");
   const [budgetId, setBudgetId] = useState<string | null>(null);
+  // Transfers between own accounts are hidden by default: Riwayat shows real
+  // income and spending first. Remembered on this device.
+  const [showTransfers, setShowTransfersState] = useState(() => {
+    try {
+      return localStorage.getItem(TRANSFER_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const setShowTransfers = (v: boolean) => {
+    setShowTransfersState(v);
+    try {
+      localStorage.setItem(TRANSFER_KEY, v ? "1" : "0");
+    } catch {
+      /* private mode */
+    }
+  };
   // Date range instead of one month at a time (null = month view).
   const [range, setRangeState] = useState<{ from: string; to: string } | null>(null);
   const setRange = (r: { from: string; to: string } | null) => {
@@ -180,6 +198,8 @@ export function Transactions({
   });
   // A budget counts everyday spending from shared accounts in its categories
   // (and by its member, for allowances), the same way the Anggaran page does.
+  // One transfer = two entries (out and in); count transfers, not entries.
+  const transferCount = budget || showTransfers ? 0 : new Set(allTxs.filter((t) => t.flag === "transfer").map((t) => t.transfer_id ?? t.id)).size;
   const txs = budget
     ? allTxs.filter(
         (t) =>
@@ -188,7 +208,9 @@ export function Transactions({
           t.account_visibility === "shared" &&
           budgetCovers(budget, t.category_id, t.category_id ? (parentOf.get(t.category_id) ?? null) : null, t.paid_by),
       )
-    : allTxs;
+    : showTransfers
+      ? allTxs
+      : allTxs.filter((t) => t.flag !== "transfer");
   // Like Laporan: transfers, balance corrections and loans move money between
   // pockets, they aren't income or spending.
   const real = txs.filter((t) => !t.flag);
@@ -362,6 +384,17 @@ export function Transactions({
           {activeFilters > 0 && (
             <button onClick={resetFilters} className="text-sm font-semibold text-slate-500 underline-offset-2 hover:underline">
               Reset
+            </button>
+          )}
+          {!budget && (
+            <button
+              type="button"
+              onClick={() => setShowTransfers(!showTransfers)}
+              aria-pressed={showTransfers}
+              title={showTransfers ? "Sembunyikan transfer antar akun" : "Tampilkan transfer antar akun"}
+              className={`rounded-full px-3 py-2 text-sm font-semibold transition ${showTransfers ? "bg-slate-800 text-white" : "bg-white text-slate-500 shadow-sm"}`}
+            >
+              🔁 {showTransfers ? "Sembunyikan transfer" : `Tampilkan transfer${transferCount ? ` (${transferCount})` : ""}`}
             </button>
           )}
           <label className="relative flex items-center">

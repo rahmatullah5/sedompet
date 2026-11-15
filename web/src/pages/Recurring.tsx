@@ -266,12 +266,25 @@ export function Recurring() {
     }
   };
 
-  const list = (rs: Rec[]) =>
-    rs.length === 0 ? (
+  // Each item's share of its section over the projection window
+  // (e.g. Listrik 12× = 9,6 jt = 33% of all bills in 12 bulan).
+  const winFrom = outlook.months[0]?.from ?? todayISO();
+  const winTo = outlook.months[outlook.months.length - 1]?.to ?? todayISO();
+  const windowTotal = (r: Rec) => {
+    const n = occurrences(r, winFrom, winTo).length;
+    return { n, total: n * r.amount_base };
+  };
+  const list = (rs: Rec[]) => {
+    const sectionTotal = rs.reduce((t, r) => t + windowTotal(r).total, 0);
+    const sorted = [...rs].sort((a, b) => Number(b.active) - Number(a.active) || windowTotal(b).total - windowTotal(a).total);
+    return rs.length === 0 ? (
       <p className="py-2 text-sm text-slate-400">Belum ada.</p>
     ) : (
       <ul className="-mx-2">
-        {rs.map((r) => (
+        {sorted.map((r) => {
+          const w = windowTotal(r);
+          const pct = sectionTotal > 0 ? Math.round((w.total / sectionTotal) * 100) : 0;
+          return (
           <li key={r.id}>
             <button
               disabled={!manage}
@@ -294,12 +307,28 @@ export function Recurring() {
                 )}
                 {savingHint(r) && <span className="mt-0.5 block text-xs font-semibold text-amber-700">💡 {savingHint(r)}</span>}
               </span>
-              <span className={cx("num font-bold", r.kind === "income" ? "text-mint-600" : "text-slate-800")}>{formatMoney(r.amount, r.account_currency)}</span>
+              <span className="flex w-28 shrink-0 flex-col items-end gap-0.5">
+                <span className={cx("num font-bold", r.kind === "income" ? "text-mint-600" : "text-slate-800")}>{formatMoney(r.amount, r.account_currency)}</span>
+                {w.n > 0 ? (
+                  <>
+                    <span className="num text-[11px] text-slate-500" title={`${w.n} kali dalam ${WINDOWS[windowKey].short}`}>
+                      {w.n}× = <b className="text-slate-700">{formatCompact(w.total)}</b> · {pct}%
+                    </span>
+                    <span className="block h-1 w-full rounded-full bg-slate-100">
+                      <span className="block h-1 rounded-full" style={{ width: `${pct}%`, background: r.kind === "income" ? "#2fb67c" : "#f47c5a" }} />
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-[11px] text-slate-400">tidak ada {WINDOWS[windowKey].short}</span>
+                )}
+              </span>
             </button>
           </li>
-        ))}
+          );
+        })}
       </ul>
     );
+  };
 
   return (
     <div className="space-y-4">
