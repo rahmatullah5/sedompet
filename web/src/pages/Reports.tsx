@@ -62,7 +62,7 @@ function useIncomeBasis(): [IncomeBasis, (b: IncomeBasis) => void] {
 // ---------------------------------------------------------------------------
 // Forecast maths
 // ---------------------------------------------------------------------------
-function useForecast() {
+function useForecast(horizon = 3) {
   const { dompet, me } = useCurrent();
   const today = todayISO();
   const now = new Date();
@@ -92,29 +92,64 @@ function useForecast() {
 
   const balanceNow = q.accounts(dompet.id, me.id).reduce((s, a) => s + a.balance_base, 0);
   // Entries already recorded for later dates: in this month's totals, not in today's balance.
-  const recordedAhead = q.scheduledEntries(dompet.id, me.id, periodRange(shiftMonth(month, 3)).to);
+  const recordedAhead = q.scheduledEntries(dompet.id, me.id, periodRange(shiftMonth(month, Math.max(3, horizon))).to);
   const recordedNet = (from: string, to: string) =>
     recordedAhead.filter((e) => e.date >= from && e.date <= to).reduce((s, e) => s + (e.kind === "income" ? e.amount_base : -e.amount_base), 0);
   const balanceEnd = balanceNow + recordedNet(today, monthEnd) + (incomeEnd - totals.income) - (expenseEnd - totals.expense);
 
-  // Next 3 months: recurring items + typical variable flow (30-day equivalents).
-  const ahead = [1, 2, 3].map((i) => {
-    const m = shiftMonth(month, i);
+  // Three spending scenarios for the balance projection. "Normal" is the
+  // 90-day daily average; "Hemat"/"Boros" use the family's own best and worst
+  // full months of everyday (non-Rutin) spending from the last 6, and fall back
+  // to ±15% when there is too little history. Rutin bills and income are the
+  // same in every scenario.
+  const pastRates: number[] = [];
+  for (let i = 1; i <= 6; i++) {
+    const r = periodRange(shiftMonth(month, -i));
+    if (!first || first > r.from) break; // month not fully recorded
+    pastRates.push(variableTotals(dompet.id, me.id, r.from, r.to).expense / r.days);
+  }
+  const fromHistory = pastRates.length >= 2;
+  const rates = {
+    good: Math.min(fromHistory ? Math.min(...pastRates) : dailyVar, dailyVar * 0.85),
+    normal: dailyVar,
+    bad: Math.max(fromHistory ? Math.max(...pastRates) : dailyVar, dailyVar * 1.15),
+  };
+  type Scenario = keyof typeof rates;
+  const endOfThisMonth = (rate: number) =>
+    balanceNow + recordedNet(today, monthEnd) + (incomeEnd - totals.income) - (restOfMonth.expense + rate * remainingDays);
+
+  // Next months: recurring items + typical variable flow, per scenario.
+  const ahead = Array.from({ length: horizon }, (_, k) => {
+    const m = shiftMonth(month, k + 1);
     const { from, to, days: last } = periodRange(m);
     const rec = projectedRecurring(dompet.id, me.id, from, to);
     const already = recordedNet(from, to);
     return {
       month: m,
+      days: last,
       income: rec.income + dailyVarIncome * last + Math.max(0, already),
-      expense: rec.expense + dailyVar * last + Math.max(0, -already),
+      fixedExpense: rec.expense + Math.max(0, -already),
       recurring: rec.items,
     };
   });
-  let running = balanceEnd;
-  const trajectory = ahead.map((a) => {
-    running += a.income - a.expense;
-    return { ...a, balance: running };
-  });
+  const run = (sc: Scenario) => {
+    let bal = endOfThisMonth(rates[sc]);
+    return ahead.map((a) => (bal += a.income - a.fixedExpense - rates[sc] * a.days));
+  };
+  const paths = { good: run("good"), normal: run("normal"), bad: run("bad") };
+  const trajectory = ahead.map((a, i) => ({
+    ...a,
+    expense: a.fixedExpense + rates.normal * a.days,
+    balance: paths.normal[i],
+    good: paths.good[i],
+    bad: paths.bad[i],
+  }));
+  const scenarios = {
+    rates,
+    fromHistory,
+    historyMonths: pastRates.length,
+    start: { good: endOfThisMonth(rates.good), normal: balanceEnd, bad: endOfThisMonth(rates.bad) },
+  };
 
   // Monthly limit: "Total bulanan", or every budget combined. A combined limit
   // only covers budgeted spending, so compare it with that spending, grown to
@@ -142,7 +177,7 @@ function useForecast() {
     })
     .sort((a, b) => b.over / b.limit - a.over / a.limit);
   return {
-    month, day, daysInMonth, totals, dailyVar, expenseEnd, incomeEnd, balanceNow, balanceEnd, restOfMonth, trajectory, overall, budgetOutlook,
+    month, day, daysInMonth, totals, dailyVar, expenseEnd, incomeEnd, balanceNow, balanceEnd, restOfMonth, trajectory, scenarios, overall, budgetOutlook,
     incomeBasis, setIncomeBasis, avgIncomePerMonth, historyDays, excludedIncomeCategories: v90.excludedIncomeCategories,
   };
 }
@@ -150,9 +185,28 @@ function useForecast() {
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
+const HORIZON_KEY = "sedompet.forecast.horizon";
+function loadHorizon() {
+  try {
+    const v = Number(localStorage.getItem(HORIZON_KEY));
+    return v >= 1 && v <= 12 ? v : 6;
+  } catch {
+    return 6;
+  }
+}
+
 export function Reports() {
   useDbVersion();
-  const f = useForecast();
+  const [horizon, setHorizonState] = useState(loadHorizon);
+  const setHorizon = (h: number) => {
+    setHorizonState(h);
+    try {
+      localStorage.setItem(HORIZON_KEY, String(h));
+    } catch {
+      /* private mode */
+    }
+  };
+  const f = useForecast(horizon);
   const overBudget = f.overall && f.overall.projected > f.overall.amount;
   const atRisk = f.budgetOutlook.filter((b) => b.over > 0);
   const daysLeft = Math.max(1, f.daysInMonth - f.day);
@@ -226,56 +280,7 @@ export function Reports() {
       <NeedWantCard />
       <NetWorthCard />
 
-      {/* 3-month outlook */}
-      <Card title="3 bulan ke depan 🔮">
-        <div className="mb-3 rounded-2xl bg-slate-50 p-3">
-          <p className="text-sm font-semibold text-slate-700">Pemasukan dihitung dari</p>
-          <div className="mt-2 grid grid-cols-2 gap-1 rounded-full bg-white p-1 shadow-sm" role="radiogroup" aria-label="Dasar pemasukan">
-            {(
-              [
-                ["recurring", "Rutin saja"],
-                ["recurring+avg", "Rutin + rata-rata"],
-              ] as const
-            ).map(([key, label]) => (
-              <button
-                key={key}
-                role="radio"
-                aria-checked={f.incomeBasis === key}
-                onClick={() => f.setIncomeBasis(key)}
-                className={cx(
-                  "rounded-full py-1.5 text-xs font-semibold transition",
-                  f.incomeBasis === key ? "bg-slate-800 text-white" : "text-slate-500",
-                )}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <p className="mt-2 text-xs text-slate-500">
-            {f.incomeBasis === "recurring"
-              ? `Hanya pemasukan dari menu Rutin (mis. Gaji) yang diperkirakan.`
-              : `Ditambah rata-rata pemasukan lain ${f.historyDays} hari terakhir ≈ ${formatCompact(Math.round(f.avgIncomePerMonth))}/bulan.`}
-            {f.excludedIncomeCategories > 0 && " Pemasukan di kategori yang sudah ada di Rutin (mis. Gaji) tidak dihitung dua kali."}
-          </p>
-        </div>
-        <ul className="divide-y divide-slate-100">
-          {f.trajectory.map((t) => (
-            <li key={t.month} className="py-3">
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-bold capitalize text-slate-800">{formatMonth(t.month)}</span>
-                <span className="num font-bold text-slate-800">saldo ≈ {formatCompact(Math.round(t.balance))}</span>
-              </div>
-              <p className="num text-xs text-slate-500">
-                masuk ≈ {formatCompact(Math.round(t.income))} · keluar ≈ {formatCompact(Math.round(t.expense))}
-                {t.recurring.length > 0 && ` · ${t.recurring.length} rutin`}
-              </p>
-            </li>
-          ))}
-        </ul>
-        <p className="mt-2 text-xs text-slate-400">
-          Perkiraan = tagihan & pemasukan rutin yang terdaftar + rata-rata belanja harian {f.historyDays} hari terakhir. Utang-piutang dan transfer tidak dihitung.
-        </p>
-      </Card>
+      <BalanceProjection f={f} horizon={horizon} setHorizon={setHorizon} />
     </div>
   );
 }
@@ -757,6 +762,192 @@ function CashFlowCard() {
       {range.to > todayISO() && cashFlow(dompet.id, me.id, range.from, todayISO()).endBalance !== cf.endBalance && (
         <p className="mt-2 text-xs text-slate-400">Termasuk catatan yang bertanggal nanti di periode ini, jadi saldo akhir bisa beda dengan saldo hari ini.</p>
       )}
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Balance projection: 1–12 months ahead, three spending scenarios
+// ---------------------------------------------------------------------------
+const SCENARIOS = [
+  { key: "good", label: "Hemat", colour: "#2fb67c", text: "text-mint-700", bg: "bg-mint-100" },
+  { key: "normal", label: "Normal", colour: "#4e3f33", text: "text-slate-800", bg: "bg-slate-100" },
+  { key: "bad", label: "Boros", colour: "#e5484d", text: "text-red-700", bg: "bg-red-50" },
+] as const;
+
+function BalanceProjection({ f, horizon, setHorizon }: { f: ReturnType<typeof useForecast>; horizon: number; setHorizon: (h: number) => void }) {
+  const [tip, setTip] = useState<number | null>(null);
+  const t = f.trajectory;
+  const last = t[t.length - 1];
+  const s = f.scenarios;
+  // Chart: point 0 = end of this month, then each month ahead.
+  const series = {
+    good: [s.start.good, ...t.map((x) => x.good)],
+    normal: [s.start.normal, ...t.map((x) => x.balance)],
+    bad: [s.start.bad, ...t.map((x) => x.bad)],
+  };
+  const labels = [f.month, ...t.map((x) => x.month)];
+  // Zero only joins the scale when a scenario gets near it, so the spread stays visible.
+  const all = [...series.good, ...series.bad];
+  if (Math.min(...all) < (Math.max(...all) - Math.min(...all)) * 0.5) all.push(0);
+  const hi = Math.max(...all);
+  const lo = Math.min(...all);
+  const pad = (hi - lo) * 0.08 || 1;
+  const W = 320;
+  const H = 160;
+  const x = (i: number) => (labels.length === 1 ? W / 2 : (i / (labels.length - 1)) * (W - 16) + 8);
+  const y = (v: number) => 8 + ((hi + pad - v) / (hi - lo + 2 * pad)) * (H - 16);
+  const path = (vals: number[]) => vals.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+  const band = `${path(series.good)} ${series.bad.map((v, i) => [x(i), y(v)] as const).reverse().map(([px, py]) => `L${px.toFixed(1)},${py.toFixed(1)}`).join(" ")} Z`;
+  const tipIdx = tip ?? labels.length - 1;
+
+  return (
+    <Card title="Proyeksi saldo 🔮">
+      <div className="rounded-2xl bg-slate-50 p-3">
+        <div className="flex items-center justify-between gap-2">
+          <label htmlFor="horizon" className="text-sm font-semibold text-slate-700">
+            Lihat ke depan
+          </label>
+          <span className="num rounded-full bg-white px-3 py-1 text-sm font-bold text-slate-800 shadow-sm">{horizon} bulan</span>
+        </div>
+        <input
+          id="horizon"
+          type="range"
+          min={1}
+          max={12}
+          step={1}
+          value={horizon}
+          onChange={(e) => (setHorizon(Number(e.target.value)), setTip(null))}
+          className="mt-2 w-full accent-brand-600"
+          aria-valuetext={`${horizon} bulan`}
+        />
+        <div className="flex justify-between text-[10px] font-semibold text-slate-400">
+          <span>1 bln</span>
+          <span>6 bln</span>
+          <span>1 tahun</span>
+        </div>
+      </div>
+
+      {/* Where it lands at the end of the horizon, per scenario */}
+      <p className="mt-3 text-xs font-semibold text-slate-500">
+        Saldo akhir <span className="capitalize">{formatMonth(last.month)}</span>
+      </p>
+      <div className="mt-1 grid grid-cols-3 gap-2 text-center">
+        {SCENARIOS.map((sc) => {
+          const v = sc.key === "normal" ? last.balance : last[sc.key];
+          return (
+            <div key={sc.key} className={cx("rounded-2xl p-2", sc.bg)}>
+              <p className={cx("text-[11px] font-semibold", sc.text)}>{sc.label}</p>
+              <p className={cx("num font-extrabold", v < 0 ? "text-red-700" : "text-slate-800")}>{formatCompact(Math.round(v))}</p>
+              <p className="num text-[10px] text-slate-500">belanja ±{formatCompact(Math.round(s.rates[sc.key] * 30))}/bln</p>
+            </div>
+          );
+        })}
+      </div>
+
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        className="mt-3 w-full touch-none"
+        role="img"
+        aria-label={`Proyeksi saldo ${horizon} bulan: hemat ${formatCompact(Math.round(last.good))}, normal ${formatCompact(Math.round(last.balance))}, boros ${formatCompact(Math.round(last.bad))}`}
+        onPointerMove={(e) => {
+          const r = (e.currentTarget as SVGSVGElement).getBoundingClientRect();
+          const px = ((e.clientX - r.left) / r.width) * W;
+          setTip(Math.max(0, Math.min(labels.length - 1, Math.round(((px - 8) / (W - 16)) * (labels.length - 1)))));
+        }}
+        onPointerLeave={() => setTip(null)}
+      >
+        {[hi, lo].map((v) => (
+          <g key={v}>
+            <line x1={0} x2={W} y1={y(v)} y2={y(v)} stroke={GRID} strokeWidth={1} />
+            <text x={2} y={y(v) - 3} fontSize={9} fill={INK_MUTED}>
+              {formatCompact(Math.round(v))}
+            </text>
+          </g>
+        ))}
+        {lo < 0 && <line x1={0} x2={W} y1={y(0)} y2={y(0)} stroke="#e5484d" strokeDasharray="3 3" strokeWidth={1} opacity={0.5} />}
+        <path d={band} fill="#b29d8b" opacity={0.12} />
+        {SCENARIOS.map((sc) => (
+          <path key={sc.key} d={path(series[sc.key])} fill="none" stroke={sc.colour} strokeWidth={sc.key === "normal" ? 2.5 : 1.75} strokeDasharray={sc.key === "normal" ? undefined : "5 4"} strokeLinecap="round" />
+        ))}
+        <line x1={x(tipIdx)} x2={x(tipIdx)} y1={4} y2={H - 4} stroke="#b29d8b" strokeWidth={1} opacity={0.5} />
+        {SCENARIOS.map((sc) => (
+          <circle key={sc.key} cx={x(tipIdx)} cy={y(series[sc.key][tipIdx])} r={3.5} fill={sc.colour} stroke="white" strokeWidth={1.5} />
+        ))}
+      </svg>
+      <div className="flex justify-between text-[10px] font-semibold capitalize text-slate-400">
+        <span>akhir {shortMonth(labels[0])}</span>
+        <span>{shortMonth(labels[labels.length - 1])}</span>
+      </div>
+      <div className="mt-1 flex flex-wrap items-baseline justify-between gap-x-3 rounded-xl bg-slate-50 px-3 py-1.5 text-xs">
+        <span className="font-semibold capitalize text-slate-700">{tipIdx === 0 ? `Akhir ${formatMonth(labels[0])}` : formatMonth(labels[tipIdx])}</span>
+        <span className="num text-slate-600">
+          <span className="text-mint-700">{formatCompact(Math.round(series.good[tipIdx]))}</span> ·{" "}
+          <b className="text-slate-800">{formatCompact(Math.round(series.normal[tipIdx]))}</b> ·{" "}
+          <span className="text-red-700">{formatCompact(Math.round(series.bad[tipIdx]))}</span>
+        </span>
+      </div>
+      {last.bad < 0 && (
+        <p className="mt-2 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-800">
+          ⚠️ Kalau belanja seperti bulan paling boros, saldo bisa minus sebelum {formatMonth(t[t.findIndex((x) => x.bad < 0)].month)}.
+        </p>
+      )}
+
+      <details className="mt-3">
+        <summary className="cursor-pointer text-sm font-semibold text-brand-700">Rincian per bulan</summary>
+        <ul className="mt-1 divide-y divide-slate-100">
+          {t.map((m) => (
+            <li key={m.month} className="py-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-bold capitalize text-slate-800">{formatMonth(m.month)}</span>
+                <span className="num font-bold text-slate-800">≈ {formatCompact(Math.round(m.balance))}</span>
+              </div>
+              <p className="num text-xs text-slate-500">
+                masuk ≈ {formatCompact(Math.round(m.income))} · keluar ≈ {formatCompact(Math.round(m.expense))}
+                {m.recurring.length > 0 && ` · ${m.recurring.length} rutin`}
+              </p>
+              <p className="num text-[11px] text-slate-400">
+                hemat {formatCompact(Math.round(m.good))} · boros {formatCompact(Math.round(m.bad))}
+              </p>
+            </li>
+          ))}
+        </ul>
+      </details>
+
+      <div className="mt-3 rounded-2xl bg-slate-50 p-3">
+        <p className="text-sm font-semibold text-slate-700">Pemasukan dihitung dari</p>
+        <div className="mt-2 grid grid-cols-2 gap-1 rounded-full bg-white p-1 shadow-sm" role="radiogroup" aria-label="Dasar pemasukan">
+          {(
+            [
+              ["recurring", "Rutin saja"],
+              ["recurring+avg", "Rutin + rata-rata"],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              role="radio"
+              aria-checked={f.incomeBasis === key}
+              onClick={() => f.setIncomeBasis(key)}
+              className={cx("rounded-full py-1.5 text-xs font-semibold transition", f.incomeBasis === key ? "bg-slate-800 text-white" : "text-slate-500")}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <p className="mt-2 text-xs text-slate-500">
+          {f.incomeBasis === "recurring"
+            ? "Hanya pemasukan dari menu Rutin (mis. Gaji) yang diperkirakan."
+            : `Ditambah rata-rata pemasukan lain ${f.historyDays} hari terakhir ≈ ${formatCompact(Math.round(f.avgIncomePerMonth))}/bulan.`}
+          {f.excludedIncomeCategories > 0 && " Pemasukan di kategori yang sudah ada di Rutin (mis. Gaji) tidak dihitung dua kali."}
+        </p>
+      </div>
+      <p className="mt-2 text-xs text-slate-400">
+        Semua skenario memakai tagihan & pemasukan Rutin yang sama. Bedanya di belanja harian: Normal = rata-rata {f.historyDays} hari terakhir;{" "}
+        {s.fromHistory
+          ? `Hemat & Boros = bulan paling hemat dan paling boros dari ${s.historyMonths} bulan terakhir.`
+          : "Hemat & Boros = 15% lebih sedikit / lebih banyak (riwayat belum cukup 2 bulan penuh)."}{" "}
+        Utang-piutang dan transfer tidak dihitung.
+      </p>
     </Card>
   );
 }

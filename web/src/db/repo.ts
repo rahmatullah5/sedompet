@@ -344,6 +344,8 @@ export const q = {
     me: string,
     f: {
       month?: string;
+      /** Inclusive date range; used instead of `month` when set. */
+      range?: { from: string; to: string };
       paidBy?: string;
       categoryId?: string;
       accountId?: string;
@@ -404,7 +406,7 @@ export const q = {
       {
         $d: dompetId,
         $me: me,
-        ...monthParams(f.month),
+        ...(f.range ? { $mFrom: f.range.from, $mTo: f.range.to } : monthParams(f.month)),
         $paid: f.paidBy ?? null,
         $cat: f.categoryId ?? null,
         $acc: f.accountId ?? null,

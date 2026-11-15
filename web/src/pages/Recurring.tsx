@@ -138,21 +138,7 @@ function OutlookCard({
           </button>
         ))}
       </div>
-      <label className="mt-2 flex items-center justify-between gap-2 px-1 text-xs text-slate-500">
-        <span>Hitungan bulan mulai tanggal (mis. tanggal gajian)</span>
-        <select
-          value={startDay}
-          onChange={(e) => setStartDay(Number(e.target.value))}
-          className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700"
-          aria-label="Mulai tanggal"
-        >
-          {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
-            <option key={d} value={d}>
-              {d}
-            </option>
-          ))}
-        </select>
-      </label>
+      <DayOfMonthPicker value={startDay} onChange={setStartDay} />
       <div className="mt-3 grid grid-cols-3 gap-2 text-center">
         <div className="rounded-2xl bg-slate-50 p-2">
           <p className="text-[11px] font-semibold text-slate-500">Tagihan</p>
@@ -636,6 +622,70 @@ function FrequencyPicker({ frequency, every, onChange }: { frequency: Frequency;
           );
         })}
       </div>
+    </div>
+  );
+}
+
+/**
+ * "Bulan dihitung mulai tanggal …": a pill that opens a 1–31 grid, so the
+ * month can start on payday (e.g. 25 or 27).
+ */
+function DayOfMonthPicker({ value, onChange }: { value: number; onChange: (d: number) => void }) {
+  const [open, setOpen] = useState(false);
+  const QUICK = [1, 25, 27];
+  return (
+    <div className="mt-3 rounded-2xl bg-slate-50 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold text-slate-700">Bulan dihitung mulai tanggal</p>
+          <p className="text-[11px] text-slate-400">Samakan dengan tanggal gajian</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          aria-label={`Mulai tanggal ${value}. Ganti`}
+          className="flex shrink-0 items-center gap-1.5 rounded-full bg-white py-1 pl-1 pr-3 text-sm font-bold text-slate-800 shadow-sm"
+        >
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-600 text-xs text-white">{value}</span>
+          tiap bulan
+          <span className={cx("text-[10px] text-slate-400 transition", open && "rotate-180")}>▾</span>
+        </button>
+      </div>
+      {open && (
+        <div className="pop-in mt-3">
+          <div className="mb-2 flex gap-1.5">
+            {QUICK.map((d) => (
+              <button
+                key={d}
+                type="button"
+                onClick={() => (onChange(d), setOpen(false))}
+                className={cx("rounded-full px-3 py-1 text-xs font-semibold", value === d ? "bg-slate-800 text-white" : "bg-white text-slate-600 shadow-sm")}
+              >
+                {d === 1 ? "Awal bulan (1)" : `Tgl ${d}`}
+              </button>
+            ))}
+          </div>
+          <div className="grid grid-cols-7 gap-1" role="radiogroup" aria-label="Mulai tanggal">
+            {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+              <button
+                key={d}
+                type="button"
+                role="radio"
+                aria-checked={value === d}
+                onClick={() => (onChange(d), setOpen(false))}
+                className={cx(
+                  "num aspect-square rounded-xl text-xs font-semibold transition",
+                  value === d ? "bg-brand-600 text-white shadow-sm" : "bg-white text-slate-700 hover:bg-brand-50",
+                )}
+              >
+                {d}
+              </button>
+            ))}
+          </div>
+          {value > 28 && <p className="mt-2 text-[11px] text-slate-400">Bulan yang lebih pendek mulai di tanggal terakhirnya.</p>}
+        </div>
+      )}
     </div>
   );
 }

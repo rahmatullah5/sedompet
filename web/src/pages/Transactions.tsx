@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { parseSplit, q, type Kind, type Transaction } from "../db/repo";
-import { currentMonth, formatDay, formatIDR, formatMonth, formatPeriodRange, shiftMonth, todayISO } from "../lib/format";
+import { budgetCovers, parseSplit, q, type Kind, type Transaction } from "../db/repo";
+import { currentMonth, formatDay, formatIDR, formatMonth, formatPeriodRange, periodRange, shiftMonth, toISODate, todayISO } from "../lib/format";
+import { DatePicker } from "../components/DatePicker";
 import { useCurrent, useDbVersion } from "../lib/hooks";
 import { Avatar, Badge, Button, Card, Empty, Money } from "../components/ui";
 import { Icon } from "../components/Icon";
@@ -135,11 +136,19 @@ export function Transactions({
   const [categoryIds, setCategoryIds] = useState<string[]>([]);
   const [accountIds, setAccountIds] = useState<string[]>([]);
   const [kind, setKind] = useState<"" | Kind>("");
+  const [budgetId, setBudgetId] = useState<string | null>(null);
+  // Date range instead of one month at a time (null = month view).
+  const [range, setRangeState] = useState<{ from: string; to: string } | null>(null);
+  const setRange = (r: { from: string; to: string } | null) => {
+    setRangeState(r && r.from > r.to ? { from: r.to, to: r.from } : r);
+    setDay(null);
+  };
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const activeFilters = (categoryIds.length ? 1 : 0) + (accountIds.length ? 1 : 0);
+  const activeFilters = (categoryIds.length ? 1 : 0) + (accountIds.length ? 1 : 0) + (budgetId ? 1 : 0);
   const resetFilters = () => {
     setCategoryIds([]);
     setAccountIds([]);
+    setBudgetId(null);
   };
   const [sort, setSortState] = useState<SortKey>(loadSort);
   const setSort = (k: SortKey) => {
@@ -155,9 +164,13 @@ export function Transactions({
 
   const categories = q.categories(dompet.id);
   const accounts = q.accounts(dompet.id, me.id);
-  const txs = q.transactions(dompet.id, me.id, {
+  const budgets = q.budgets(dompet.id, month);
+  const budget = budgets.find((b) => b.id === budgetId) ?? null;
+  const parentOf = new Map(categories.map((c) => [c.id, c.parent_id]));
+  const allTxs = q.transactions(dompet.id, me.id, {
     // Searching looks through every month, not just the one shown.
-    month: searching ? undefined : month,
+    month: searching || range ? undefined : month,
+    range: searching ? undefined : (range ?? undefined),
     search: searching ? search : undefined,
     limit: searching ? 300 : undefined,
     paidByIds,
@@ -165,6 +178,17 @@ export function Transactions({
     accountIds,
     kind: kind || undefined,
   });
+  // A budget counts everyday spending from shared accounts in its categories
+  // (and by its member, for allowances), the same way the Anggaran page does.
+  const txs = budget
+    ? allTxs.filter(
+        (t) =>
+          t.kind === "expense" &&
+          !t.flag &&
+          t.account_visibility === "shared" &&
+          budgetCovers(budget, t.category_id, t.category_id ? (parentOf.get(t.category_id) ?? null) : null, t.paid_by),
+      )
+    : allTxs;
   // Like Laporan: transfers, balance corrections and loans move money between
   // pockets, they aren't income or spending.
   const real = txs.filter((t) => !t.flag);
@@ -188,7 +212,7 @@ export function Transactions({
     else f.out += t.amount_base;
     dayTotals.set(t.date, f);
   }
-  const dayFilter = !searching && day;
+  const dayFilter = !searching && !range && day;
   const shown = dayFilter ? sorted.filter((t) => t.date === day) : sorted;
   const groups = new Map<string, Transaction[]>();
   for (const t of shown) groups.set(t.date, [...(groups.get(t.date) ?? []), t]);
@@ -201,8 +225,24 @@ export function Transactions({
           <h1 className="text-2xl font-extrabold tracking-tight text-slate-800">Riwayat</h1>
           <p className="text-sm text-slate-500">Semua catatan keluarga, siapa pun yang mencatat.</p>
         </div>
-        {!searching && <MonthNav month={month} setMonth={setMonth} />}
+        {!searching && (
+          <div className="flex flex-col items-end gap-1">
+            {range ? (
+              <button type="button" onClick={() => setRange(null)} className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm">
+                ‹ Per bulan
+              </button>
+            ) : (
+              <MonthNav month={month} setMonth={setMonth} />
+            )}
+            {!range && (
+              <button type="button" onClick={() => setRange(periodRange(month))} className="px-2 text-xs font-semibold text-brand-700">
+                📆 Pilih rentang tanggal
+              </button>
+            )}
+          </div>
+        )}
       </div>
+      {!searching && range && <RangeBar range={range} setRange={setRange} />}
       <div className="relative">
         <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden>
           🔍
@@ -245,11 +285,25 @@ export function Transactions({
             📋 Catat banyak
           </button>
         )}
-        <button type="button" onClick={toggleCal} aria-pressed={showCal} className={`${onBulk ? "" : "ml-auto "}text-sm font-semibold text-brand-700`}>
-          📅 {showCal ? "Sembunyikan kalender" : "Kalender masuk-keluar"}
-        </button>
+        {!range && (
+          <button type="button" onClick={toggleCal} aria-pressed={showCal} className={`${onBulk ? "" : "ml-auto "}text-sm font-semibold text-brand-700`}>
+            📅 {showCal ? "Sembunyikan kalender" : "Kalender masuk-keluar"}
+          </button>
+        )}
       </div>
-      {!searching && showCal && (
+      {budget && !searching && (
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-sun-100 px-3 py-2 text-sm">
+          <span className="font-semibold text-slate-800">🐷 {budget.name}</span>
+          <span className="text-slate-600">
+            · {txs.length} transaksi · keluar <b className="num">{formatIDR(expense)}</b>
+            {!range && <> dari {formatIDR(budget.limit)}</>}
+          </span>
+          <button type="button" onClick={() => setBudgetId(null)} className="ml-auto font-semibold text-slate-500 hover:underline">
+            ✕ Lepas
+          </button>
+        </div>
+      )}
+      {!searching && !range && showCal && (
         <Card className="pop-in p-3 sm:p-4">
           <SpendingCalendar month={month} totals={dayTotals} selected={day} onSelect={setDay} />
         </Card>
@@ -350,6 +404,29 @@ export function Transactions({
               <p className="mb-1.5 text-sm font-semibold text-slate-700">Kategori (bisa pilih beberapa)</p>
               <MultiCategoryPicker categories={kind ? categories.filter((c) => c.kind === kind) : categories} value={categoryIds} onChange={setCategoryIds} />
             </div>
+            {budgets.length > 0 && (
+              <div>
+                <p className="mb-1.5 text-sm font-semibold text-slate-700">Anggaran</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {budgets.map((b) => {
+                    const on = b.id === budgetId;
+                    return (
+                      <button
+                        key={b.id}
+                        type="button"
+                        aria-pressed={on}
+                        onClick={() => setBudgetId(on ? null : b.id)}
+                        className={`rounded-full px-3 py-1 text-xs font-semibold transition ${on ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-600 hover:bg-slate-100"}`}
+                      >
+                        {b.member_emoji ? `${b.member_emoji} ` : b.category_icon && !b.category_icon.startsWith("data:") ? `${b.category_icon} ` : "🐷 "}
+                        {b.name}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="mt-1 text-xs text-slate-400">Menampilkan pengeluaran yang dihitung ke anggaran itu (akun bersama).</p>
+              </div>
+            )}
             <div>
               <p className="mb-1.5 text-sm font-semibold text-slate-700">Akun</p>
               <MultiAccountPicker accounts={accounts} value={accountIds} onChange={setAccountIds} />
@@ -360,7 +437,7 @@ export function Transactions({
 
       {shown.length === 0 ? (
         <Card>
-          <Empty icon="🔍" title={searching ? `Tidak ada yang cocok dengan “${search.trim()}”` : dayFilter ? "Belum ada catatan di tanggal ini" : filtered ? "Tidak ada yang cocok" : "Belum ada transaksi bulan ini"}>
+          <Empty icon="🔍" title={searching ? `Tidak ada yang cocok dengan “${search.trim()}”` : dayFilter ? "Belum ada catatan di tanggal ini" : filtered ? "Tidak ada yang cocok" : range ? "Belum ada transaksi di rentang ini" : "Belum ada transaksi bulan ini"}>
             {searching ? "Coba kata lain, nama orang, atau jumlah seperti 50rb." : null}
           </Empty>
         </Card>
@@ -390,6 +467,44 @@ export function Transactions({
           );
         })
       )}
+    </div>
+  );
+}
+
+/** Date range for Riwayat: quick presets plus from/to pickers. */
+function RangeBar({ range, setRange }: { range: { from: string; to: string }; setRange: (r: { from: string; to: string }) => void }) {
+  const today = todayISO();
+  const now = new Date();
+  const back = (months: number) => toISODate(new Date(now.getFullYear(), now.getMonth() - months, now.getDate() + 1));
+  const presets: [string, { from: string; to: string }][] = [
+    ["30 hari", { from: toISODate(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29)), to: today }],
+    ["3 bulan", { from: back(3), to: today }],
+    ["6 bulan", { from: back(6), to: today }],
+    ["Tahun ini", { from: `${today.slice(0, 4)}-01-01`, to: today }],
+    ["12 bulan", { from: back(12), to: today }],
+  ];
+  return (
+    <div className="pop-in space-y-2 rounded-3xl bg-white p-3 shadow-[0_8px_24px_-14px_rgba(120,72,40,0.3)]">
+      <div className="no-scrollbar -mx-1 flex gap-1.5 overflow-x-auto px-1">
+        {presets.map(([label, r]) => {
+          const on = r.from === range.from && r.to === range.to;
+          return (
+            <button
+              key={label}
+              type="button"
+              aria-pressed={on}
+              onClick={() => setRange(r)}
+              className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold transition ${on ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-600 hover:bg-slate-100"}`}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 [&>*]:min-w-0">
+        <DatePicker label="Dari" value={range.from} max={range.to} onChange={(from) => setRange({ ...range, from })} />
+        <DatePicker label="Sampai" value={range.to} min={range.from} onChange={(to) => setRange({ ...range, to })} />
+      </div>
     </div>
   );
 }
