@@ -818,7 +818,8 @@ function CashFlowCard() {
   const others = [
     cf.newAccounts !== 0 && { label: "Saldo awal akun baru", hint: "uang lama yang baru dicatat", v: cf.newAccounts },
     cf.adjustments !== 0 && { label: "Koreksi saldo", hint: "menyamakan saldo dengan kenyataan", v: cf.adjustments, items: cf.adjustmentItems },
-    cf.investments !== 0 && { label: "Beli/jual investasi", hint: "kas pindah ke saham, kripto, emas (nilainya tidak dihitung di sini)", v: cf.investments, items: cf.investmentItems },
+    cf.investments !== 0 && { label: "Kas ke/dari investasi", hint: "beli, jual, atau saldo yang dipindah ke saham, kripto, emas", v: cf.investments, items: cf.investmentItems },
+    cf.investedChange !== 0 && { label: "Investasi yang tercatat", hint: "nilai saham, kripto, emas yang dicatat di periode ini (harga sekarang)", v: cf.investedChange },
     cf.loans !== 0 && { label: "Pinjaman (bersih)", hint: "dipinjamkan, dipinjam, dan cicilannya", v: cf.loans },
     cf.transfers !== 0 && { label: "Transfer ke akun yang tidak terlihat", hint: "mis. ke akun pribadi anggota lain", v: cf.transfers },
   ].filter(Boolean) as { label: string; hint: string; v: number; items?: MoveItem[] }[];
@@ -901,7 +902,7 @@ function CashFlowCard() {
         </>
       )}
 
-      <p className="mt-4 text-xs font-bold uppercase tracking-wide text-slate-400">Saldo semua akun</p>
+      <p className="mt-4 text-xs font-bold uppercase tracking-wide text-slate-400">Saldo semua akun + investasi</p>
       <ul className="divide-y divide-slate-100 text-sm">
         <Line label="Awal periode" value={formatIDR(cf.startBalance)} />
         <Line label="Akhir periode" value={formatIDR(cf.endBalance)} />

@@ -44,28 +44,37 @@ const parsePrice = (market: Market, text: string) => (MARKETS[market].currency =
 const label = (h: Holding) => (h.market === "GOLD" ? "Emas" : h.symbol);
 
 /**
- * IDX holdings whose average price looks typed per lot into the old
- * "per lembar" field: about 100x the live price per share.
+ * IDX holdings whose average price is off by a factor of 100 against the live
+ * price per share: typed per lot into the old "per lembar" field (100x too
+ * high) or per lembar into the "per lot" field (100x too low).
  */
 const lotTypos = (holdings: Holding[]) =>
-  holdings.filter((h) => h.market === "IDX" && h.price && h.avg_price / h.price >= 30 && h.avg_price / h.price <= 300);
+  holdings.flatMap((h) => {
+    if (h.market !== "IDX" || !h.price || !h.avg_price) return [];
+    const r = h.avg_price / h.price;
+    return r >= 30 && r <= 300 ? [{ h, factor: 1 / LOT }] : r >= 1 / 300 && r <= 1 / 30 ? [{ h, factor: LOT }] : [];
+  });
 
-/** Offers to divide those average prices by 100 (one tap, for every such stock). */
+/** Offers to fix those average prices in one tap. */
 export function LotPriceFix({ holdings }: { holdings: Holding[] }) {
   const { me } = useCurrent();
   const bad = lotTypos(holdings);
   if (!bad.length || !can.addTransaction(me.role)) return null;
   const fix = () =>
     attempt(async () => {
-      for (const h of bad)
-        await m.setHolding(me.id, { accountId: h.account_id, market: h.market, symbol: h.symbol, name: h.name, shares: h.shares, avgPrice: h.avg_price / LOT });
+      for (const { h, factor } of bad)
+        await m.setHolding(me.id, { accountId: h.account_id, market: h.market, symbol: h.symbol, name: h.name, shares: h.shares, avgPrice: h.avg_price * factor });
     }, "Harga rata-rata diperbaiki");
   return (
     <div className="rounded-2xl bg-amber-50 px-3 py-2.5 text-xs text-amber-900">
-      <p>
-        Harga rata-rata {bad.map((h) => h.symbol).join(", ")} sekitar 100× harga pasar per lembar. Sepertinya dulu diisi <b>per lot</b>. Sekarang harga saham BEI memang
-        diisi per lot.
-      </p>
+      <p>Harga rata-rata ini sekitar 100× beda dari harga pasar, sepertinya salah satuan (lot vs lembar):</p>
+      <ul className="mt-1 space-y-0.5">
+        {bad.map(({ h, factor }) => (
+          <li key={h.id} className="num">
+            <b>{h.symbol}</b> {formatPrice("IDX", h.avg_price)} → {formatPrice("IDX", h.avg_price * factor)}
+          </li>
+        ))}
+      </ul>
       <button type="button" onClick={fix} className="mt-2 rounded-full bg-amber-600 px-3 py-1.5 font-bold text-white hover:bg-amber-700">
         Perbaiki ({bad.length} saham)
       </button>

@@ -124,6 +124,13 @@ export interface Category {
 
 export type TxFlag = "transfer" | "adjustment" | "loan" | null;
 
+/**
+ * An 'adjustment' that moved cash into or out of investments rather than
+ * correcting a balance: a buy/sell ("Beli BBCA 2 lot @ …") or a cash
+ * balance moved into holdings ("Pindah ke investasi").
+ */
+export const isInvestmentMove = (note: string | null | undefined) => /^(Beli|Jual) \S+ .+ @ |^Pindah (ke|dari) investasi/.test(note ?? "");
+
 /** One member's share of a split expense, in the account's minor units. */
 export interface SplitShare {
   m: string;

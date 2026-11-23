@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { deleteWithUndo } from "../lib/undo";
-import { m, parseSplit, q, type Kind, type Transaction } from "../db/repo";
+import { isInvestmentMove, m, parseSplit, q, type Kind, type Transaction } from "../db/repo";
 import { computeSplit, initialSplit, SplitEditor, type SplitState } from "./SplitEditor";
 import { receiptValue, TxDetails, type PhotoDraft } from "./TxDetails";
 import { CategoryLines, linesTotal, newLine, type Line } from "./CategoryLines";
@@ -89,7 +89,7 @@ function AdjustmentBody({ tx, onClose }: { tx: Transaction; onClose: () => void 
   const [note, setNote] = useState(tx.note ?? "");
   const amount = parseMoney(text, currency);
   const ok = Number.isFinite(amount) && amount > 0;
-  const trade = /^(Beli|Jual) \S+ .+ @ /.test(tx.note ?? "");
+  const trade = isInvestmentMove(tx.note);
   return (
     <form
       className="space-y-3"
@@ -99,7 +99,7 @@ function AdjustmentBody({ tx, onClose }: { tx: Transaction; onClose: () => void 
       }}
     >
       <p className="rounded-2xl bg-slate-50 px-4 py-2.5 text-sm text-slate-600">
-        {trade ? "Kas yang pindah karena beli/jual investasi" : "Koreksi saldo"} di <b>{tx.account_name}</b>. Bukan pemasukan atau pengeluaran, jadi tidak masuk
+        {trade ? "Kas yang pindah ke/dari investasi" : "Koreksi saldo"} di <b>{tx.account_name}</b>. Bukan pemasukan atau pengeluaran, jadi tidak masuk
         anggaran, laporan belanja, atau kategori.
       </p>
       <div className="grid grid-cols-2 gap-1 rounded-full bg-slate-100 p-1 text-sm font-bold">

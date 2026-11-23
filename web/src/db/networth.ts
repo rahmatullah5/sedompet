@@ -12,6 +12,7 @@
 import { all } from "./database";
 import { baseSql, holdingsSql } from "../lib/currency";
 import { todayISO } from "../lib/format";
+import { isInvestmentMove } from "./repo";
 
 const VISIBLE = `(a.visibility = 'shared' OR a.owner_member_id = $me)`;
 
@@ -106,6 +107,8 @@ export interface CashFlow {
   transfers: number;
   /** Opening balances of accounts created inside the period. */
   newAccounts: number;
+  /** Change in the value of recorded stocks/crypto/gold (holdings added in the period, at today's price). */
+  investedChange: number;
   startBalance: number;
   endBalance: number;
   /** startBalance + every movement - endBalance; 0 when everything adds up. */
@@ -121,8 +124,6 @@ export interface MoveItem {
   amount: number;
 }
 
-/** Buy/sell entries from tradeStock: "Beli BBCA 2 lot @ Rp…" (stored as adjustments). */
-const TRADE_NOTE = /^(Beli|Jual) \S+ .+ @ /;
 
 /**
  * Arus kas between two dates (inclusive), in rupiah, over every account you
@@ -145,8 +146,12 @@ export function cashFlow(dompetId: string, me: string, from: string, to: string)
 
   // Opening balances count from the day the account was created.
   const created = `substr(a.created_at, 1, 10)`;
-  const bal = all<{ start: number; fresh: number; finish: number }>(
+  // Investments count in the balances too (at today's price; a holding counts
+  // from the day it was recorded), so moving cash into them isn't a loss.
+  const bal = all<{ start: number; fresh: number; finish: number; inv_start: number; inv_end: number }>(
     `SELECT
+       COALESCE(SUM(${holdingsSql("a", "date($from, '-1 day')")}), 0) AS inv_start,
+       COALESCE(SUM(${holdingsSql("a", "$to")}), 0) AS inv_end,
        COALESCE(SUM(CASE WHEN ${created} < $from THEN ${baseSql("a.opening_balance")} ELSE 0 END), 0)
          + COALESCE((SELECT SUM(${signed}) FROM transactions t JOIN accounts a ON a.id = t.account_id
                      WHERE t.dompet_id = $d AND ${VISIBLE} AND t.date < $from), 0) AS start,
@@ -156,7 +161,8 @@ export function cashFlow(dompetId: string, me: string, from: string, to: string)
                      WHERE t.dompet_id = $d AND ${VISIBLE} AND t.date <= $to), 0) AS finish
      FROM accounts a WHERE a.dompet_id = $d AND ${VISIBLE}`,
     p,
-  )[0] ?? { start: 0, fresh: 0, finish: 0 };
+  )[0] ?? { start: 0, fresh: 0, finish: 0, inv_start: 0, inv_end: 0 };
+  const investedChange = bal.inv_end - bal.inv_start;
 
   // Adjustments are both Koreksi saldo and the cash leg of investment trades.
   const items = all<MoveItem>(
@@ -167,18 +173,21 @@ export function cashFlow(dompetId: string, me: string, from: string, to: string)
      ORDER BY ABS(amount) DESC, t.date DESC`,
     p,
   );
-  const investmentItems = items.filter((i) => TRADE_NOTE.test(i.note ?? ""));
-  const adjustmentItems = items.filter((i) => !TRADE_NOTE.test(i.note ?? ""));
+  const investmentItems = items.filter((i) => isInvestmentMove(i.note));
+  const adjustmentItems = items.filter((i) => !isInvestmentMove(i.note));
   const investments = investmentItems.reduce((s, i) => s + i.amount, 0);
   const adjustments = sum("adjustment") - investments;
   const loans = sum("loan");
   const transfers = sum("transfer");
-  const moved = income - expense + adjustments + investments + loans + transfers + bal.fresh;
+  const moved = income - expense + adjustments + investments + loans + transfers + bal.fresh + investedChange;
+  const startBalance = bal.start + bal.inv_start;
+  const endBalance = bal.finish + bal.inv_end;
   return {
     income, expense, adjustments, investments, adjustmentItems, investmentItems, loans, transfers,
     newAccounts: bal.fresh,
-    startBalance: bal.start,
-    endBalance: bal.finish,
-    gap: Math.round(bal.start + moved - bal.finish),
+    investedChange,
+    startBalance,
+    endBalance,
+    gap: Math.round(startBalance + moved - endBalance),
   };
 }

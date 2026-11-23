@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { budgetCovers, parseSplit, q, type Kind, type Transaction } from "../db/repo";
+import { budgetCovers, parseSplit, q, type Kind, type Transaction, isInvestmentMove } from "../db/repo";
 import { currentMonth, formatDay, formatIDR, formatMonth, formatPeriodRange, periodRange, shiftMonth, toISODate, todayISO } from "../lib/format";
 import { DatePicker } from "../components/DatePicker";
 import { useCurrent, useDbVersion } from "../lib/hooks";
@@ -63,7 +63,7 @@ export function TxRow({ t, onClick, showDate }: { t: Transaction; onClick: () =>
             {t.split_with && t.flag === "transfer" ? (
               <span className="rounded-full bg-mint-100 px-1.5 text-[10px] font-semibold text-mint-600">lunas patungan</span>
             ) : (
-              t.flag && <span className="rounded-full bg-slate-100 px-1.5 text-[10px] font-semibold text-slate-500">{t.flag === "transfer" ? "transfer" : t.flag === "loan" ? "pinjaman" : /^(Beli|Jual) \S+ .+ @ /.test(t.note ?? "") ? "investasi" : "koreksi"}</span>
+              t.flag && <span className="rounded-full bg-slate-100 px-1.5 text-[10px] font-semibold text-slate-500">{t.flag === "transfer" ? "transfer" : t.flag === "loan" ? "pinjaman" : isInvestmentMove(t.note) ? "investasi" : "koreksi"}</span>
             )}
             {t.split_with && !t.flag && (
               <span className="rounded-full bg-brand-50 px-1.5 text-[10px] font-semibold text-brand-700">dibagi {parseSplit(t.split_with)?.length ?? ""}</span>
