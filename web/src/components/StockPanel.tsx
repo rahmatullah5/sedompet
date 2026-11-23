@@ -36,21 +36,35 @@ const parsePrice = (market: Market, text: string) => (MARKETS[market].currency =
 
 const label = (h: Holding) => (h.market === "GOLD" ? "Emas" : h.symbol);
 
-/** Compact list of holdings shown under an account row. */
+/** Compact list of holdings shown under an account row, with profit/loss vs the average buy price. */
 export function HoldingLines({ holdings }: { holdings: Holding[] }) {
   if (!holdings.length) return null;
   return (
-    <ul className="space-y-0.5">
-      {holdings.map((h) => (
-        <li key={h.id} className="flex items-center justify-between gap-2 text-xs">
-          <span className="flex min-w-0 items-center gap-1.5">
-            <span className="rounded bg-slate-100 px-1.5 py-0.5 font-bold text-slate-700">{label(h)}</span>
-            <span className="truncate text-slate-500">{unitsText(h.market, h.shares)}</span>
-            <ChangePct value={h.change_pct} />
-          </span>
-          <span className="num font-semibold text-slate-700">{formatIDR(holdingValue(h))}</span>
-        </li>
-      ))}
+    <ul className="space-y-1">
+      {holdings.map((h) => {
+        const value = holdingValue(h);
+        const cost = holdingCost(h);
+        // No live price yet = valued at the buy price, so no P/L to show.
+        const gain = h.price ? value - cost : null;
+        return (
+          <li key={h.id} className="flex items-center justify-between gap-2 text-xs">
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span className="rounded bg-slate-100 px-1.5 py-0.5 font-bold text-slate-700">{label(h)}</span>
+              <span className="truncate text-slate-500">{unitsText(h.market, h.shares)}</span>
+              {gain !== null && cost > 0 && <ChangePct value={(gain / cost) * 100} />}
+            </span>
+            <span className="num flex shrink-0 flex-col items-end leading-tight">
+              <span className="font-semibold text-slate-700">{formatIDR(value)}</span>
+              {gain !== null && (
+                <span className={cx("text-[11px] font-semibold", gain >= 0 ? "text-mint-600" : "text-red-600")}>
+                  {gain >= 0 ? "+" : "−"}
+                  {formatIDR(Math.abs(gain))}
+                </span>
+              )}
+            </span>
+          </li>
+        );
+      })}
     </ul>
   );
 }
