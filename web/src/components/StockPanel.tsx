@@ -6,15 +6,10 @@ import { lookupStock, priceTime, refreshMarket, stockPrice, useMarketStatus } fr
 import { useCurrent, useDbVersion } from "../lib/hooks";
 import { attempt, Button, cx, Field, Input, STICKY_ACTIONS } from "./ui";
 import { DatePicker } from "./DatePicker";
+import { ChangePct, LineIcon } from "./LineIcon";
 
 /** Market value of a holding (live price, else average buy price). */
 export const holdingValue = (h: Holding) => Math.round(h.shares * (h.price ?? h.avg_price));
-
-function Pct({ value }: { value: number | null | undefined }) {
-  if (value == null || !Number.isFinite(value)) return null;
-  const up = value >= 0;
-  return <span className={cx("num font-semibold", up ? "text-mint-600" : "text-red-600")}>{up ? "▲" : "▼"} {Math.abs(value).toFixed(2).replace(".", ",")}%</span>;
-}
 
 /** Compact list of holdings shown under an account row. */
 export function HoldingLines({ holdings }: { holdings: Holding[] }) {
@@ -26,7 +21,7 @@ export function HoldingLines({ holdings }: { holdings: Holding[] }) {
           <span className="flex items-center gap-1.5">
             <span className="rounded bg-slate-100 px-1.5 py-0.5 font-bold text-slate-700">{h.symbol}</span>
             <span className="text-slate-500">{h.shares / LOT} lot</span>
-            <Pct value={h.change_pct} />
+            <ChangePct value={h.change_pct} />
           </span>
           <span className="num font-semibold text-slate-700">{formatIDR(holdingValue(h))}</span>
         </li>
@@ -98,7 +93,7 @@ export function StockPanel({ account: initial, onClose }: { account: Account; on
                     </span>
                     <span className="flex gap-2 text-xs text-slate-500">
                       {h.price ? <>harga {formatIDR(h.price)}</> : <span className="text-amber-700">harga belum ada</span>}
-                      <Pct value={h.change_pct} />
+                      <ChangePct value={h.change_pct} />
                     </span>
                   </span>
                   <span className="flex flex-col items-end">
@@ -124,8 +119,9 @@ export function StockPanel({ account: initial, onClose }: { account: Account; on
         <span>
           {market.loading ? "Mengambil harga…" : market.error ? `Gagal update: ${market.error}` : fetchedAt ? `Harga per ${priceTime(fetchedAt)} (bisa tertunda ±15 menit)` : ""}
         </span>
-        <button type="button" className="font-semibold text-brand-700" onClick={() => refreshMarket(true)} disabled={market.loading}>
-          ↻ Perbarui
+        <button type="button" className="inline-flex items-center gap-1 font-semibold text-brand-700" onClick={() => refreshMarket(true)} disabled={market.loading}>
+          <LineIcon name="refresh" size={13} />
+          Perbarui
         </button>
       </div>
 
@@ -136,7 +132,8 @@ export function StockPanel({ account: initial, onClose }: { account: Account; on
         {allowed && (
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" onClick={() => setMode({ kind: "set" })}>
-              + Sudah punya
+              <LineIcon name="plus" size={14} />
+              Sudah punya
             </Button>
             {holdings.length > 0 && (
               <Button variant="secondary" onClick={() => setMode({ kind: "trade", side: "sell" })}>

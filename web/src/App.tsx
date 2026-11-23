@@ -30,15 +30,16 @@ import { PlanBanner, READ_ONLY_MESSAGE } from "./components/PlanBanner";
 import { setWriteGuard } from "./db/database";
 import { setPeriodStartDay } from "./lib/format";
 import { useMarketAutoRefresh } from "./lib/market";
+import { LineIcon, type LineIconName } from "./components/LineIcon";
 
 const PAGES = ["beranda", "riwayat", "laporan", "menu", "anggaran", "keluarga", "akun", "kategori", "rutin", "pinjaman", "tujuan", "sampah", "patungan", "neraca", "notifikasi", "admin"] as const;
 type PageId = (typeof PAGES)[number];
 
-const NAV: { id: PageId; label: string; icon: string }[] = [
-  { id: "beranda", label: "Beranda", icon: "🏠" },
-  { id: "riwayat", label: "Riwayat", icon: "📒" },
-  { id: "laporan", label: "Laporan", icon: "📊" },
-  { id: "menu", label: "Menu", icon: "☰" },
+const NAV: { id: PageId; label: string; icon: LineIconName }[] = [
+  { id: "beranda", label: "Beranda", icon: "home" },
+  { id: "riwayat", label: "Riwayat", icon: "book" },
+  { id: "laporan", label: "Laporan", icon: "bars" },
+  { id: "menu", label: "Menu", icon: "menu" },
 ];
 
 function pageFromHash(): PageId {
@@ -229,7 +230,7 @@ export default function App() {
             )}
             aria-label={canAdd ? "Catat transaksi" : "Mode lihat saja"}
           >
-            {canAdd ? "+" : "👀"}
+            {canAdd ? "+" : <LineIcon name="eye" size={24} />}
           </button>
           {NAV.slice(2).map((n) => (
             <NavItem key={n.id} {...n} active={page === n.id || (n.id === "menu" && !["beranda", "riwayat", "laporan"].includes(page))} />
@@ -292,7 +293,7 @@ export default function App() {
   );
 }
 
-function NavItem({ id, label, icon, active }: { id: string; label: string; icon: string; active: boolean }) {
+function NavItem({ id, label, icon, active }: { id: string; label: string; icon: LineIconName; active: boolean }) {
   return (
     <a
       href={`#/${id}`}
@@ -302,7 +303,7 @@ function NavItem({ id, label, icon, active }: { id: string; label: string; icon:
         active ? "text-brand-700" : "text-slate-400 hover:text-slate-600",
       )}
     >
-      <span className={cx("text-xl transition", active ? "scale-110" : "grayscale-[60%] opacity-80")}>{icon}</span>
+      <LineIcon name={icon} size={22} className={cx("transition", active ? "scale-110" : "")} />
       {label}
     </a>
   );

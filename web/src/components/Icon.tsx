@@ -1,5 +1,17 @@
 import { useRef, useState } from "react";
 import { cx, toast } from "./ui";
+import { LineIcon, type LineIconName } from "./LineIcon";
+
+/** Default account-type emoji drawn as plain line icons instead. */
+const LINE_FOR: Record<string, LineIconName> = {
+  "💵": "cash",
+  "🏦": "bank",
+  "📱": "phone",
+  "🐷": "piggy",
+  "💳": "card",
+  "📈": "chart",
+  "👛": "wallet",
+};
 
 /** Renders an icon value: an emoji, or an uploaded image stored as a data: URL. */
 export function Icon({ value, size = 24, className }: { value: string | null | undefined; size?: number; className?: string }) {
@@ -7,6 +19,8 @@ export function Icon({ value, size = 24, className }: { value: string | null | u
   if (v.startsWith("data:image/")) {
     return <img src={v} alt="" width={size} height={size} className={cx("inline-block rounded-lg object-cover", className)} style={{ width: size, height: size }} />;
   }
+  const line = LINE_FOR[v];
+  if (line) return <LineIcon name={line} size={Math.round(size * 0.85)} className={cx("inline-block shrink-0 text-slate-700", className)} />;
   return (
     <span className={cx("inline-block leading-none", className)} style={{ fontSize: size * 0.9 }} aria-hidden>
       {v}

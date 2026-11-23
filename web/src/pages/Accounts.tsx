@@ -9,7 +9,8 @@ import { CURRENCIES, currencyInfo, formatMoney, formatRate, isBase, moneyInputTe
 import { useCurrent, useDbVersion } from "../lib/hooks";
 import { liveRate, priceTime, refreshMarket, useMarketStatus } from "../lib/market";
 import { HoldingLines, StockPanel } from "../components/StockPanel";
-import { attempt, Avatar, Badge, Button, Card, Field, Input, Modal, Money, Select, STICKY_ACTIONS } from "../components/ui";
+import { ChangePct, CurrencyCode, LineIcon } from "../components/LineIcon";
+import { attempt, Avatar, Button, Card, Field, Input, Modal, Money, Select, STICKY_ACTIONS } from "../components/ui";
 import { getMode } from "../cloud/client";
 import { cloud } from "../cloud/sync";
 
@@ -94,23 +95,22 @@ function RatesCard({ accounts }: { accounts: Account[] }) {
   const at = rows.map((r) => r.live?.fetched_at).filter(Boolean).sort().pop();
   return (
     <Card
-      title="Kurs hari ini 💱"
+      title="Kurs hari ini"
       action={
-        <button type="button" className="text-sm font-semibold text-brand-700 disabled:text-slate-400" disabled={market.loading} onClick={() => refreshMarket(true)}>
-          {market.loading ? "Memuat…" : "↻ Perbarui"}
+        <button type="button" className="inline-flex items-center gap-1 text-sm font-semibold text-brand-700 disabled:text-slate-400" disabled={market.loading} onClick={() => refreshMarket(true)}>
+          <LineIcon name="refresh" size={14} />
+          {market.loading ? "Memuat…" : "Perbarui"}
         </button>
       }
     >
       <ul className="grid grid-cols-2 gap-2">
         {rows.map(({ code, live }) => (
           <li key={code} className="rounded-2xl bg-slate-50 px-3 py-2">
-            <p className="text-xs font-semibold text-slate-500">
-              {currencyInfo(code).flag} 1 {code}
-            </p>
+            <p className="text-xs font-semibold text-slate-500">1 {code}</p>
             <p className="num font-bold text-slate-800">{live ? formatRate(live.price) : "—"}</p>
             {live?.change_pct != null && (
-              <p className={`num text-[11px] font-semibold ${live.change_pct >= 0 ? "text-mint-600" : "text-red-600"}`}>
-                {live.change_pct >= 0 ? "▲" : "▼"} {Math.abs(live.change_pct).toFixed(2).replace(".", ",")}%
+              <p className="text-[11px]">
+                <ChangePct value={live.change_pct} />
               </p>
             )}
           </li>
@@ -155,7 +155,7 @@ export function Accounts() {
       </div>
     ));
   };
-  const chip = "rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-200";
+  const chip = "inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-200";
   const rows = (items: Account[]) => {
     // Currencies of a pocket are listed under its main account.
     const kidsOf = (id: string) => items.filter((a) => a.parent_id === id);
@@ -184,11 +184,11 @@ export function Accounts() {
                     <span className="flex flex-wrap items-center gap-1 text-xs text-slate-500">
                       {accountTypeLabel(a.type)}
                       {pocket ? (
-                        <span className="whitespace-nowrap rounded-full bg-sky-50 px-1.5 font-semibold text-sky-700">🌐 {kids.length + 1} mata uang</span>
+                        <span className="whitespace-nowrap">· {kids.length + 1} mata uang</span>
                       ) : (
-                        !isBase(a.currency) && <span className="rounded-full bg-sky-50 px-1.5 font-semibold text-sky-700">{currencyInfo(a.currency).flag} {a.currency}</span>
+                        !isBase(a.currency) && <CurrencyCode code={a.currency} />
                       )}
-                      {stocks.length > 0 && <span className="whitespace-nowrap rounded-full bg-mint-50 px-1.5 font-semibold text-mint-700">📈 {stocks.length} saham</span>}
+                      {stocks.length > 0 && <span className="whitespace-nowrap">· {stocks.length} saham</span>}
                       {a.visibility === "shared" && a.holder_name && (
                         <>
                           <span>·</span>
@@ -218,9 +218,9 @@ export function Accounts() {
                     onClick={() => setCorrecting(a)}
                     title="Koreksi saldo"
                     aria-label={`Koreksi saldo ${a.name}`}
-                    className="shrink-0 rounded-full p-2 text-lg hover:bg-slate-100"
+                    className="shrink-0 rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
                   >
-                    ⚖️
+                    <LineIcon name="adjust" size={18} />
                   </button>
                 )}
               </div>
@@ -235,7 +235,7 @@ export function Accounts() {
                         className="flex flex-1 items-center justify-between gap-2 rounded-xl px-2 py-1.5 text-left text-sm enabled:hover:bg-slate-50"
                       >
                         <span className="flex flex-col whitespace-nowrap font-semibold text-slate-700">
-                          {currencyInfo(c.currency).flag} {c.currency}
+                          {c.currency}
                           {!isBase(c.currency) && (
                             <span className="text-[11px] font-normal text-slate-400">
                               @ {formatRate(c.fx_rate)}
@@ -246,8 +246,8 @@ export function Accounts() {
                         <Balance a={c} />
                       </button>
                       {can.addTransaction(me.role) && (
-                        <button onClick={() => setCorrecting(c)} title="Koreksi saldo" aria-label={`Koreksi saldo ${c.name}`} className="shrink-0 rounded-full p-1.5 hover:bg-slate-100">
-                          ⚖️
+                        <button onClick={() => setCorrecting(c)} title="Koreksi saldo" aria-label={`Koreksi saldo ${c.name}`} className="shrink-0 rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+                          <LineIcon name="adjust" size={16} />
                         </button>
                       )}
                     </li>
@@ -263,17 +263,20 @@ export function Accounts() {
                 <div className="ml-5 mt-1.5 flex flex-wrap gap-1.5 pb-1 sm:ml-14">
                   {pocket && can.addTransaction(me.role) && (
                     <button type="button" className={chip} onClick={() => setExchange({ from: a.id, to: kids[0].id })}>
-                      ⇄ Tukar valas
+                      <LineIcon name="swap" size={14} />
+                      Tukar valas
                     </button>
                   )}
                   {pocket && canEdit(a) && (
                     <button type="button" className={chip} onClick={() => setAddingCurrency(a)}>
-                      + Mata uang
+                      <LineIcon name="plus" size={14} />
+                      Mata uang
                     </button>
                   )}
                   {investing && (
                     <button type="button" className={chip} onClick={() => setStocksOf(a)}>
-                      📈 Saham
+                      <LineIcon name="chart" size={14} />
+                      Saham
                     </button>
                   )}
                 </div>
@@ -289,11 +292,12 @@ export function Accounts() {
     <div className="space-y-4">
       <div>
         <a href="#/menu" className="text-sm font-semibold text-brand-700">← Menu</a>
-        <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-slate-800">Isi dompet 💳</h1>
+        <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-slate-800">Isi dompet</h1>
         <p className="text-sm text-slate-500">Tempat uang keluarga disimpan: tunai, bank, e-wallet.</p>
         {can.addTransaction(me.role) && accounts.length >= 2 && (
           <Button variant="secondary" className="mt-3" onClick={() => setTransferOpen(true)}>
-            ⇄ Transfer antar akun
+            <LineIcon name="swap" />
+            Transfer antar akun
           </Button>
         )}
       </div>
@@ -304,14 +308,14 @@ export function Accounts() {
           title={`Akun bersama · ${formatIDR(shared.reduce((s, a) => s + a.balance_base, 0))}`}
           action={manage && <Button onClick={() => setEditing("new")}>+ Akun</Button>}
         >
-          <p className="-mt-1 mb-2 px-2 text-xs text-slate-400">Saldo beda dengan aplikasi bank? Tekan ⚖️ untuk koreksi.</p>
+          <p className="-mt-1 mb-2 px-2 text-xs text-slate-400">Saldo beda dengan aplikasi bank? Tekan <LineIcon name="adjust" size={12} className="inline-block align-[-1px]" /> untuk koreksi.</p>
           {list(shared)}
           {!manage && <p className="px-2 pt-2 text-xs text-slate-400">Hanya pemilik/admin yang bisa menambah akun bersama.</p>}
         </Card>
         <Card
           title={
             <span className="flex items-center gap-2">
-              🔒 Akun pribadimu <Badge tone="violet">hanya kamu yang lihat</Badge>
+              <LineIcon name="lock" size={16} className="text-slate-500" /> Akun pribadimu <span className="text-xs font-normal text-slate-400">hanya kamu yang lihat</span>
             </span>
           }
           action={can.addPrivateAccount(me.role) && <Button variant="secondary" onClick={() => setEditing("new-private")}>+ Pribadi</Button>}
@@ -325,19 +329,19 @@ export function Accounts() {
         onAddCurrency={(a) => (setEditing(null), setAddingCurrency(a))}
         onStocks={(a) => (setEditing(null), setStocksOf(a))}
       />
-      <Modal open={addingCurrency !== null} onClose={() => setAddingCurrency(null)} title="Tambah mata uang 🌐">
+      <Modal open={addingCurrency !== null} onClose={() => setAddingCurrency(null)} title="Tambah mata uang">
         {addingCurrency && <AddCurrencyForm key={addingCurrency.id} parent={addingCurrency} onClose={() => setAddingCurrency(null)} />}
       </Modal>
-      <Modal open={exchange !== null} onClose={() => setExchange(null)} title="Tukar valas ⇄">
+      <Modal open={exchange !== null} onClose={() => setExchange(null)} title="Tukar valas">
         {exchange && <TransferBody initialFrom={exchange.from} initialTo={exchange.to} onClose={() => setExchange(null)} />}
       </Modal>
-      <Modal open={stocksOf !== null} onClose={() => setStocksOf(null)} title={stocksOf ? `Saham · ${stocksOf.name} 📈` : "Saham"}>
+      <Modal open={stocksOf !== null} onClose={() => setStocksOf(null)} title={stocksOf ? `Saham · ${stocksOf.name}` : "Saham"}>
         {stocksOf && <StockPanel key={stocksOf.id} account={stocksOf} onClose={() => setStocksOf(null)} />}
       </Modal>
-      <Modal open={transferOpen} onClose={() => setTransferOpen(false)} title="Transfer antar akun ⇄">
+      <Modal open={transferOpen} onClose={() => setTransferOpen(false)} title="Transfer antar akun">
         {transferOpen && <TransferBody onClose={() => setTransferOpen(false)} />}
       </Modal>
-      <Modal open={correcting !== null} onClose={() => setCorrecting(null)} title="Koreksi saldo ⚖️">
+      <Modal open={correcting !== null} onClose={() => setCorrecting(null)} title="Koreksi saldo">
         {correcting && <CorrectionForm key={correcting.id} account={correcting} onClose={() => setCorrecting(null)} />}
       </Modal>
     </div>
@@ -454,7 +458,7 @@ function AccountFormBody({
     >
       {isChild ? (
         <p className="text-sm text-slate-600">
-          Saldo {currencyInfo(currency).flag} <b>{currency}</b> di dompet valas ini. Nama, ikon dan pemegang mengikuti akun utamanya.
+          Saldo <b>{currency}</b> di dompet valas ini. Nama, ikon dan pemegang mengikuti akun utamanya.
         </p>
       ) : (
       <Field label="Nama akun">
@@ -476,15 +480,15 @@ function AccountFormBody({
           >
             {BUILTIN_ACCOUNT_TYPES.map((t) => (
               <option key={t.key} value={t.key}>
-                {t.icon} {t.label}
+                {t.label}
               </option>
             ))}
             {customTypes.map((t) => (
               <option key={t} value={t}>
-                👛 {t}
+                {t}
               </option>
             ))}
-            <option value={NEW_TYPE}>➕ Jenis baru…</option>
+            <option value={NEW_TYPE}>+ Jenis baru…</option>
           </Select>
         </Field>
         )}
@@ -492,7 +496,7 @@ function AccountFormBody({
           <Select value={currency} disabled={hasTx || isChild} onChange={(e) => setCurrency(e.target.value)}>
             {CURRENCIES.map((c) => (
               <option key={c.code} value={c.code}>
-                {c.flag} {c.code} · {c.name}
+                {c.code} · {c.name}
               </option>
             ))}
           </Select>
@@ -536,12 +540,14 @@ function AccountFormBody({
         <div className="flex flex-wrap gap-2 rounded-2xl bg-slate-50 p-2.5">
           {canEditPocket(account, me.id, manage) && (
             <Button variant="secondary" className="!py-1.5 text-xs" onClick={() => onAddCurrency(account)}>
-              🌐 + Mata uang lain (valas)
+              <LineIcon name="coins" size={14} />
+              Mata uang lain (valas)
             </Button>
           )}
           {isBase(account.currency) && (
             <Button variant="secondary" className="!py-1.5 text-xs" onClick={() => onStocks(account)}>
-              📈 Saham di akun ini
+              <LineIcon name="chart" size={14} />
+              Saham di akun ini
             </Button>
           )}
           <p className="w-full px-1 text-[11px] text-slate-400">Satu akun bisa menyimpan banyak mata uang (seperti BCA Valas) dan saham BEI.</p>
@@ -565,7 +571,7 @@ function AccountFormBody({
                 aria-pressed={holderId === null}
                 className={`rounded-full border-2 px-3 py-1 text-sm font-semibold ${holderId === null ? "border-brand-600 bg-brand-50 text-brand-800" : "border-transparent bg-slate-100 text-slate-600"}`}
               >
-                👨‍👩‍👧 Keluarga
+                Keluarga
               </button>
             )}
             {members.map((mem) => {
@@ -602,8 +608,8 @@ function AccountFormBody({
             if (v === "private" && !holderId) setHolderId(me.id);
           }}
         >
-          {(manage || visibility === "shared") && <option value="shared">👨‍👩‍👧 Seluruh anggota Dompet</option>}
-          <option value="private">🔒 Hanya {holderId && holderId !== me.id ? members.find((x) => x.id === holderId)?.name : "saya"}</option>
+          {(manage || visibility === "shared") && <option value="shared">Seluruh anggota Dompet</option>}
+          <option value="private">Hanya {holderId && holderId !== me.id ? members.find((x) => x.id === holderId)?.name : "saya"}</option>
         </Select>
       </Field>
       )}
@@ -728,7 +734,7 @@ function AddCurrencyForm({ parent, onClose }: { parent: Account; onClose: () => 
           <Select value={currency} onChange={(e) => setCurrency(e.target.value)}>
             {options.map((c) => (
               <option key={c.code} value={c.code}>
-                {c.flag} {c.code} · {c.name}
+                {c.code} · {c.name}
               </option>
             ))}
           </Select>
