@@ -63,7 +63,7 @@ export function TxRow({ t, onClick, showDate }: { t: Transaction; onClick: () =>
             {t.split_with && t.flag === "transfer" ? (
               <span className="rounded-full bg-mint-100 px-1.5 text-[10px] font-semibold text-mint-600">lunas patungan</span>
             ) : (
-              t.flag && <span className="rounded-full bg-slate-100 px-1.5 text-[10px] font-semibold text-slate-500">{t.flag === "transfer" ? "transfer" : t.flag === "loan" ? "pinjaman" : "koreksi"}</span>
+              t.flag && <span className="rounded-full bg-slate-100 px-1.5 text-[10px] font-semibold text-slate-500">{t.flag === "transfer" ? "transfer" : t.flag === "loan" ? "pinjaman" : /^(Beli|Jual) \S+ .+ @ /.test(t.note ?? "") ? "investasi" : "koreksi"}</span>
             )}
             {t.split_with && !t.flag && (
               <span className="rounded-full bg-brand-50 px-1.5 text-[10px] font-semibold text-brand-700">dibagi {parseSplit(t.split_with)?.length ?? ""}</span>
@@ -482,12 +482,14 @@ export function Transactions({
         </Card>
       ) : (
         [...groups.entries()].map(([date, list]) => {
-          const dayNet = list.reduce((s, t) => s + (t.kind === "income" ? t.amount_base : -t.amount_base), 0);
+          // Income minus spending only: transfers, corrections and loans just move money.
+          const everyday = list.filter((t) => !t.flag);
+          const dayNet = everyday.reduce((s, t) => s + (t.kind === "income" ? t.amount_base : -t.amount_base), 0);
           return (
             <Card key={date} className="p-2 sm:p-3">
               <div className="flex justify-between px-2 pb-1 text-xs font-medium text-slate-500">
                 <span className="capitalize">{formatDay(date)}</span>
-                <span className="num">{formatIDR(dayNet)}</span>
+                {everyday.length > 0 && <span className="num">{formatIDR(dayNet)}</span>}
               </div>
               <ul className="divide-y divide-slate-100 dark:divide-slate-800">
                 {list.map((t) => (

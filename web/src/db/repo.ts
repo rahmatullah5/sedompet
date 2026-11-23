@@ -1627,6 +1627,32 @@ export const m = {
     });
   },
 
+  /**
+   * Edits a balance correction (or the cash leg of an investment trade):
+   * signed amount, date and note only. It stays an 'adjustment', so it is
+   * never counted as income or spending and has no category.
+   */
+  updateAdjustment(actorId: string, txId: string, data: { amount: number; date: string; note: string }) {
+    const actor = actorOf(actorId);
+    const tx = get<{ created_by: string | null; flag: string | null; visibility: string; holder: string | null; currency: string; name: string }>(
+      "SELECT t.created_by, t.flag, a.visibility, a.currency, a.name, COALESCE(a.holder_member_id, a.owner_member_id) AS holder FROM transactions t JOIN accounts a ON a.id = t.account_id WHERE t.id = ? AND t.dompet_id = ?",
+      [txId, actor.dompet_id],
+    );
+    if (!tx || tx.flag !== "adjustment") throw new Error("Koreksi tidak ditemukan.");
+    if (!can.editTransaction(actor.role, tx.created_by === actor.id, tx.holder === actor.id)) throw new PermissionError("Anggota hanya bisa mengubah catatan sendiri.");
+    if (!Number.isInteger(data.amount) || data.amount === 0) throw new Error("Jumlah koreksi tidak boleh 0.");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(data.date)) throw new Error("Tanggal tidak valid.");
+    const note = data.note.trim().slice(0, 140) || "Koreksi saldo";
+    return write((run) => {
+      run(
+        `UPDATE transactions SET kind = ?, amount = ?, date = ?, note = ?, category_id = NULL, split_with = NULL, need = NULL,
+           updated_by = ?, updated_at = datetime('now') WHERE id = ? AND dompet_id = ?`,
+        [data.amount > 0 ? "income" : "expense", Math.abs(data.amount), data.date, note, actor.id, txId, actor.dompet_id],
+      );
+      if (tx.visibility === "shared") log(run, actor, `mengubah koreksi saldo ${tx.name} (${data.amount > 0 ? "+" : "−"}${formatMoney(Math.abs(data.amount), tx.currency)})`);
+    });
+  },
+
   deleteTransaction(actorId: string, txId: string) {
     const actor = actorOf(actorId);
     const tx = get<{ created_by: string | null; amount: number; note: string; visibility: string; holder: string | null; currency: string }>(

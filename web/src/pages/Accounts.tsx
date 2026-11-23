@@ -683,6 +683,12 @@ function CorrectionForm({ account, onClose }: { account: Account; onClose: () =>
         Saldo <b>{account.name}</b> di Sedompet sekarang <b className="num">{formatMoney(account.balance, account.currency)}</b>. Masukkan saldo yang sebenarnya
         (lihat di aplikasi bank/e-wallet).
       </p>
+      {account.holdings_value > 0 && (
+        <p className="rounded-2xl bg-sun-100 px-4 py-2.5 text-sm text-slate-700">
+          Ini <b>saldo kas</b> saja (uang yang belum dibelikan apa-apa). Nilai investasinya, <b className="num">{formatIDR(account.holdings_value)}</b>, dihitung dari
+          saham/kripto/emas di menu Investasi, jadi jangan ikut dimasukkan di sini.
+        </p>
+      )}
       <Field label="Saldo sebenarnya">
         <Input autoFocus inputMode="decimal" value={text} placeholder={isBase(account.currency) ? "mis. 2.350.000" : "mis. 1.250,75"} onChange={(e) => setText(e.target.value)} className="py-3 text-center !text-2xl font-extrabold" />
       </Field>

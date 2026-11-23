@@ -32,7 +32,7 @@ export function TransactionForm({
   bulk?: boolean;
 }) {
   return (
-    <Modal open={open} onClose={onClose} title={editing ? "Ubah transaksi" : "Catat transaksi"}>
+    <Modal open={open} onClose={onClose} title={editing?.flag === "adjustment" ? "Ubah koreksi saldo" : editing ? "Ubah transaksi" : "Catat transaksi"}>
       {/* Remount per transaction so the form starts from fresh values. */}
       {open && <SheetBody key={editing?.id ?? `new${initialDate ?? ""}${bulk ? "bulk" : ""}`} onClose={onClose} editing={editing ?? null} initialDate={initialDate} bulk={bulk} />}
     </Modal>
@@ -74,6 +74,71 @@ export function ModeSwitch({ value, onPick }: { value: Kind | "transfer"; onPick
 
 /** Chooses between the normal transaction form and the transfer form. */
 function SheetBody({ onClose, editing, initialDate, bulk }: { onClose: () => void; editing: Transaction | null; initialDate?: string; bulk?: boolean }) {
+  // A correction is not income or spending: it gets its own small editor.
+  if (editing?.flag === "adjustment") return <AdjustmentBody tx={editing} onClose={onClose} />;
+  return <EntryBody onClose={onClose} editing={editing} initialDate={initialDate} bulk={bulk} />;
+}
+
+/** Edit a Koreksi saldo (or the cash leg of an investment buy/sell): signed amount, date, note. */
+function AdjustmentBody({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
+  const { me } = useCurrent();
+  const currency = tx.account_currency;
+  const [sign, setSign] = useState<1 | -1>(tx.kind === "income" ? 1 : -1);
+  const [text, setText] = useState(moneyInputText(tx.amount, currency));
+  const [date, setDate] = useState(tx.date);
+  const [note, setNote] = useState(tx.note ?? "");
+  const amount = parseMoney(text, currency);
+  const ok = Number.isFinite(amount) && amount > 0;
+  const trade = /^(Beli|Jual) \S+ .+ @ /.test(tx.note ?? "");
+  return (
+    <form
+      className="space-y-3"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (await attempt(() => m.updateAdjustment(me.id, tx.id, { amount: sign * amount, date, note }), "Koreksi disimpan")) onClose();
+      }}
+    >
+      <p className="rounded-2xl bg-slate-50 px-4 py-2.5 text-sm text-slate-600">
+        {trade ? "Kas yang pindah karena beli/jual investasi" : "Koreksi saldo"} di <b>{tx.account_name}</b>. Bukan pemasukan atau pengeluaran, jadi tidak masuk
+        anggaran, laporan belanja, atau kategori.
+      </p>
+      <div className="grid grid-cols-2 gap-1 rounded-full bg-slate-100 p-1 text-sm font-bold">
+        {(
+          [
+            [1, "Saldo bertambah"],
+            [-1, "Saldo berkurang"],
+          ] as const
+        ).map(([v, l]) => (
+          <button key={v} type="button" aria-pressed={sign === v} onClick={() => setSign(v)} className={cx("rounded-full py-2", sign === v ? "bg-slate-800 text-white" : "text-slate-500")}>
+            {l}
+          </button>
+        ))}
+      </div>
+      <Field label="Berapa?" hint={ok ? `${sign > 0 ? "+" : "−"}${formatMoney(amount, currency)}` : undefined}>
+        <Input inputMode="decimal" value={text} onChange={(e) => setText(e.target.value)} className="py-2.5 text-center !text-3xl font-extrabold tracking-tight" />
+      </Field>
+      <DatePicker label="Tanggal" value={date} onChange={setDate} />
+      <Field label="Catatan">
+        <Input value={note} maxLength={140} onChange={(e) => setNote(e.target.value)} />
+      </Field>
+      <div className={`${STICKY_ACTIONS} justify-between`}>
+        <Button variant="danger" onClick={async () => (await deleteWithUndo(() => m.deleteTransaction(me.id, tx.id), "Koreksi dihapus", me)) && onClose()}>
+          Hapus
+        </Button>
+        <span className="flex gap-2">
+          <Button variant="secondary" onClick={onClose}>
+            Batal
+          </Button>
+          <Button type="submit" disabled={!ok}>
+            Simpan
+          </Button>
+        </span>
+      </div>
+    </form>
+  );
+}
+
+function EntryBody({ onClose, editing, initialDate, bulk }: { onClose: () => void; editing: Transaction | null; initialDate?: string; bulk?: boolean }) {
   const [mode, setMode] = useState<Kind | "transfer" | "bulk">(editing?.transfer_id ? "transfer" : (editing?.kind ?? (bulk ? "bulk" : "expense")));
   if (mode === "bulk") {
     return (
