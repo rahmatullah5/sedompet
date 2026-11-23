@@ -1,10 +1,10 @@
 import { useState, useSyncExternalStore } from "react";
 import { budgetCovers, q } from "../db/repo";
 import { projectedRecurring, variableTotals } from "../db/money";
-import { currentMonth, formatCompact, formatIDR, formatMonth, formatPeriodRange, periodDay, periodRange, shiftMonth, toISODate, todayISO } from "../lib/format";
+import { currentMonth, formatCompact, formatDay, formatIDR, formatMonth, formatPeriodRange, periodDay, periodRange, shiftMonth, toISODate, todayISO } from "../lib/format";
 import { useCurrent, useDbVersion } from "../lib/hooks";
 import { Card, cx } from "../components/ui";
-import { cashFlow, netWorth } from "../db/networth";
+import { cashFlow, netWorth, type MoveItem } from "../db/networth";
 import { netWorthTrend } from "./Neraca";
 import { Icon } from "../components/Icon";
 import { LineIcon } from "../components/LineIcon";
@@ -817,10 +817,11 @@ function CashFlowCard() {
   );
   const others = [
     cf.newAccounts !== 0 && { label: "Saldo awal akun baru", hint: "uang lama yang baru dicatat", v: cf.newAccounts },
-    cf.adjustments !== 0 && { label: "Koreksi saldo", hint: "menyamakan saldo dengan kenyataan", v: cf.adjustments },
+    cf.adjustments !== 0 && { label: "Koreksi saldo", hint: "menyamakan saldo dengan kenyataan", v: cf.adjustments, items: cf.adjustmentItems },
+    cf.investments !== 0 && { label: "Beli/jual investasi", hint: "kas pindah ke saham, kripto, emas (nilainya tidak dihitung di sini)", v: cf.investments, items: cf.investmentItems },
     cf.loans !== 0 && { label: "Pinjaman (bersih)", hint: "dipinjamkan, dipinjam, dan cicilannya", v: cf.loans },
     cf.transfers !== 0 && { label: "Transfer ke akun yang tidak terlihat", hint: "mis. ke akun pribadi anggota lain", v: cf.transfers },
-  ].filter(Boolean) as { label: string; hint: string; v: number }[];
+  ].filter(Boolean) as { label: string; hint: string; v: number; items?: MoveItem[] }[];
 
   return (
     <Card title="Arus kas">
@@ -861,9 +862,41 @@ function CashFlowCard() {
         <>
           <p className="mt-4 text-xs font-bold uppercase tracking-wide text-slate-400">Bukan pemasukan / pengeluaran</p>
           <ul className="divide-y divide-slate-100 text-sm">
-            {others.map((o) => (
-              <Line key={o.label} label={o.label} hint={o.hint} value={sign(o.v)} />
-            ))}
+            {others.map((o) =>
+              o.items?.length ? (
+                <li key={o.label}>
+                  <details className="group">
+                    <summary className="flex cursor-pointer list-none items-baseline justify-between gap-3 py-2">
+                      <span className="text-slate-600">
+                        {o.label}
+                        <span className="block text-xs font-normal text-slate-400">
+                          {o.hint} · <span className="text-brand-700 group-open:hidden">lihat {o.items.length} catatan</span>
+                          <span className="hidden text-brand-700 group-open:inline">tutup</span>
+                        </span>
+                      </span>
+                      <span className="num shrink-0 font-semibold text-slate-700">{sign(o.v)}</span>
+                    </summary>
+                    <ul className="mb-2 space-y-1 rounded-xl bg-slate-50 px-3 py-2 text-xs">
+                      {o.items.slice(0, 30).map((it) => (
+                        <li key={it.id} className="flex items-baseline justify-between gap-3">
+                          <span className="min-w-0">
+                            <span className="block truncate font-semibold text-slate-700">{it.account}</span>
+                            <span className="block truncate text-slate-400">
+                              {formatDay(it.date)}
+                              {it.note && it.note !== "Koreksi saldo" ? ` · ${it.note}` : ""}
+                            </span>
+                          </span>
+                          <span className={cx("num shrink-0 font-semibold", it.amount < 0 ? "text-red-600" : "text-mint-600")}>{sign(it.amount)}</span>
+                        </li>
+                      ))}
+                      {o.items.length > 30 && <li className="text-slate-400">+{o.items.length - 30} lainnya</li>}
+                    </ul>
+                  </details>
+                </li>
+              ) : (
+                <Line key={o.label} label={o.label} hint={o.hint} value={sign(o.v)} />
+              ),
+            )}
           </ul>
         </>
       )}

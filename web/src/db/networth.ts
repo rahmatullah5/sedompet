@@ -94,8 +94,13 @@ export interface CashFlow {
   /** Real income / spending (not transfers, corrections or loans). */
   income: number;
   expense: number;
-  /** Money moved without being income or spending. Signed: + adds to balances. */
+  /** Balance corrections (Koreksi saldo). Signed: + adds to balances. */
   adjustments: number;
+  /** Cash moved by buying (−) and selling (+) stocks, crypto or gold. */
+  investments: number;
+  /** The entries behind `adjustments` / `investments`, largest first. */
+  adjustmentItems: MoveItem[];
+  investmentItems: MoveItem[];
   loans: number;
   /** Transfers net (0 unless one side is an account you can't see). */
   transfers: number;
@@ -106,6 +111,18 @@ export interface CashFlow {
   /** startBalance + every movement - endBalance; 0 when everything adds up. */
   gap: number;
 }
+
+export interface MoveItem {
+  id: string;
+  date: string;
+  account: string;
+  note: string | null;
+  /** Rupiah, signed: + adds to balances. */
+  amount: number;
+}
+
+/** Buy/sell entries from tradeStock: "Beli BBCA 2 lot @ Rp…" (stored as adjustments). */
+const TRADE_NOTE = /^(Beli|Jual) \S+ .+ @ /;
 
 /**
  * Arus kas between two dates (inclusive), in rupiah, over every account you
@@ -141,12 +158,24 @@ export function cashFlow(dompetId: string, me: string, from: string, to: string)
     p,
   )[0] ?? { start: 0, fresh: 0, finish: 0 };
 
-  const adjustments = sum("adjustment");
+  // Adjustments are both Koreksi saldo and the cash leg of investment trades.
+  const items = all<MoveItem>(
+    `SELECT t.id, t.date, a.name AS account, t.note,
+            CASE t.kind WHEN 'income' THEN ${baseSql("t.amount")} ELSE -${baseSql("t.amount")} END AS amount
+     FROM transactions t JOIN accounts a ON a.id = t.account_id
+     WHERE t.dompet_id = $d AND ${VISIBLE} AND t.flag = 'adjustment' AND t.date BETWEEN $from AND $to
+     ORDER BY ABS(amount) DESC, t.date DESC`,
+    p,
+  );
+  const investmentItems = items.filter((i) => TRADE_NOTE.test(i.note ?? ""));
+  const adjustmentItems = items.filter((i) => !TRADE_NOTE.test(i.note ?? ""));
+  const investments = investmentItems.reduce((s, i) => s + i.amount, 0);
+  const adjustments = sum("adjustment") - investments;
   const loans = sum("loan");
   const transfers = sum("transfer");
-  const moved = income - expense + adjustments + loans + transfers + bal.fresh;
+  const moved = income - expense + adjustments + investments + loans + transfers + bal.fresh;
   return {
-    income, expense, adjustments, loans, transfers,
+    income, expense, adjustments, investments, adjustmentItems, investmentItems, loans, transfers,
     newAccounts: bal.fresh,
     startBalance: bal.start,
     endBalance: bal.finish,
