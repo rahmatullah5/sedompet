@@ -5,6 +5,7 @@ import { currentMonth, formatCompact, formatIDR, formatMonth, periodRange, shift
 import { useCurrent, useDbVersion } from "../lib/hooks";
 import { Avatar, Card, cx, Empty } from "../components/ui";
 import { Icon } from "../components/Icon";
+import { LineIcon } from "../components/LineIcon";
 
 /** Net worth at the end of each of the last `n` budget months (the current one = today). */
 export function netWorthTrend(dompetId: string, me: string, n = 6) {
@@ -38,7 +39,7 @@ export function Neraca() {
         <a href="#/menu" className="text-sm font-semibold text-brand-700">
           ← Menu
         </a>
-        <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-slate-800">Neraca ⚖️</h1>
+        <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-slate-800">Neraca</h1>
         <p className="text-sm text-slate-500">Semua yang dimiliki keluarga dikurangi semua utangnya.</p>
       </div>
 
@@ -48,7 +49,7 @@ export function Neraca() {
         <p className="mt-1 text-sm text-slate-500">sisa kekayaan kalau semua utang dilunasi hari ini</p>
         {prev && delta !== 0 && (
           <p className={cx("mt-2 text-sm font-semibold", delta > 0 ? "text-mint-600" : "text-red-600")}>
-            {delta > 0 ? "▲" : "▼"} {formatCompact(Math.abs(delta))} dibanding akhir {formatMonth(prev.month).split(" ")[0]}
+            {delta > 0 ? "+" : "−"}{formatCompact(Math.abs(delta))} dibanding akhir {formatMonth(prev.month).split(" ")[0]}
           </p>
         )}
         <div className="mt-4 grid grid-cols-2 gap-3">
@@ -61,7 +62,7 @@ export function Neraca() {
             <p className="num font-extrabold text-slate-800">{formatIDR(nw.totalLiabilities)}</p>
           </div>
         </div>
-        {hasPrivate && <p className="mt-3 text-xs text-slate-400">Termasuk akun pribadimu 🔒, yang hanya terlihat olehmu.</p>}
+        {hasPrivate && <p className="mt-3 text-xs text-slate-400">Termasuk akun pribadimu, yang hanya terlihat olehmu.</p>}
       </Card>
 
       <TrendCard trend={trend} />
@@ -73,7 +74,7 @@ export function Neraca() {
               const m = owner ? byId.get(owner) : null;
               return (
                 <li key={owner ?? "shared"} className="flex items-center gap-3 py-2.5">
-                  {m ? <Avatar emoji={m.emoji} colour={m.colour} size={32} /> : <span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-50 text-lg">👨‍👩‍👧</span>}
+                  {m ? <Avatar emoji={m.emoji} colour={m.colour} size={32} /> : <span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-50 text-brand-700"><LineIcon name="users" size={18} /></span>}
                   <span className="flex-1 font-semibold text-slate-700">{m ? m.name : "Bersama"}</span>
                   <span className={cx("num font-bold", amount < 0 ? "text-red-600" : "text-slate-800")}>{formatIDR(amount)}</span>
                 </li>
@@ -84,12 +85,12 @@ export function Neraca() {
       )}
 
       <Card title={`Harta · ${formatCompact(nw.totalAssets)}`}>
-        {nw.assets.length === 0 ? <Empty icon="👛" title="Belum ada akun" /> : <Lines lines={nw.assets} byId={byId} />}
+        {nw.assets.length === 0 ? <Empty icon="" title="Belum ada akun" /> : <Lines lines={nw.assets} byId={byId} />}
       </Card>
 
       <Card title={`Utang · ${formatCompact(nw.totalLiabilities)}`}>
         {nw.liabilities.length === 0 ? (
-          <p className="py-2 text-center text-sm font-semibold text-mint-600">🎉 Tidak ada utang tercatat.</p>
+          <p className="py-2 text-center text-sm font-semibold text-mint-600">Tidak ada utang tercatat.</p>
         ) : (
           <Lines lines={nw.liabilities} byId={byId} />
         )}
@@ -117,7 +118,7 @@ function Lines({ lines, byId }: { lines: NetWorthLine[]; byId: Map<string, { nam
             </span>
             <span className="min-w-0 flex-1">
               <span className="block truncate font-semibold text-slate-800">
-                {l.private && "🔒 "}
+                {l.private && <LineIcon name="lock" size={13} className="mr-1 inline -mt-0.5 text-slate-400" />}
                 {isLoan ? (l.type === "piutang" ? `Dipinjam ${l.name}` : `Pinjam dari ${l.name}`) : l.name}
               </span>
               <span className="block text-xs text-slate-500">

@@ -66,3 +66,17 @@ select count(*) = 0 as ok_children_gone from accounts where parent_id = :'p_main
 delete from accounts where id = :'rdn';
 select count(*) = 0 as ok_holdings_gone from holdings where account_id = :'rdn';
 reset role;
+
+\echo == assets: crypto, gold, US stocks (20261129)
+set role authenticated;
+set request.jwt.claim.sub = :'AYAH';
+insert into accounts (dompet_id, name, type) values (:'did', 'Indodax', 'investment') returning id as inv \gset
+insert into holdings (dompet_id, account_id, market, symbol, shares, avg_price) values (:'did', :'inv', 'CRYPTO', 'BTC', 0.0125, 1050000000);
+insert into holdings (dompet_id, account_id, market, symbol, shares, avg_price) values (:'did', :'inv', 'GOLD', 'EMAS', 2.5, 1800000);
+insert into holdings (dompet_id, account_id, market, symbol, shares, avg_price) values (:'did', :'inv', 'US', 'BRK-B', 1.5, 480.25);
+insert into holdings (dompet_id, account_id, market, symbol, shares, avg_price) values (:'did', :'inv', 'IDX', 'BTC', 100, 500);
+select count(*) = 4 as ok_four_asset_kinds from holdings where account_id = :'inv';
+select shares = 0.0125 as ok_fractional from holdings where account_id = :'inv' and market = 'CRYPTO';
+\echo EXPECT ERROR: unknown market
+insert into holdings (dompet_id, account_id, market, symbol, shares) values (:'did', :'inv', 'FOREX', 'EUR', 1);
+reset role;

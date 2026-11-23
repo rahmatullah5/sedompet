@@ -70,12 +70,13 @@ export function baseSql(amount: string, alias = "a") {
 }
 
 /**
- * SQL: market value in rupiah of the stocks held in account `alias` (live
- * price, else the average buy price). `upto` (a SQL date expression) leaves
- * out holdings added after that day.
+ * SQL: market value in rupiah of the investments held in account `alias`
+ * (live price, else the average buy price; US prices are in dollars).
+ * `upto` (a SQL date expression) leaves out holdings added after that day.
  */
 export function holdingsSql(alias = "a", upto?: string) {
-  return `COALESCE((SELECT ROUND(SUM(h.shares * COALESCE((SELECT mp.price FROM market_prices mp WHERE mp.symbol = 'IDX:' || h.symbol), h.avg_price)))
+  return `COALESCE((SELECT ROUND(SUM(h.shares * COALESCE((SELECT mp.price FROM market_prices mp WHERE mp.symbol = h.market || ':' || h.symbol), h.avg_price)
+      * (CASE WHEN h.market = 'US' THEN COALESCE((SELECT mp.price FROM market_prices mp WHERE mp.symbol = 'FX:USD'), 1) ELSE 1 END)))
     FROM holdings h WHERE h.account_id = ${alias}.id${upto ? ` AND date(h.created_at) <= ${upto}` : ""}), 0)`;
 }
 

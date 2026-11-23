@@ -65,7 +65,7 @@ export function SplitEditor({
     <div className="rounded-2xl bg-slate-50 p-3">
       <label className="flex cursor-pointer items-center justify-between gap-3">
         <span>
-          <span className="block text-sm font-bold text-slate-800">👥 Patungan / dibagi</span>
+          <span className="block text-sm font-bold text-slate-800">Patungan / dibagi</span>
           <span className="block text-xs text-slate-500">Dibayar {payer?.name ?? "satu orang"}, ditanggung bersama. Sedompet mencatat siapa utang ke siapa.</span>
         </span>
         <input

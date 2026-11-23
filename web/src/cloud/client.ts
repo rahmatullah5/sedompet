@@ -6,8 +6,50 @@ const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
 /** True when this build has a Supabase project configured. */
 export const cloudConfigured = Boolean(url && key);
 
+// "Ingat saya": with it on (default) the login is kept in localStorage and
+// survives closing the browser; off, it lives in sessionStorage and ends when
+// the browser/app is closed. The PIN itself is never stored.
+const REMEMBER_KEY = "sedompet.rememberMe";
+const LAST_PHONE_KEY = "sedompet.lastPhone";
+const safe = <T,>(fn: () => T, fallback: T): T => {
+  try {
+    return fn();
+  } catch {
+    return fallback;
+  }
+};
+export const getRememberMe = () => safe(() => localStorage.getItem(REMEMBER_KEY) !== "0", true);
+export function setRememberMe(on: boolean, phone?: string) {
+  safe(() => {
+    localStorage.setItem(REMEMBER_KEY, on ? "1" : "0");
+    if (on && phone) localStorage.setItem(LAST_PHONE_KEY, phone);
+    if (!on) localStorage.removeItem(LAST_PHONE_KEY);
+  }, undefined);
+}
+/** Phone number of the last remembered login, to prefill the sign-in form. */
+export const getRememberedPhone = () => safe(() => localStorage.getItem(LAST_PHONE_KEY) ?? "", "");
+
+const authStorage = {
+  getItem: (k: string) => safe(() => localStorage.getItem(k) ?? sessionStorage.getItem(k), null),
+  setItem: (k: string, v: string) =>
+    safe(() => {
+      if (getRememberMe()) {
+        localStorage.setItem(k, v);
+        sessionStorage.removeItem(k);
+      } else {
+        sessionStorage.setItem(k, v);
+        localStorage.removeItem(k);
+      }
+    }, undefined),
+  removeItem: (k: string) =>
+    safe(() => {
+      localStorage.removeItem(k);
+      sessionStorage.removeItem(k);
+    }, undefined),
+};
+
 export const supabase: SupabaseClient | null = cloudConfigured
-  ? createClient(url!, key!, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } })
+  ? createClient(url!, key!, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storage: authStorage } })
   : null;
 
 export function requireSupabase(): SupabaseClient {

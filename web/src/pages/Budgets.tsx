@@ -41,10 +41,10 @@ function daysLeft(month: string, period: BudgetPeriod) {
   return Math.round((Date.parse(periodRange(month).to) - Date.parse(todayISO())) / 86_400_000) + 1;
 }
 
-export const PERIODS: { value: BudgetPeriod; label: string; icon: string; per: string }[] = [
-  { value: "daily", label: "Harian", icon: "☀️", per: "hari" },
-  { value: "weekly", label: "Mingguan", icon: "🗓️", per: "minggu" },
-  { value: "monthly", label: "Bulanan", icon: "📅", per: "bulan" },
+export const PERIODS: { value: BudgetPeriod; label: string; per: string }[] = [
+  { value: "daily", label: "Harian", per: "hari" },
+  { value: "weekly", label: "Mingguan", per: "minggu" },
+  { value: "monthly", label: "Bulanan", per: "bulan" },
 ];
 export const perLabel = (p: BudgetPeriod) => PERIODS.find((x) => x.value === p)?.per ?? "bulan";
 
@@ -60,7 +60,7 @@ export function Budgets() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-extrabold tracking-tight text-slate-800">Anggaran 🐷</h1>
+          <h1 className="text-2xl font-extrabold tracking-tight text-slate-800">Anggaran</h1>
           <p className="text-sm text-slate-500">Rencana belanja harian, mingguan, atau bulanan keluarga dan uang saku anak.</p>
         </div>
         <MonthNav month={month} setMonth={setMonth} />
@@ -71,13 +71,13 @@ export function Budgets() {
         </Button>
       )}
       <p className="px-1 text-xs text-slate-400">
-        Dihitung dari akun bersama. Tabungan pribadi 🔒 tidak ikut dihitung.
+        Dihitung dari akun bersama. Tabungan pribadi tidak ikut dihitung.
         {!manage && " Hanya pemilik/admin yang bisa mengubah anggaran."}
       </p>
 
       {budgets.length === 0 ? (
         <Card>
-          <Empty icon="🎯" title="Belum ada anggaran">
+          <Empty icon="" title="Belum ada anggaran">
             {manage ? "Buat anggaran, misalnya jajan harian, belanja dapur mingguan, atau uang saku bulanan anak." : null}
           </Empty>
         </Card>
@@ -98,7 +98,7 @@ export function Budgets() {
                       </p>
                       <div className="mt-1 flex flex-wrap gap-1">
                         <Badge tone="brand">
-                          {period.icon} {formatIDR(b.amount)}/{period.per}
+                          {formatIDR(b.amount)}/{period.per}
                         </Badge>
                         <Badge>
                           {b.category_name ?? (parseIds(b.exclude_category_ids).length
@@ -208,7 +208,6 @@ function BudgetFormBody({ budget, onClose }: { budget: Budget | null; onClose: (
               onClick={() => setPeriod(p.value)}
               className={`flex flex-col items-center gap-0.5 rounded-2xl border py-2 text-sm transition ${period === p.value ? "border-brand-600 bg-brand-50 font-semibold text-brand-800 ring-1 ring-brand-600" : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}
             >
-              <span className="text-xl">{p.icon}</span>
               {p.label}
             </button>
           ))}
@@ -225,7 +224,7 @@ function BudgetFormBody({ budget, onClose }: { budget: Budget | null; onClose: (
             onClick={() => setCategoryIds([])}
             className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-semibold transition ${categoryIds.length === 0 ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
           >
-            💰 Semua pengeluaran
+            Semua pengeluaran
           </button>
           <MultiCategoryPicker categories={categories} value={categoryIds} onChange={setCategoryIds} />
         </div>
@@ -236,7 +235,8 @@ function BudgetFormBody({ budget, onClose }: { budget: Budget | null; onClose: (
             <span>
               Kecuali kategori… {excludes.length > 0 && <span className="text-brand-700">({excludes.length})</span>}
             </span>
-            <span className="text-slate-400 transition group-open:rotate-180">▾</span>
+            <span className="text-slate-400 group-open:hidden">+</span>
+            <span className="hidden text-slate-400 group-open:inline">−</span>
           </summary>
           <div className="pt-2">
           <div className="flex flex-wrap gap-1.5">
@@ -268,7 +268,7 @@ function BudgetFormBody({ budget, onClose }: { budget: Budget | null; onClose: (
             onClick={() => setMemberId("")}
             className={`rounded-full border px-3 py-1 text-sm ${memberId === "" ? "border-brand-600 bg-brand-50 font-medium ring-1 ring-brand-600 dark:border-brand-500 dark:bg-brand-700/40 dark:ring-brand-500" : "border-slate-200 dark:border-slate-700"}`}
           >
-            👨‍👩‍👧 Seluruh keluarga
+            Seluruh keluarga
           </button>
           {members.map((mem) => (
             <button

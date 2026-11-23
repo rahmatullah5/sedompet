@@ -26,7 +26,7 @@ export function Welcome() {
         </p>
       </div>
 
-      <Card className="pop-in bg-gradient-to-br from-brand-500 to-brand-700 text-white">
+      <Card className="pop-in bg-brand-600 text-white">
         <p className="text-lg font-bold">Coba dulu dengan Keluarga Santoso</p>
         <p className="mt-1 text-sm text-brand-100">4 anggota, 2 bulan catatan belanja, anggaran dan uang saku anak. Langsung bisa dicoba.</p>
         <Button
@@ -49,10 +49,10 @@ export function Welcome() {
       <NewDompetForm />
       {cloudConfigured && (
         <button className="text-center text-sm font-semibold text-brand-700 underline-offset-4 hover:underline" onClick={() => setMode("cloud")}>
-          ☁️ Masuk dengan nomor HP supaya sinkron dengan keluarga →
+          Masuk dengan nomor HP supaya sinkron dengan keluarga →
         </button>
       )}
-      <p className="text-center text-xs text-slate-400">🔒 Mode demo: data tersimpan di perangkat ini saja.</p>
+      <p className="text-center text-xs text-slate-400">Mode demo: data tersimpan di perangkat ini saja.</p>
     </div>
   );
 }
@@ -69,7 +69,7 @@ export function NewDompetForm({ onDone, bare }: { onDone?: () => void; bare?: bo
           const { dompetId, ownerId } = await m.createDompet(name, yourName, "🙂");
           setSession({ dompetId, memberId: ownerId }, { picked: true });
           onDone?.();
-        }, "Dompet dibuat 🎉");
+        }, "Dompet dibuat");
       }}
     >
       <Field label="Nama Dompet">

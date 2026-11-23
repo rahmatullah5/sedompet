@@ -25,7 +25,7 @@ export function Categories() {
         <a href="#/menu" className="text-sm font-semibold text-brand-700">
           ← Menu
         </a>
-        <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-slate-800">Kategori 🏷️</h1>
+        <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-slate-800">Kategori</h1>
         <p className="text-sm text-slate-500">Kelompokkan belanja keluarga. Tiap kategori bisa punya subkategori, mis. Makan → Sarapan, Jajan anak.</p>
       </div>
 
@@ -196,12 +196,12 @@ function MergeSection({ category: c, onDone }: { category: Category; onDone: () 
   const target = targets.find((x) => x.id === targetId);
   const used = q.usage(c.dompet_id);
   const txCount = [c, ...subs].reduce((t, x) => t + (used.get(x.id) ?? 0), 0);
-  const label = (x: Category) => `${x.icon.startsWith("data:") ? "" : `${x.icon} `}${parentName(x) ? `${parentName(x)} → ` : ""}${x.name}`;
+  const label = (x: Category) => `${parentName(x) ? `${parentName(x)} → ` : ""}${x.name}`;
 
   if (!open)
     return (
       <button type="button" onClick={() => setOpen(true)} className="text-sm font-semibold text-brand-700">
-        🔀 Gabungkan ke kategori lain
+        Gabungkan ke kategori lain
       </button>
     );
   return (

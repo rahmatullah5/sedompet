@@ -11,6 +11,7 @@ import { BudgetIcon } from "./Budgets";
 import { GoalRow } from "./Goals";
 import { StartChecklist } from "../components/StartChecklist";
 import { RecapCard } from "../components/RecapCard";
+import { LineIcon } from "../components/LineIcon";
 
 function greeting() {
   const h = new Date().getHours();
@@ -27,7 +28,7 @@ function daysLeftThisMonth() {
 
 /**
  * How healthy this month's spending is against the budget: a colour sliding
- * from green (barely used) to red (at or over the limit), plus emoji and
+ * from green (barely used) to red (at or over the limit), plus icon and
  * message. level 0 aman, 1 waspada, 2 hampir habis, 3 lewat.
  */
 function budgetHealth(spent: number, amount: number, days: number, hidden: boolean) {
@@ -38,10 +39,10 @@ function budgetHealth(spent: number, amount: number, days: number, hidden: boole
   const bar = `hsl(${hue} 72% 46%)`;
   const m = (v: number) => (hidden ? "••••" : formatIDR(v));
   if (pct >= 1)
-    return { level: 3, pct, colour, bar, emoji: "😱", text: left < 0 ? `Sudah lewat ${m(-left)} dari rencana. Yuk rem dulu sampai akhir bulan.` : "Anggaran bulan ini sudah habis." };
-  if (pct >= 0.8) return { level: 2, pct, colour, bar, emoji: "😟", text: `Tinggal ${m(left)} untuk ${days} hari lagi (±${m(Math.floor(left / days))}/hari).` };
-  if (pct >= 0.5) return { level: 1, pct, colour, bar, emoji: "🙂", text: `Sudah lewat separuh. Sisa ${m(left)}, kira-kira ${m(Math.floor(left / days))} per hari.` };
-  return { level: 0, pct, colour, bar, emoji: "😊", text: `Masih aman! Sisa ${m(left)}, kira-kira ${m(Math.floor(left / days))} per hari.` };
+    return { level: 3, pct, colour, bar, icon: "alert" as const, text: left < 0 ? `Sudah lewat ${m(-left)} dari rencana. Yuk rem dulu sampai akhir bulan.` : "Anggaran bulan ini sudah habis." };
+  if (pct >= 0.8) return { level: 2, pct, colour, bar, icon: "alert" as const, text: `Tinggal ${m(left)} untuk ${days} hari lagi (±${m(Math.floor(left / days))}/hari).` };
+  if (pct >= 0.5) return { level: 1, pct, colour, bar, icon: "info" as const, text: `Sudah lewat separuh. Sisa ${m(left)}, kira-kira ${m(Math.floor(left / days))} per hari.` };
+  return { level: 0, pct, colour, bar, icon: "check" as const, text: `Masih aman! Sisa ${m(left)}, kira-kira ${m(Math.floor(left / days))} per hari.` };
 }
 
 function EyeIcon({ off }: { off: boolean }) {
@@ -102,28 +103,26 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction | null) => 
     <div className="space-y-5">
       <div className="pop-in">
         <h1 className="text-2xl font-extrabold tracking-tight text-slate-800">
-          {greeting()}, {me.name} 👋
+          {greeting()}, {me.name}
         </h1>
         <p className="text-slate-500">Begini kabar dompet keluarga hari ini.</p>
       </div>
 
       {/* The shared wallet */}
       <div className="pop-in relative">
-      <button onClick={() => goTo("akun")} className="relative block w-full overflow-hidden rounded-[2rem] bg-gradient-to-br from-brand-500 via-brand-600 to-brand-700 p-6 text-left text-white shadow-[0_18px_40px_-18px_rgba(212,80,46,0.7)]">
-        <span className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-white/10" />
-        <span className="pointer-events-none absolute -bottom-16 right-10 h-40 w-40 rounded-full bg-sun-400/25" />
+      <button onClick={() => goTo("akun")} className="relative block w-full overflow-hidden rounded-[2rem] bg-brand-600 p-6 text-left text-white">
         <span className="relative flex items-center justify-between">
           <span className="text-sm font-semibold text-brand-100">Uang keluarga sekarang</span>
           <span className="flex -space-x-2">
             {members.slice(0, 5).map((m) => (
-              <span key={m.id} className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-sm ring-2 ring-brand-600">
-                {m.emoji}
+              <span key={m.id} title={m.name} className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-xs font-bold ring-2 ring-brand-600" style={{ color: m.colour }}>
+                {m.name.trim().charAt(0).toUpperCase()}
               </span>
             ))}
           </span>
         </span>
         <span className="num relative mt-2 block pr-12 text-4xl font-extrabold tracking-tight">{money(formatIDR(sharedTotal))}</span>
-        {privateTotal > 0 && <span className="relative mt-1 block text-xs text-brand-100">+ {money(formatIDR(privateTotal))} di tabungan pribadimu 🔒</span>}
+        {privateTotal > 0 && <span className="relative mt-1 block text-xs text-brand-100">+ {money(formatIDR(privateTotal))} di tabungan pribadimu</span>}
         <span className="relative mt-5 grid grid-cols-2 gap-3">
           <span className="rounded-2xl bg-white/15 px-4 py-3">
             <span className="block text-xs text-brand-100">Masuk {formatPeriodRange(month) ? "periode ini" : "bulan ini"}</span>
@@ -185,8 +184,8 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction | null) => 
       {overall && health && (
         <Card className={cx("pop-in", health.level >= 2 && "ring-2", health.level === 2 && "ring-amber-200", health.level === 3 && "ring-red-200")}>
           <div className="flex gap-3">
-            <span className="text-4xl leading-none" aria-hidden>
-              {health.emoji}
+            <span className="leading-none" style={{ color: health.colour }} aria-hidden>
+              <LineIcon name={health.icon} size={36} />
             </span>
             <div className="min-w-0 flex-1">
               <p className="font-bold text-slate-800">
@@ -208,7 +207,7 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction | null) => 
           </div>
           {health.level >= 2 && (
             <div role="alert" className={cx("mt-3 rounded-2xl px-4 py-3 text-sm", health.level === 3 ? "bg-red-50 text-red-800" : "bg-amber-50 text-amber-800")}>
-              <p className="font-bold">{health.level === 3 ? "⚠️ Anggaran sudah terlewati" : "⚠️ Anggaran hampir habis"}</p>
+              <p className="font-bold">{health.level === 3 ? "Anggaran sudah terlewati" : "Anggaran hampir habis"}</p>
               <ul className="mt-1 list-disc space-y-0.5 pl-5">
                 <li>Tunda belanja yang tidak mendesak sampai bulan depan.</li>
                 {topCats[0] && (
@@ -233,7 +232,7 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction | null) => 
       <RecapCard
         budgetLine={
           overall
-            ? `🐷 Anggaran ${formatMonth(month).split(" ")[0]}: terpakai ${Math.round((overall.spent / overall.amount) * 100)}%, ${
+            ? `Anggaran ${formatMonth(month).split(" ")[0]}: terpakai ${Math.round((overall.spent / overall.amount) * 100)}%, ${
                 overall.amount - overall.spent >= 0
                   ? `sisa ${formatCompact(overall.amount - overall.spent)} (±${formatCompact(Math.floor((overall.amount - overall.spent) / days))}/hari)`
                   : `lewat ${formatCompact(overall.spent - overall.amount)}`
@@ -245,7 +244,7 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction | null) => 
       {goals.length > 0 && (
         <Card
           className="pop-in"
-          title="Tujuan keluarga 🎯"
+          title="Tujuan keluarga"
           action={
             <button onClick={() => goTo("tujuan")} className="text-sm font-semibold text-brand-700">
               Lihat semua
@@ -305,9 +304,9 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction | null) => 
       </section>
 
       {/* Family chat-style activity */}
-      <Card title="Kabar keluarga 💬" className="pop-in">
+      <Card title="Kabar keluarga" className="pop-in">
         {activity.length === 0 ? (
-          <Empty icon="🕊️" title="Belum ada kabar" />
+          <Empty icon="" title="Belum ada kabar" />
         ) : (
           <ul className="space-y-3">
             {activity.map((a) => {
@@ -332,7 +331,7 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction | null) => 
       {jars.length > 0 && (
         <section className="pop-in">
           <div className="mb-2 flex items-end justify-between px-1">
-            <h2 className="text-lg font-bold text-slate-800">Anggaran keluarga 🐷</h2>
+            <h2 className="text-lg font-bold text-slate-800">Anggaran keluarga</h2>
             <button className="text-sm font-semibold text-brand-700" onClick={() => goTo("anggaran")}>
               Semua →
             </button>
@@ -368,7 +367,7 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction | null) => 
         }
       >
         {recent.length === 0 ? (
-          <Empty icon="✍️" title="Belum ada catatan">
+          <Empty icon="" title="Belum ada catatan">
             Tekan tombol <b>+</b> di bawah untuk mencatat.
           </Empty>
         ) : (
@@ -421,7 +420,7 @@ function BalanceExplainer(p: {
             ))}
             <Row label="Total" value={formatIDR(p.sharedTotal)} strong />
           </ul>
-          {p.privateTotal > 0 && <p className="mt-1 text-xs text-slate-500">Tabungan pribadimu ({formatIDR(p.privateTotal)}) tidak dihitung di sini dan hanya kamu yang melihatnya 🔒</p>}
+          {p.privateTotal > 0 && <p className="mt-1 text-xs text-slate-500">Tabungan pribadimu ({formatIDR(p.privateTotal)}) tidak dihitung di sini dan hanya kamu yang melihatnya.</p>}
         </section>
 
         <section>

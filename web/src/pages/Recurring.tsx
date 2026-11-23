@@ -10,6 +10,7 @@ import { formatMoney, isBase, moneyInputText, parseMoney } from "../lib/currency
 import { useCurrent, useDbVersion, useHideBalance } from "../lib/hooks";
 import { attempt, Badge, Button, Card, cx, Empty, Field, Input, Modal, Select, STICKY_ACTIONS } from "../components/ui";
 import { Icon, IconPicker } from "../components/Icon";
+import { LineIcon, type LineIconName } from "../components/LineIcon";
 import { SuggestionList, type Suggestion } from "../components/Suggestions";
 import { BillCalendar } from "../components/BillCalendar";
 
@@ -124,7 +125,7 @@ function OutlookCard({
   const net = outlook.income - outlook.expense;
   const max = Math.max(1, ...outlook.months.flatMap((m) => [m.income, m.expense]));
   return (
-    <Card title="Proyeksi dari yang rutin 📅">
+    <Card title="Proyeksi dari yang rutin">
       <div className="grid grid-cols-3 gap-1 rounded-full bg-slate-100 p-1" role="radiogroup" aria-label="Periode proyeksi">
         {(Object.keys(WINDOWS) as WindowKey[]).map((k) => (
           <button
@@ -170,14 +171,14 @@ function OutlookCard({
                 {m.income === 0 && m.expense === 0
                   ? "—"
                   : `${m.income - m.expense > 0 ? "+" : m.income - m.expense < 0 ? "−" : ""}${formatCompact(Math.abs(m.income - m.expense))}`}
-                {m.due.some((d) => d.kind === "expense" && d.amount >= 5_000_000) && " ⚠️"}
+                {m.due.some((d) => d.kind === "expense" && d.amount >= 5_000_000) && <LineIcon name="alert" size={12} className="ml-0.5 inline-block align-[-1px] text-amber-600" />}
               </span>
             </li>
           ))}
         </ul>
       )}
       <p className="mt-2 text-xs text-slate-400">
-        Dihitung dari tanggal jatuh tempo sebenarnya. Yang sudah berakhir tidak ikut dihitung. Hijau = pemasukan, oranye = tagihan, angka kanan = selisih (masuk − tagihan), ⚠️ = ada tagihan besar.
+        Dihitung dari tanggal jatuh tempo sebenarnya. Yang sudah berakhir tidak ikut dihitung. Hijau = pemasukan, oranye = tagihan, angka kanan = selisih (masuk − tagihan), <LineIcon name="alert" size={12} className="inline-block align-[-1px] text-amber-600" /> = ada tagihan besar.
       </p>
     </Card>
   );
@@ -192,7 +193,7 @@ export function DueList() {
   if (due.length === 0) return null;
   const canAct = can.addTransaction(me.role);
   return (
-    <Card title={`⏰ Jatuh tempo (${due.length})`} className="pop-in bg-sun-100">
+    <Card title={`Jatuh tempo (${due.length})`} className="pop-in bg-sun-100">
       <ul className="space-y-2">
         {due.map((r) => (
           <li key={r.id} className="flex items-center gap-3 rounded-2xl bg-white p-2.5">
@@ -305,7 +306,7 @@ export function Recurring() {
                     berakhir {formatShort(r.end_date)} · {remainingCount(r)} kali lagi
                   </span>
                 )}
-                {savingHint(r) && <span className="mt-0.5 block text-xs font-semibold text-amber-700">💡 {savingHint(r)}</span>}
+                {savingHint(r) && <span className="mt-0.5 block text-xs font-semibold text-amber-700">{savingHint(r)}</span>}
               </span>
               <span className="flex w-28 shrink-0 flex-col items-end gap-0.5">
                 <span className={cx("num font-bold", r.kind === "income" ? "text-mint-600" : "text-slate-800")}>{formatMoney(r.amount, r.account_currency)}</span>
@@ -336,7 +337,7 @@ export function Recurring() {
         <a href="#/menu" className="text-sm font-semibold text-brand-700">
           ← Menu
         </a>
-        <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-slate-800">Rutin 🔁</h1>
+        <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-slate-800">Rutin</h1>
         <p className="text-sm text-slate-500">Langganan, tagihan sekolah, cicilan, dan pemasukan tetap seperti gaji. Muncul di Beranda saat jatuh tempo.</p>
       </div>
 
@@ -347,8 +348,8 @@ export function Recurring() {
       <div className="grid grid-cols-2 gap-1 rounded-full bg-slate-100 p-1" role="radiogroup" aria-label="Tampilan rutin">
         {(
           [
-            ["list", "☰ Daftar"],
-            ["calendar", "📅 Kalender"],
+            ["list", "Daftar"],
+            ["calendar", "Kalender"],
           ] as const
         ).map(([v, label]) => (
           <button
@@ -365,7 +366,7 @@ export function Recurring() {
       </div>
       {billView === "calendar" ? (
         <Card
-          title="📅 Kalender rutin"
+          title="Kalender rutin"
           action={
             manage && (
               <div className="flex gap-1.5">
@@ -386,7 +387,7 @@ export function Recurring() {
           <Card
             title={
               <span className="flex items-center gap-2">
-                🧾 Tagihan & langganan <Badge>{formatCompact(outlook.expense)} · {WINDOWS[windowKey].short}</Badge>
+                Tagihan & langganan <Badge>{formatCompact(outlook.expense)} · {WINDOWS[windowKey].short}</Badge>
               </span>
             }
             action={manage && <Button variant="secondary" onClick={() => setEditing("expense")}>+ Tagihan</Button>}
@@ -396,7 +397,7 @@ export function Recurring() {
           <Card
             title={
               <span className="flex items-center gap-2">
-                💼 Pemasukan rutin <Badge tone="brand">{formatCompact(outlook.income)} · {WINDOWS[windowKey].short}</Badge>
+                Pemasukan rutin <Badge tone="brand">{formatCompact(outlook.income)} · {WINDOWS[windowKey].short}</Badge>
               </span>
             }
             action={manage && <Button variant="secondary" onClick={() => setEditing("income")}>+ Pemasukan</Button>}
@@ -406,7 +407,7 @@ export function Recurring() {
         </>
       )}
       {!manage && <p className="text-center text-xs text-slate-400">Hanya pemilik/admin yang bisa mengatur yang rutin. Semua anggota bisa menandai “Bayar”.</p>}
-      {items.length === 0 && !manage && <Empty icon="🔁" title="Belum ada yang rutin" />}
+      {items.length === 0 && !manage && <Empty icon="" title="Belum ada yang rutin" />}
 
       <Modal open={editing !== null} onClose={() => setEditing(null)} title={typeof editing === "object" && editing ? "Ubah" : editing === "income" ? "Pemasukan rutin baru" : "Tagihan rutin baru"}>
         {editing !== null && (
@@ -497,9 +498,9 @@ function RecurringForm({ item, kind, onClose }: { item: Rec | null; kind: Kind; 
                 setIcon(p.icon);
                 setFrequency(p.frequency);
               }}
-              className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-brand-100"
+              className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-brand-100"
             >
-              {p.icon} {p.name}
+              <Icon value={p.icon} size={14} /> {p.name}
             </button>
           ))}
         </div>
@@ -535,7 +536,6 @@ function RecurringForm({ item, kind, onClose }: { item: Rec | null; kind: Kind; 
           <span>
             Pengaturan lain <span className="font-normal text-slate-400">· kategori, berakhir, pembayar, ikon</span>
           </span>
-          <span className="text-slate-400 transition group-open:rotate-180">▾</span>
         </summary>
         <div className="space-y-3 pt-3">
           <CategoryPicker
@@ -552,7 +552,7 @@ function RecurringForm({ item, kind, onClose }: { item: Rec | null; kind: Kind; 
               <option value="">Siapa pun yang menandai</option>
               {members.map((mem) => (
                 <option key={mem.id} value={mem.id}>
-                  {mem.emoji} {mem.name}
+                  {mem.name}
                 </option>
               ))}
             </Select>
@@ -584,10 +584,10 @@ function RecurringForm({ item, kind, onClose }: { item: Rec | null; kind: Kind; 
   );
 }
 
-const FREQS: { value: Frequency; icon: string; label: string; unit: string }[] = [
-  { value: "weekly", icon: "🗓️", label: "Mingguan", unit: "minggu" },
-  { value: "monthly", icon: "📅", label: "Bulanan", unit: "bulan" },
-  { value: "yearly", icon: "🎂", label: "Tahunan", unit: "tahun" },
+const FREQS: { value: Frequency; icon: LineIconName; label: string; unit: string }[] = [
+  { value: "weekly", icon: "calendar", label: "Mingguan", unit: "minggu" },
+  { value: "monthly", icon: "repeat", label: "Bulanan", unit: "bulan" },
+  { value: "yearly", icon: "star", label: "Tahunan", unit: "tahun" },
 ];
 
 const QUICK_EVERY: { frequency: Frequency; every: number; label: string }[] = [
@@ -618,7 +618,7 @@ function FrequencyPicker({ frequency, every, onChange }: { frequency: Frequency;
                 on ? "border-brand-600 bg-brand-600 text-white shadow-sm" : "border-transparent bg-slate-50 text-slate-700 hover:bg-slate-100",
               )}
             >
-              <span className={cx("flex h-9 w-9 items-center justify-center rounded-xl text-2xl", !on && "bg-white")}>{f.icon}</span>
+              <span className={cx("flex h-9 w-9 items-center justify-center rounded-xl", !on && "bg-white")}><LineIcon name={f.icon} size={20} /></span>
               {f.label}
             </button>
           );
@@ -678,7 +678,6 @@ function DayOfMonthPicker({ value, onChange }: { value: number; onChange: (d: nu
         >
           <span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-600 text-xs text-white">{value}</span>
           tiap bulan
-          <span className={cx("text-[10px] text-slate-400 transition", open && "rotate-180")}>▾</span>
         </button>
       </div>
       {open && (

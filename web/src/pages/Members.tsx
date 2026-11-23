@@ -12,6 +12,7 @@ import { InviteCard } from "../cloud/CloudScreens";
 const CLOUD = getMode() === "cloud";
 import { useCurrent, useDbVersion } from "../lib/hooks";
 import { attempt, Avatar, Badge, Button, Card, Field, Input, Select, toast } from "../components/ui";
+import { LineIcon } from "../components/LineIcon";
 import { periodOf, periodRange, todayISO } from "../lib/format";
 
 export function Members() {
@@ -22,7 +23,7 @@ export function Members() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-extrabold tracking-tight text-slate-800">Keluarga 👨‍👩‍👧</h1>
+        <h1 className="text-2xl font-extrabold tracking-tight text-slate-800">Keluarga</h1>
         <p className="text-sm text-slate-500">Semua orang di {dompet.name} dan apa yang boleh mereka lakukan.</p>
       </div>
       <div className="space-y-4">
@@ -42,7 +43,7 @@ export function Members() {
                     </p>
                     <p className="text-xs text-slate-500">
                       {pending ? (
-                        <span className="font-semibold text-amber-700">⏳ Belum bergabung{mem.phone ? ` · ${displayPhone(mem.phone)}` : ""}</span>
+                        <span className="font-semibold text-amber-700">Belum bergabung{mem.phone ? ` · ${displayPhone(mem.phone)}` : ""}</span>
                       ) : (
                         ROLE_HINT[mem.role]
                       )}
@@ -217,7 +218,7 @@ function PeriodStartSetting() {
   const label = (iso: string) => fmt.format(new Date(iso + "T00:00"));
   return (
     <div className="mt-4 rounded-2xl bg-slate-50 p-4">
-      <p className="font-bold text-slate-800">📅 Awal bulan anggaran</p>
+      <p className="font-bold text-slate-800">Awal bulan anggaran</p>
       <p className="mt-0.5 text-sm text-slate-500">
         Samakan dengan tanggal gajian. Anggaran, laporan, dan sisa per hari dihitung dari tanggal ini.
       </p>
@@ -285,7 +286,7 @@ function DompetSettings() {
 
 function HowToDemo() {
   return (
-    <Card title="💡 Cara demo berbagi dompet" className="bg-sun-100">
+    <Card title="Cara demo berbagi dompet" className="bg-sun-100">
       <ol className="list-decimal space-y-1.5 pl-5 text-sm text-slate-600 dark:text-slate-300">
         <li>
           Buka situs ini di <b>dua tab</b> (atau dua jendela berdampingan).
@@ -298,7 +299,7 @@ function HowToDemo() {
           Coba jadi <b>Adik</b> (Hanya lihat): tombol catat terkunci. Jadi <b>Kakak</b>: hanya bisa ubah catatan sendiri.
         </li>
         <li>
-          Akun 🔒 <b>Tabungan Ayah</b> hanya terlihat saat bertindak sebagai Ayah.
+          Akun <LineIcon name="lock" size={13} className="inline-block align-[-2px]" /> <b>Tabungan Ayah</b> hanya terlihat saat bertindak sebagai Ayah.
         </li>
       </ol>
       <p className="mt-3 text-xs text-slate-400">Semua data tersimpan sebagai SQLite di browser ini (IndexedDB). Belum ada server.</p>
@@ -327,22 +328,22 @@ export function DataTools() {
   return (
     <Card title="Data">
       <div className="mb-4 rounded-2xl bg-mint-100/60 p-4">
-        <p className="font-bold text-slate-800">📊 Unduh ke Excel / Google Sheets</p>
+        <p className="font-bold text-slate-800">Unduh ke Excel / Google Sheets</p>
         <p className="mt-1 text-sm text-slate-600">
           Data {dompet.name} yang bisa kamu lihat, dalam file <code>.csv</code>. Datamu milikmu, bawa ke mana saja.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
-          <Button onClick={() => toast(`${exportTransactions(dompet, me.id).toLocaleString("id-ID")} transaksi diunduh`)}>⬇️ Transaksi</Button>
+          <Button onClick={() => toast(`${exportTransactions(dompet, me.id).toLocaleString("id-ID")} transaksi diunduh`)}>Transaksi</Button>
           <Button variant="secondary" onClick={() => exportAccounts(dompet, me.id)}>
-            ⬇️ Saldo akun
+            Saldo akun
           </Button>
           <Button variant="secondary" onClick={() => exportLoans(dompet, me.id)}>
-            ⬇️ Utang & piutang
+            Utang & piutang
           </Button>
         </div>
       </div>
       <div className="mb-4 rounded-2xl bg-brand-50 p-4">
-        <p className="font-bold text-slate-800">📦 Pindahan dari aplikasi lain?</p>
+        <p className="font-bold text-slate-800">Pindahan dari aplikasi lain?</p>
         <p className="mt-1 text-sm text-slate-600">
           Ekspor file backup (.sql) dari aplikasi pencatat keuanganmu sebelumnya, lalu pilih filenya di sini. Akun, kategori, subkategori, transaksi, transfer,
           pinjaman dan anggaran bulanan ikut pindah. File tidak dikirim ke mana pun.
@@ -360,15 +361,15 @@ export function DataTools() {
             e.target.value = "";
             if (!file) return;
             setImporting(true);
-            await attempt(async () => setResult(await importCashew(me.id, new Uint8Array(await file.arrayBuffer()))), "Impor selesai 🎉");
+            await attempt(async () => setResult(await importCashew(me.id, new Uint8Array(await file.arrayBuffer()))), "Impor selesai");
             setImporting(false);
           }}
         />
         {result && (
           <ul className="mt-3 space-y-0.5 text-sm text-slate-700">
-            <li>✅ {result.transactions.toLocaleString("id-ID")} transaksi ({result.transfers} transfer, {result.adjustments} koreksi saldo)</li>
-            <li>✅ {result.accounts} akun · {result.categories} kategori & subkategori</li>
-            <li>✅ {result.loans} pinjaman · {result.budgets} anggaran bulanan</li>
+            <li>{result.transactions.toLocaleString("id-ID")} transaksi ({result.transfers} transfer, {result.adjustments} koreksi saldo)</li>
+            <li>{result.accounts} akun · {result.categories} kategori & subkategori</li>
+            <li>{result.loans} pinjaman · {result.budgets} anggaran bulanan</li>
             {(result.skipped.budgets > 0 || result.skipped.goals > 0 || result.skipped.unpaid > 0) && (
               <li className="text-xs text-slate-500">
                 Dilewati: {result.skipped.budgets} anggaran non-bulanan, {result.skipped.goals} target tabungan, {result.skipped.unpaid} transaksi belum dibayar.
@@ -383,19 +384,19 @@ export function DataTools() {
       </p>
       <div className="flex flex-wrap gap-2">
         <Button variant="secondary" onClick={download}>
-          ⬇️ Unduh .sqlite
+          Unduh .sqlite
         </Button>
         {!CLOUD && (
           <Button variant="secondary" onClick={() => fileRef.current?.click()}>
-            ⬆️ Impor .sqlite
+            Impor .sqlite
           </Button>
         )}
         {!CLOUD && cloudConfigured && (
-          <Button onClick={() => setMode("cloud")}>☁️ Pakai akun & sinkron keluarga</Button>
+          <Button onClick={() => setMode("cloud")}>Pakai akun & sinkron keluarga</Button>
         )}
         {CLOUD && (
           <Button variant="ghost" onClick={() => confirm("Buka demo offline? Data akunmu tetap aman di server.") && setMode("demo")}>
-            🧪 Buka demo offline
+            Buka demo offline
           </Button>
         )}
         <Button

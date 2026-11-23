@@ -30,8 +30,8 @@ const statusLabel = (e: Entry) =>
 
 const FILTERS: [Filter, string][] = [
   ["all", "Semua"],
-  ["expense", "🧾 Tagihan"],
-  ["income", "💼 Pemasukan"],
+  ["expense", "Tagihan"],
+  ["income", "Pemasukan"],
 ];
 
 function loadFilter(): Filter {

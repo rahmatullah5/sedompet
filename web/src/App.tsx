@@ -167,11 +167,11 @@ export default function App() {
             className="flex min-w-0 items-center gap-2.5 rounded-full py-1 pl-1 pr-3 text-left transition hover:bg-white/70"
             aria-label="Ganti Dompet"
           >
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-brand-600 text-xl shadow-sm shadow-brand-600/30">👛</span>
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-sm shadow-brand-600/30"><LineIcon name="wallet" size={20} /></span>
             <span className="min-w-0">
               <span className="block text-xs font-semibold text-slate-500">Sedompet</span>
               <span className="flex items-center gap-1 truncate font-bold text-slate-800">
-                {dompet.name} <span className="text-xs text-slate-400">▾</span>
+                {dompet.name}
               </span>
             </span>
           </button>
@@ -223,7 +223,7 @@ export default function App() {
             <NavItem key={n.id} {...n} active={page === n.id} />
           ))}
           <button
-            onClick={() => (canAdd ? openTx(null) : toast(readOnly ? READ_ONLY_MESSAGE : "Peranmu 'Hanya lihat'. Minta orang tua untuk mencatat ya 🙂"))}
+            onClick={() => (canAdd ? openTx(null) : toast(readOnly ? READ_ONLY_MESSAGE : "Peranmu 'Hanya lihat'. Minta orang tua untuk mencatat ya"))}
             className={cx(
               "-mt-9 flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-full border-4 border-[#fff8f1] text-3xl font-light text-white shadow-lg transition active:scale-95",
               canAdd ? "bg-brand-600 shadow-brand-600/40 hover:bg-brand-700" : "bg-slate-300 shadow-none",
@@ -255,7 +255,7 @@ export default function App() {
                   d.id === dompet.id ? "bg-brand-50 ring-2 ring-brand-500" : "bg-slate-50 hover:bg-slate-100",
                 )}
               >
-                <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-2xl shadow-sm">👛</span>
+                <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-brand-600 shadow-sm"><LineIcon name="wallet" size={22} /></span>
                 <span className="flex-1">
                   <span className="block font-bold">{d.name}</span>
                   <span className="text-xs text-slate-500">{q.members(d.id).length} anggota</span>

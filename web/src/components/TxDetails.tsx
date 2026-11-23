@@ -3,6 +3,7 @@ import { getMode } from "../cloud/client";
 import { cloud } from "../cloud/sync";
 import { compressImage } from "../lib/image";
 import { attempt, cx, Input } from "./ui";
+import { LineIcon } from "./LineIcon";
 
 /** Receipt photo from a stored value: data: URL (demo) or storage path (cloud). */
 export function useReceiptUrl(value: string | null | undefined) {
@@ -79,8 +80,8 @@ export function TxDetails({
           <div className="flex gap-1.5">
             {(
               [
-                ["need", "🧺 Kebutuhan"],
-                ["want", "🎁 Keinginan"],
+                ["need", "Kebutuhan"],
+                ["want", "Keinginan"],
               ] as const
             ).map(([v, label]) => (
               <button
@@ -137,7 +138,8 @@ export function TxDetails({
             onClick={() => fileRef.current?.click()}
             className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-200 bg-white py-3 text-sm font-semibold text-slate-500 hover:border-brand-300 hover:text-brand-700"
           >
-            📷 Tambah foto nota
+            <LineIcon name="camera" size={16} />
+            Tambah foto nota
           </button>
         )}
         <input

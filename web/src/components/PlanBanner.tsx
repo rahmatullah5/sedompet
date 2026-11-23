@@ -20,7 +20,7 @@ export function PlanBanner({ sub, isOwner }: { sub: DompetSub | undefined; isOwn
   return (
     <div className={`pop-in mb-4 rounded-3xl p-4 ${expired ? "bg-red-50 ring-1 ring-red-200" : "bg-sun-100 ring-1 ring-amber-200"}`} role="status">
       <p className="font-bold text-slate-800">
-        {expired ? "🔒 Langganan berakhir, Dompet hanya bisa dilihat" : `⏳ Langganan berakhir ${days === 1 ? "besok" : `${days} hari lagi`}`}
+        {expired ? "Langganan berakhir, Dompet hanya bisa dilihat" : `Langganan berakhir ${days === 1 ? "besok" : `${days} hari lagi`}`}
       </p>
       <p className="mt-1 text-sm text-slate-600">
         {expired
@@ -42,7 +42,7 @@ export function PlanBanner({ sub, isOwner }: { sub: DompetSub | undefined; isOwn
           </a>
         </div>
       ) : (
-        <p className="mt-2 text-sm font-semibold text-slate-700">Minta pemilik Dompet untuk memperpanjang ya 🙏</p>
+        <p className="mt-2 text-sm font-semibold text-slate-700">Minta pemilik Dompet untuk memperpanjang ya</p>
       )}
     </div>
   );

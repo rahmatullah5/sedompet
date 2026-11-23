@@ -13,6 +13,7 @@ import { all, applyRemote, rawDb, setAfterWrite } from "../db/database";
 import { MEMBER_COLOURS } from "../db/repo";
 import { friendlyError, getPendingInvite, inviteCodeFromUrl, normalizePhone, phoneEmail, requireSupabase, setPendingInvite, stripInviteFromUrl } from "./client";
 import { setSession } from "../lib/session";
+import { applyHiddenFromAccount, setHiddenSaver } from "../lib/hooks";
 import type { Role } from "../lib/permissions";
 
 // Local table -> server table. Order matters for uploads of new rows.
@@ -138,7 +139,13 @@ function toServer(t: Synced, r: Row): Row {
     case "goals":
       return pick(r, ["id", "dompet_id", "name", "icon", "target", "target_date", "account_id", "saved", "created_by"]);
     case "holdings":
-      return { ...pick(r, ["id", "dompet_id", "account_id", "symbol", "name", "shares", "avg_price", "created_by"]), updated_at: iso(r.updated_at) };
+      return {
+        ...pick(r, ["id", "dompet_id", "account_id", "symbol", "name", "shares", "avg_price", "created_by"]),
+        updated_at: iso(r.updated_at),
+        // Crypto/gold/US (migration 20261129): only sent when not IDX, so
+        // servers without the column keep accepting IDX stocks.
+        ...(r.market && r.market !== "IDX" ? { market: r.market } : {}),
+      };
     case "activity":
       return pick(r, ["id", "dompet_id", "member_id", "message"]);
     case "dompets":
@@ -395,8 +402,8 @@ export async function pullAll(): Promise<void> {
         g.id, g.dompet_id, g.name, g.icon, g.target, g.target_date, g.account_id, g.saved, g.created_by, sqliteTime(g.created_at),
       ] as (string | number | null)[]);
     for (const h of holdings)
-      run("INSERT INTO holdings (id, dompet_id, account_id, symbol, name, shares, avg_price, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [
-        h.id, h.dompet_id, h.account_id, h.symbol, h.name ?? null, Number(h.shares), Number(h.avg_price), h.created_by, sqliteTime(h.created_at), sqliteTime(h.updated_at),
+      run("INSERT INTO holdings (id, dompet_id, account_id, market, symbol, name, shares, avg_price, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [
+        h.id, h.dompet_id, h.account_id, (h.market as string) || "IDX", h.symbol, h.name ?? null, Number(h.shares), Number(h.avg_price), h.created_by, sqliteTime(h.created_at), sqliteTime(h.updated_at),
       ] as (string | number | null)[]);
     for (const a of (activity ?? []) as Row[])
       run("INSERT INTO activity (id, dompet_id, member_id, message, created_at) VALUES (?, ?, ?, ?, ?)", [
@@ -428,6 +435,7 @@ async function onSession(session: Session | null) {
   if (!session) {
     channel?.unsubscribe();
     channel = null;
+    setHiddenSaver(null);
     await applyRemote((run) => {
       run("DELETE FROM dompets");
       run("DELETE FROM outbox");
@@ -438,6 +446,10 @@ async function onSession(session: Session | null) {
   }
   const switchedUser = state.userId !== null && state.userId !== session.user.id;
   setState({ status: "loading", userId: session.user.id, email: session.user.email ?? null });
+  // "Sembunyikan saldo" is remembered on the account, so it follows the user to other devices.
+  const savedHide = session.user.user_metadata?.hide_balance;
+  if (typeof savedHide === "boolean") applyHiddenFromAccount(savedHide);
+  setHiddenSaver((v) => void sb.auth.updateUser({ data: { hide_balance: v } }));
   if (switchedUser) await applyRemote((run) => run("DELETE FROM outbox"));
   // Link any Dompet the admin pre-assigned to this phone number.
   const { error: claimError } = await sb.rpc("claim_phone_membership");
@@ -478,7 +490,7 @@ async function joinPendingInvite() {
   setPendingInvite(null);
   try {
     await cloud.joinWithCode(pending.code, pending.name);
-    window.dispatchEvent(new CustomEvent("sedompet:toast", { detail: "Berhasil bergabung ke Dompet keluarga 🎉" }));
+    window.dispatchEvent(new CustomEvent("sedompet:toast", { detail: "Berhasil bergabung ke Dompet keluarga" }));
   } catch (e) {
     window.dispatchEvent(new CustomEvent("sedompet:sync-error", { detail: friendlyError(e) }));
   }

@@ -84,22 +84,22 @@ export type WeeklyRecap = ReturnType<typeof weeklyRecap>;
 /** WhatsApp-ready text (WA renders *bold*). */
 export function recapText(r: WeeklyRecap, dompetName: string, extra?: { budgetLine?: string }) {
   const lines = [
-    `📊 *Rekap ${r.offset === 0 ? "minggu ini" : r.offset === -1 ? "minggu lalu" : "mingguan"} · ${dompetName}*`,
+    `*Rekap ${r.offset === 0 ? "minggu ini" : r.offset === -1 ? "minggu lalu" : "mingguan"} · ${dompetName}*`,
     `${r.week.label}${r.inProgress ? ` (sampai hari ini)` : ""}`,
     "",
-    `💸 Keluar *${formatIDR(r.spent)}* dari ${r.entries} catatan`,
+    `Keluar *${formatIDR(r.spent)}* dari ${r.entries} catatan`,
   ];
-  if (r.change !== null) lines.push(r.change === 0 ? "↔️ Sama dengan minggu sebelumnya" : `${r.change > 0 ? "📈" : "📉"} ${Math.abs(r.change)}% ${r.change > 0 ? "lebih banyak" : "lebih hemat"} dari minggu sebelumnya`);
-  if (r.income > 0) lines.push(`💰 Masuk ${formatIDR(r.income)}`);
+  if (r.change !== null) lines.push(r.change === 0 ? "Sama dengan minggu sebelumnya" : `${r.change > 0 ? "Naik" : "Turun"} ${Math.abs(r.change)}% ${r.change > 0 ? "lebih banyak" : "lebih hemat"} dari minggu sebelumnya`);
+  if (r.income > 0) lines.push(`Masuk ${formatIDR(r.income)}`);
   if (r.categories.length) {
     lines.push("", "*Paling banyak untuk:*");
-    r.categories.forEach((c, i) => lines.push(`${i + 1}. ${c.icon} ${c.name} · ${formatCompact(c.total)}`));
+    r.categories.forEach((c, i) => lines.push(`${i + 1}. ${c.name} · ${formatCompact(c.total)}`));
   }
   if (r.people.length > 1) {
     lines.push("", "*Siapa belanja:*");
-    r.people.forEach((p) => lines.push(`${p.emoji} ${p.name} · ${formatCompact(p.total)}`));
+    r.people.forEach((p) => lines.push(`- ${p.name} · ${formatCompact(p.total)}`));
   }
-  if (r.biggest && r.biggest.total > 0) lines.push("", `🔝 Terbesar: ${r.biggest.note || r.biggest.category || "Tanpa catatan"} · ${formatCompact(r.biggest.total)}`);
+  if (r.biggest && r.biggest.total > 0) lines.push("", `Terbesar: ${r.biggest.note || r.biggest.category || "Tanpa catatan"} · ${formatCompact(r.biggest.total)}`);
   if (extra?.budgetLine) lines.push("", extra.budgetLine);
   lines.push("", "_dari Sedompet · sedompet.vercel.app_");
   return lines.join("\n");

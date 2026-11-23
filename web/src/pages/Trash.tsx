@@ -27,7 +27,7 @@ export function Trash() {
       </div>
       <Card>
         {items.length === 0 ? (
-          <Empty icon="🗑️" title="Sampah kosong">
+          <Empty icon="" title="Sampah kosong">
             Transaksi, transfer, anggaran, tujuan, tagihan rutin dan pinjaman yang dihapus muncul di sini.
           </Empty>
         ) : (
@@ -47,7 +47,7 @@ export function Trash() {
                     variant="secondary"
                     disabled={!allowed}
                     onClick={() =>
-                      attempt(() => trash.restore(it.id, { id: me.id, dompet_id: dompet.id, canManage: manage }), "Dipulihkan ↩️")
+                      attempt(() => trash.restore(it.id, { id: me.id, dompet_id: dompet.id, canManage: manage }), "Dipulihkan")
                     }
                   >
                     Pulihkan

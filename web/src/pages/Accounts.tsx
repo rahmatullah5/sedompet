@@ -166,7 +166,7 @@ export function Accounts() {
           const kids = kidsOf(a.id);
           const pocket = kids.length > 0;
           const stocks = holdingsOf(a.id);
-          const investing = isBase(a.currency) && (stocks.length > 0 || a.type === "investment");
+          const investing = stocks.length > 0 || a.type === "investment";
           const pocketTotal = pocket ? [a, ...kids].reduce((s, x) => s + x.balance_base, 0) : 0;
           return (
             <li key={a.id} className="py-1">
@@ -188,12 +188,12 @@ export function Accounts() {
                       ) : (
                         !isBase(a.currency) && <CurrencyCode code={a.currency} />
                       )}
-                      {stocks.length > 0 && <span className="whitespace-nowrap">· {stocks.length} saham</span>}
+                      {stocks.length > 0 && <span className="whitespace-nowrap">· {stocks.length} investasi</span>}
                       {a.visibility === "shared" && a.holder_name && (
                         <>
                           <span>·</span>
                           <span className="inline-flex items-center gap-0.5 rounded-full bg-slate-100 px-1.5 font-semibold text-slate-600">
-                            {a.holder_emoji} {a.holder_member_id === me.id ? "kamu" : a.holder_name}
+                            {a.holder_member_id === me.id ? "kamu" : a.holder_name}
                           </span>
                         </>
                       )}
@@ -207,7 +207,7 @@ export function Accounts() {
                   ) : stocks.length > 0 ? (
                     <span className="flex flex-col items-end">
                       <span className="num font-bold">{formatIDR(a.balance_base)}</span>
-                      <span className="num text-[11px] text-slate-400">kas {formatIDR(a.balance)}</span>
+                      <span className="num text-[11px] text-slate-400">kas {formatMoney(a.balance, a.currency)}</span>
                     </span>
                   ) : (
                     <Balance a={a} />
@@ -276,7 +276,7 @@ export function Accounts() {
                   {investing && (
                     <button type="button" className={chip} onClick={() => setStocksOf(a)}>
                       <LineIcon name="chart" size={14} />
-                      Saham
+                      Investasi
                     </button>
                   )}
                 </div>
@@ -335,7 +335,7 @@ export function Accounts() {
       <Modal open={exchange !== null} onClose={() => setExchange(null)} title="Tukar valas">
         {exchange && <TransferBody initialFrom={exchange.from} initialTo={exchange.to} onClose={() => setExchange(null)} />}
       </Modal>
-      <Modal open={stocksOf !== null} onClose={() => setStocksOf(null)} title={stocksOf ? `Saham · ${stocksOf.name}` : "Saham"}>
+      <Modal open={stocksOf !== null} onClose={() => setStocksOf(null)} title={stocksOf ? `Investasi · ${stocksOf.name}` : "Investasi"}>
         {stocksOf && <StockPanel key={stocksOf.id} account={stocksOf} onClose={() => setStocksOf(null)} />}
       </Modal>
       <Modal open={transferOpen} onClose={() => setTransferOpen(false)} title="Transfer antar akun">
@@ -544,10 +544,10 @@ function AccountFormBody({
               Mata uang lain (valas)
             </Button>
           )}
-          {isBase(account.currency) && (
+          {(
             <Button variant="secondary" className="!py-1.5 text-xs" onClick={() => onStocks(account)}>
               <LineIcon name="chart" size={14} />
-              Saham di akun ini
+              Investasi di akun ini
             </Button>
           )}
           <p className="w-full px-1 text-[11px] text-slate-400">Satu akun bisa menyimpan banyak mata uang (seperti BCA Valas) dan saham BEI.</p>

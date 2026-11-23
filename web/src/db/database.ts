@@ -97,6 +97,7 @@ function open(bytes: Uint8Array | null): Database {
   }
   next.exec("CREATE INDEX IF NOT EXISTS categories_parent ON categories(parent_id)");
   relaxAccountType(next);
+  upgradeHoldings(next);
   next.run("INSERT OR REPLACE INTO meta(key, value) VALUES ('schema_version', ?)", [
     String(SCHEMA_VERSION),
   ]);
@@ -123,6 +124,31 @@ function relaxAccountType(d: Database) {
   } catch (e) {
     d.exec("ROLLBACK");
     console.error("accounts upgrade failed", e);
+  } finally {
+    d.exec("PRAGMA foreign_keys = ON");
+  }
+}
+
+/**
+ * Holdings from before crypto/gold/US had whole-share INTEGER units and a
+ * UNIQUE (account_id, symbol) key. Rebuild with the market column.
+ */
+function upgradeHoldings(d: Database) {
+  const sql = String(d.exec("SELECT sql FROM sqlite_master WHERE type='table' AND name='holdings'")[0]?.values[0]?.[0] ?? "");
+  if (!sql || sql.includes("market")) return;
+  d.exec("PRAGMA foreign_keys = OFF");
+  try {
+    d.exec("BEGIN");
+    d.exec("ALTER TABLE holdings RENAME TO holdings_old");
+    d.exec(SCHEMA_SQL.slice(SCHEMA_SQL.indexOf("CREATE TABLE IF NOT EXISTS holdings"), SCHEMA_SQL.indexOf(");", SCHEMA_SQL.indexOf("CREATE TABLE IF NOT EXISTS holdings")) + 2));
+    d.exec(`INSERT INTO holdings (id, dompet_id, account_id, market, symbol, name, shares, avg_price, created_by, created_at, updated_at)
+            SELECT id, dompet_id, account_id, 'IDX', symbol, name, shares, avg_price, created_by, created_at, updated_at FROM holdings_old`);
+    d.exec("DROP TABLE holdings_old");
+    d.exec("CREATE INDEX IF NOT EXISTS holdings_dompet ON holdings(dompet_id)");
+    d.exec("COMMIT");
+  } catch (e) {
+    d.exec("ROLLBACK");
+    console.error("holdings upgrade failed", e);
   } finally {
     d.exec("PRAGMA foreign_keys = ON");
   }

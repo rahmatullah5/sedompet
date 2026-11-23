@@ -179,24 +179,27 @@ CREATE TABLE IF NOT EXISTS activity (
 );
 CREATE INDEX IF NOT EXISTS activity_dompet ON activity(dompet_id, created_at);
 
--- Stocks (IDX) held in an investment account. Value = shares x live price.
+-- Investments held in an account: IDX stocks, US stocks/ETFs, crypto, gold.
+-- Value = shares x live price (market_prices), converted to rupiah.
 CREATE TABLE IF NOT EXISTS holdings (
   id          TEXT PRIMARY KEY,
   dompet_id   TEXT NOT NULL REFERENCES dompets(id) ON DELETE CASCADE,
   account_id  TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-  symbol      TEXT NOT NULL,              -- IDX ticker without ".JK", e.g. BBCA
-  name        TEXT,                       -- company name, cached from the price feed
-  shares      INTEGER NOT NULL CHECK (shares >= 0),  -- 1 lot = 100 shares
-  avg_price   REAL NOT NULL DEFAULT 0,    -- rupiah per share (incl. buy fees)
+  market      TEXT NOT NULL DEFAULT 'IDX',  -- IDX | US | CRYPTO | GOLD
+  symbol      TEXT NOT NULL,              -- BBCA, AAPL, BTC; 'EMAS' for gold
+  name        TEXT,                       -- cached from the price feed
+  shares      REAL NOT NULL CHECK (shares >= 0),  -- shares (1 IDX lot = 100), coins or grams
+  avg_price   REAL NOT NULL DEFAULT 0,    -- per unit, in USD for US else rupiah (incl. fees)
   created_by  TEXT REFERENCES members(id) ON DELETE SET NULL,
   created_at  TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
-  UNIQUE (account_id, symbol)
+  UNIQUE (account_id, market, symbol)
 );
 CREATE INDEX IF NOT EXISTS holdings_dompet ON holdings(dompet_id);
 
 -- Live prices (not synced; every device fetches its own, see lib/market.ts).
--- symbol: 'FX:USD' = rupiah per 1 USD, 'IDX:BBCA' = rupiah per share.
+-- symbol: 'FX:USD' = rupiah per 1 USD, 'IDX:BBCA' = rupiah per share,
+-- 'US:AAPL' = USD per share, 'CRYPTO:BTC' = rupiah per coin, 'GOLD:EMAS' = rupiah per gram.
 CREATE TABLE IF NOT EXISTS market_prices (
   symbol      TEXT PRIMARY KEY,
   price       REAL NOT NULL,

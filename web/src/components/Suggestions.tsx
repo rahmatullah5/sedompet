@@ -2,6 +2,7 @@ import type { q } from "../db/repo";
 import { formatCompact } from "../lib/format";
 import { formatMoney, isBase } from "../lib/currency";
 import { Icon } from "./Icon";
+import { LineIcon } from "./LineIcon";
 import { cx } from "./ui";
 
 export type Suggestion = ReturnType<typeof q.suggestions>[number];
@@ -31,7 +32,7 @@ export function SuggestionList({ items, onPick }: { items: Suggestion[]; onPick:
             <span className="min-w-0 flex-1">
               <span className="block truncate text-sm font-semibold text-slate-800">{s.note}</span>
               <span className="block truncate text-xs text-slate-500">
-                {s.category_name ?? "Tanpa kategori"} · {s.account_visibility === "private" ? "🔒 " : ""}
+                {s.category_name ?? "Tanpa kategori"} · {s.account_visibility === "private" ? <LineIcon name="lock" size={11} className="mr-0.5 inline -mt-0.5" /> : ""}
                 {s.account_name}
                 {s.paid_by_name ? ` · ${s.paid_by_name}` : ""}
                 {s.uses > 1 ? ` · ${s.uses}×` : ""}

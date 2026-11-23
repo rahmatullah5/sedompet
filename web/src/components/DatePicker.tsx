@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { toISODate, todayISO } from "../lib/format";
 import { cx } from "./ui";
+import { LineIcon } from "./LineIcon";
 
 const DAYS = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"];
 const longFmt = new Intl.DateTimeFormat("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
@@ -119,7 +120,7 @@ export function DatePicker({
       >
         <span className="flex h-8 w-8 shrink-0 flex-col items-center justify-center rounded-lg bg-white text-center shadow-sm">
           <span className="text-[9px] font-bold uppercase leading-none text-brand-600">
-            {value ? new Intl.DateTimeFormat("id-ID", { month: "short" }).format(parse(value)) : "📅"}
+            {value ? new Intl.DateTimeFormat("id-ID", { month: "short" }).format(parse(value)) : <LineIcon name="calendar" size={16} className="text-slate-500" />}
           </span>
           {value && <span className="text-sm font-extrabold leading-tight text-slate-800">{parse(value).getDate()}</span>}
         </span>
@@ -133,7 +134,6 @@ export function DatePicker({
             <span className="text-[15px] text-slate-400">{placeholder}</span>
           )}
         </span>
-        <span className={cx("text-slate-400 transition", open && "rotate-180")}>▾</span>
       </button>
 
       {open && (

@@ -5,6 +5,7 @@ import { DatePicker } from "../components/DatePicker";
 import { useCurrent, useDbVersion } from "../lib/hooks";
 import { Avatar, Badge, Button, Card, Empty, Money } from "../components/ui";
 import { Icon } from "../components/Icon";
+import { LineIcon } from "../components/LineIcon";
 import { MultiAccountPicker, MultiCategoryPicker } from "../components/Pickers";
 import { SpendingCalendar, type DayFlow } from "../components/SpendingCalendar";
 
@@ -51,13 +52,13 @@ export function TxRow({ t, onClick, showDate }: { t: Transaction; onClick: () =>
             <span>{t.paid_by_name ?? "—"}</span>
             <span>·</span>
             <span className="truncate">
-              {t.account_visibility === "private" && "🔒 "}
+              {t.account_visibility === "private" && <LineIcon name="lock" size={11} className="mr-0.5 inline -mt-0.5" />}
               {t.account_name}
               {t.note && t.category_name && ` · ${t.parent_category_name ? `${t.parent_category_name} › ` : ""}${t.category_name}`}
               {t.merchant && ` · ${t.merchant}`}
             </span>
             {t.date > todayISO() && <span className="rounded-full bg-sky-100 px-1.5 text-[10px] font-semibold text-sky-700">nanti</span>}
-            {t.receipt && <span title="Ada foto nota">🧾</span>}
+            {t.receipt && <span title="Ada foto nota"><LineIcon name="receipt" size={12} /></span>}
             {t.need === "want" && <span className="rounded-full bg-lilac-100 px-1.5 text-[10px] font-semibold text-lilac-600">keinginan</span>}
             {t.split_with && t.flag === "transfer" ? (
               <span className="rounded-full bg-mint-100 px-1.5 text-[10px] font-semibold text-mint-600">lunas patungan</span>
@@ -65,7 +66,7 @@ export function TxRow({ t, onClick, showDate }: { t: Transaction; onClick: () =>
               t.flag && <span className="rounded-full bg-slate-100 px-1.5 text-[10px] font-semibold text-slate-500">{t.flag === "transfer" ? "transfer" : t.flag === "loan" ? "pinjaman" : "koreksi"}</span>
             )}
             {t.split_with && !t.flag && (
-              <span className="rounded-full bg-brand-50 px-1.5 text-[10px] font-semibold text-brand-700">👥 dibagi {parseSplit(t.split_with)?.length ?? ""}</span>
+              <span className="rounded-full bg-brand-50 px-1.5 text-[10px] font-semibold text-brand-700">dibagi {parseSplit(t.split_with)?.length ?? ""}</span>
             )}
           </span>
         </span>
@@ -258,7 +259,7 @@ export function Transactions({
             )}
             {!range && (
               <button type="button" onClick={() => setRange(periodRange(month))} className="px-2 text-xs font-semibold text-brand-700">
-                📆 Pilih rentang tanggal
+                Pilih rentang tanggal
               </button>
             )}
           </div>
@@ -267,7 +268,7 @@ export function Transactions({
       {!searching && range && <RangeBar range={range} setRange={setRange} />}
       <div className="relative">
         <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden>
-          🔍
+          <LineIcon name="search" size={18} />
         </span>
         <input
           type="search"
@@ -304,18 +305,18 @@ export function Transactions({
         <Badge>Keluar {formatIDR(expense)}</Badge>
         {onBulk && (
           <button type="button" onClick={onBulk} className="ml-auto text-sm font-semibold text-brand-700">
-            📋 Catat banyak
+            Catat banyak
           </button>
         )}
         {!range && (
           <button type="button" onClick={toggleCal} aria-pressed={showCal} className={`${onBulk ? "" : "ml-auto "}text-sm font-semibold text-brand-700`}>
-            📅 {showCal ? "Sembunyikan kalender" : "Kalender masuk-keluar"}
+            {showCal ? "Sembunyikan kalender" : "Kalender masuk-keluar"}
           </button>
         )}
       </div>
       {budget && !searching && (
         <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-sun-100 px-3 py-2 text-sm">
-          <span className="font-semibold text-slate-800">🐷 {budget.name}</span>
+          <span className="font-semibold text-slate-800">{budget.name}</span>
           <span className="text-slate-600">
             · {txs.length} transaksi · keluar <b className="num">{formatIDR(expense)}</b>
             {!range && <> dari {formatIDR(budget.limit)}</>}
@@ -378,8 +379,7 @@ export function Transactions({
             aria-expanded={filtersOpen}
             className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${activeFilters ? "bg-brand-600 text-white" : "bg-white text-slate-700 shadow-sm"}`}
           >
-            ⚙️ Filter{activeFilters ? ` (${activeFilters})` : ""}
-            <span className={`text-xs transition ${filtersOpen ? "rotate-180" : ""}`}>▾</span>
+            Filter{activeFilters ? ` (${activeFilters})` : ""}
           </button>
           {activeFilters > 0 && (
             <button onClick={resetFilters} className="text-sm font-semibold text-slate-500 underline-offset-2 hover:underline">
@@ -394,7 +394,7 @@ export function Transactions({
               title={showTransfers ? "Sembunyikan transfer antar akun" : "Tampilkan transfer antar akun"}
               className={`rounded-full px-3 py-2 text-sm font-semibold transition ${showTransfers ? "bg-slate-800 text-white" : "bg-white text-slate-500 shadow-sm"}`}
             >
-              🔁 {showTransfers ? "Sembunyikan transfer" : `Tampilkan transfer${transferCount ? ` (${transferCount})` : ""}`}
+              {showTransfers ? "Sembunyikan transfer" : `Tampilkan transfer${transferCount ? ` (${transferCount})` : ""}`}
             </button>
           )}
           <label className="relative flex items-center">
@@ -402,7 +402,7 @@ export function Transactions({
             <select
               value={sort}
               onChange={(e) => setSort(e.target.value as SortKey)}
-              className={`appearance-none rounded-full py-2 pl-3 pr-7 text-sm font-semibold shadow-sm outline-none ${sort !== "newest" ? "bg-brand-600 text-white" : "bg-white text-slate-700"}`}
+              className={`appearance-none rounded-full py-2 px-3 text-sm font-semibold shadow-sm outline-none ${sort !== "newest" ? "bg-brand-600 text-white" : "bg-white text-slate-700"}`}
             >
               {SORTS.map(([k, label]) => (
                 <option key={k} value={k}>
@@ -410,7 +410,6 @@ export function Transactions({
                 </option>
               ))}
             </select>
-            <span className={`pointer-events-none absolute right-2.5 text-xs ${sort !== "newest" ? "text-white" : "text-slate-500"}`}>▾</span>
           </label>
           <div className="ml-auto grid grid-cols-3 gap-0.5 rounded-full bg-white p-0.5 shadow-sm" role="group" aria-label="Jenis">
             {(
@@ -451,7 +450,6 @@ export function Transactions({
                         onClick={() => setBudgetId(on ? null : b.id)}
                         className={`rounded-full px-3 py-1 text-xs font-semibold transition ${on ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-600 hover:bg-slate-100"}`}
                       >
-                        {b.member_emoji ? `${b.member_emoji} ` : b.category_icon && !b.category_icon.startsWith("data:") ? `${b.category_icon} ` : "🐷 "}
                         {b.name}
                       </button>
                     );
@@ -470,7 +468,7 @@ export function Transactions({
 
       {shown.length === 0 ? (
         <Card>
-          <Empty icon="🔍" title={searching ? `Tidak ada yang cocok dengan “${search.trim()}”` : dayFilter ? "Belum ada catatan di tanggal ini" : filtered ? "Tidak ada yang cocok" : range ? "Belum ada transaksi di rentang ini" : "Belum ada transaksi bulan ini"}>
+          <Empty icon="" title={searching ? `Tidak ada yang cocok dengan “${search.trim()}”` : dayFilter ? "Belum ada catatan di tanggal ini" : filtered ? "Tidak ada yang cocok" : range ? "Belum ada transaksi di rentang ini" : "Belum ada transaksi bulan ini"}>
             {searching ? "Coba kata lain, nama orang, atau jumlah seperti 50rb." : null}
           </Empty>
         </Card>

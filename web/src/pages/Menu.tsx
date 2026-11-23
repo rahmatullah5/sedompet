@@ -10,19 +10,20 @@ import { WA_FEEDBACK } from "../lib/contact";
 import { trash } from "../db/trash";
 import { netWorth } from "../db/networth";
 import { InstallCard } from "../components/InstallCard";
+import { LineIcon, type LineIconName } from "../components/LineIcon";
 
-const ITEMS = [
-  { href: "#/anggaran", icon: "🐷", title: "Anggaran", hint: "Batas belanja & uang saku" },
-  { href: "#/tujuan", icon: "🎯", title: "Tujuan", hint: "Tabungan umroh, sekolah…" },
-  { href: "#/rutin", icon: "🔁", title: "Rutin", hint: "Langganan, SPP, gaji" },
-  { href: "#/pinjaman", icon: "🤝", title: "Utang & Piutang", hint: "Pinjam-meminjam" },
-  { href: "#/patungan", icon: "👥", title: "Patungan", hint: "Siapa utang ke siapa" },
-  { href: "#/akun", icon: "💳", title: "Isi dompet", hint: "Tunai, bank, e-wallet" },
-  { href: "#/neraca", icon: "⚖️", title: "Neraca", hint: "Harta, utang, kekayaan bersih" },
-  { href: "#/kategori", icon: "🏷️", title: "Kategori", hint: "Kategori & subkategori" },
-  { href: "#/keluarga", icon: "👨‍👩‍👧", title: "Keluarga", hint: "Anggota & peran" },
-  { href: "#/notifikasi", icon: "🔔", title: "Notifikasi", hint: "Pengingat tagihan & catatan" },
-  { href: "#/sampah", icon: "🗑️", title: "Sampah", hint: "Pulihkan yang terhapus" },
+const ITEMS: { href: string; icon: LineIconName; title: string; hint: string }[] = [
+  { href: "#/anggaran", icon: "piggy", title: "Anggaran", hint: "Batas belanja & uang saku" },
+  { href: "#/tujuan", icon: "target", title: "Tujuan", hint: "Tabungan umroh, sekolah…" },
+  { href: "#/rutin", icon: "repeat", title: "Rutin", hint: "Langganan, SPP, gaji" },
+  { href: "#/pinjaman", icon: "handshake", title: "Utang & Piutang", hint: "Pinjam-meminjam" },
+  { href: "#/patungan", icon: "split", title: "Patungan", hint: "Siapa utang ke siapa" },
+  { href: "#/akun", icon: "wallet", title: "Isi dompet", hint: "Tunai, bank, e-wallet" },
+  { href: "#/neraca", icon: "adjust", title: "Neraca", hint: "Harta, utang, kekayaan bersih" },
+  { href: "#/kategori", icon: "tag", title: "Kategori", hint: "Kategori & subkategori" },
+  { href: "#/keluarga", icon: "users", title: "Keluarga", hint: "Anggota & peran" },
+  { href: "#/notifikasi", icon: "bell", title: "Notifikasi", hint: "Pengingat tagihan & catatan" },
+  { href: "#/sampah", icon: "trash", title: "Sampah", hint: "Pulihkan yang terhapus" },
 ];
 
 export function Menu() {
@@ -43,7 +44,7 @@ export function Menu() {
   };
   const balance = q.accounts(dompet.id, me.id).reduce((s, a) => s + a.balance_base, 0);
   const { appAdmin } = useSyncExternalStore(cloudStore.subscribe, cloudStore.get);
-  const items = appAdmin ? [...ITEMS, { href: "#/admin", icon: "🛡️", title: "Admin", hint: "Kode aktivasi & nomor" }] : ITEMS;
+  const items = appAdmin ? [...ITEMS, { href: "#/admin", icon: "shield" as const, title: "Admin", hint: "Kode aktivasi & nomor" }] : ITEMS;
 
   return (
     <div className="space-y-5">
@@ -60,7 +61,9 @@ export function Menu() {
             href={it.href}
             className="rounded-3xl bg-white p-4 shadow-[0_8px_24px_-14px_rgba(120,72,40,0.3)] transition hover:-translate-y-0.5"
           >
-            <span className="text-3xl">{it.icon}</span>
+            <span className="text-brand-700">
+              <LineIcon name={it.icon} size={28} />
+            </span>
             <p className="mt-2 font-bold text-slate-800">{it.title}</p>
             <p className="text-xs text-slate-500">{it.hint}</p>
             {badge[it.href] && <p className="mt-1.5 text-xs font-semibold text-brand-700">{badge[it.href]}</p>}
@@ -74,7 +77,9 @@ export function Menu() {
         rel="noopener"
         className="flex items-center gap-3 rounded-3xl bg-white p-4 shadow-[0_8px_24px_-14px_rgba(120,72,40,0.3)] transition hover:-translate-y-0.5"
       >
-        <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#25D366]/15 text-2xl">💬</span>
+        <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#25D366]/15 text-[#128C7E]">
+          <LineIcon name="message" size={22} />
+        </span>
         <span className="flex-1">
           <span className="block font-bold text-slate-800">Kirim masukan</span>
           <span className="block text-xs text-slate-500">Saran, kendala, atau ide? Chat admin lewat WhatsApp.</span>

@@ -1,7 +1,8 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { cloud, cloudStore, type ActivationCode, type AppPhone, type PlanChoice } from "../cloud/sync";
 import { displayPhone, inviteLink } from "../cloud/client";
-import { attempt, Badge, Button, Card, cx, Empty, Field, Input, Select, toast } from "../components/ui";
+import { attempt, Badge, Button, Card, cx, Field, Input, Select, toast } from "../components/ui";
+import { LineIcon } from "../components/LineIcon";
 
 const fmt = new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", year: "numeric" });
 const day = (iso: string | null) => (iso ? fmt.format(new Date(iso)) : "—");
@@ -80,7 +81,10 @@ export function Admin() {
   if (!appAdmin) {
     return (
       <Card>
-        <Empty icon="🔒" title="Khusus admin Sedompet" />
+        <div className="flex flex-col items-center gap-2 py-8 text-center text-slate-500">
+          <LineIcon name="lock" size={40} />
+          <p className="font-bold text-slate-800">Khusus admin Sedompet</p>
+        </div>
       </Card>
     );
   }
@@ -91,7 +95,7 @@ export function Admin() {
       if (navigator.share) await navigator.share({ text });
       else {
         await navigator.clipboard.writeText(text);
-        toast("Pesan disalin. Tempel di WhatsApp 📋");
+        toast("Pesan disalin. Tempel di WhatsApp");
       }
     } catch {
       /* cancelled */
@@ -107,7 +111,7 @@ export function Admin() {
         <a href="#/menu" className="text-sm font-semibold text-brand-700">
           ← Menu
         </a>
-        <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-slate-800">Admin 🛡️</h1>
+        <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-slate-800">Admin</h1>
         <p className="text-sm text-slate-500">Buat kode aktivasi untuk orang baru. Satu kode = satu akun. Mereka lalu membuat Dompet sendiri.</p>
       </div>
 

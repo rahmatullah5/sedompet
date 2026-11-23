@@ -215,7 +215,7 @@ export function Reports() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-2xl font-extrabold tracking-tight text-slate-800">Laporan 📊</h1>
+        <h1 className="text-2xl font-extrabold tracking-tight text-slate-800">Laporan</h1>
         <p className="text-sm text-slate-500">Ke mana uang keluarga pergi, dan perkiraan ke depan.</p>
       </div>
 
@@ -239,7 +239,6 @@ export function Reports() {
         </div>
         <div className={cx("mt-4 space-y-2 rounded-2xl px-4 py-3 text-sm", warn ? "bg-red-50 text-red-800" : "bg-mint-100 text-slate-700")}>
           <p>
-            {warn ? "⚠️ " : "✅ "}
             {f.overall && overBudget
               ? `Dengan kebiasaan sekarang, ${f.overall.combined ? "belanja yang dianggarkan" : "total pengeluaran"} bisa lewat ${f.overall.combined ? `gabungan ${f.overall.combined} anggaran` : "anggaran"} ${formatIDR(Math.round(f.overall.projected - f.overall.amount))}. Kurangi sekitar ${formatIDR(Math.ceil((f.overall.projected - f.overall.amount) / daysLeft))} per hari.`
               : f.budgetOutlook.length === 0
@@ -618,14 +617,14 @@ function NetWorthCard() {
   const delta = nw.net - trend[0].net;
   return (
     <a href="#/neraca" className="block">
-      <Card title="Kekayaan bersih ⚖️" action={<span className="text-sm font-semibold text-brand-700">Neraca →</span>}>
+      <Card title="Kekayaan bersih" action={<span className="text-sm font-semibold text-brand-700">Neraca →</span>}>
         <p className="num text-2xl font-extrabold text-slate-800">{formatIDR(nw.net)}</p>
         <p className="mt-0.5 text-sm text-slate-500">
           Harta {formatCompact(nw.totalAssets)} − Utang {formatCompact(nw.totalLiabilities)}
           {delta !== 0 && (
             <span className={delta > 0 ? "font-semibold text-mint-600" : "font-semibold text-red-600"}>
               {" "}
-              · {delta > 0 ? "▲" : "▼"} {formatCompact(Math.abs(delta))} sejak akhir {formatMonth(trend[0].month).split(" ")[0]}
+              · {delta > 0 ? "+" : "−"}{formatCompact(Math.abs(delta))} sejak akhir {formatMonth(trend[0].month).split(" ")[0]}
             </span>
           )}
         </p>
@@ -653,11 +652,11 @@ function NeedWantCard() {
       <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
         <p>
           <span className="mr-1.5 inline-block h-2.5 w-2.5 rounded-full" style={{ background: "var(--color-brand-500)" }} />
-          🧺 Kebutuhan <b className="num block text-slate-800">{formatIDR(r.need)}</b>
+          Kebutuhan <b className="num block text-slate-800">{formatIDR(r.need)}</b>
         </p>
         <p>
           <span className="mr-1.5 inline-block h-2.5 w-2.5 rounded-full" style={{ background: "var(--color-lilac-600)" }} />
-          🎁 Keinginan <b className="num block text-slate-800">{formatIDR(r.want)}</b>
+          Keinginan <b className="num block text-slate-800">{formatIDR(r.want)}</b>
         </p>
       </div>
       <p className="mt-2 text-xs text-slate-500">
@@ -703,7 +702,7 @@ function CashFlowCard() {
   ].filter(Boolean) as { label: string; hint: string; v: number }[];
 
   return (
-    <Card title="Arus kas 💧">
+    <Card title="Arus kas">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="grid grid-cols-2 gap-0.5 rounded-full bg-slate-100 p-0.5 text-xs font-bold">
           {(
@@ -802,7 +801,7 @@ function BalanceProjection({ f, horizon, setHorizon }: { f: ReturnType<typeof us
   const tipIdx = tip ?? labels.length - 1;
 
   return (
-    <Card title="Proyeksi saldo 🔮">
+    <Card title="Proyeksi saldo">
       <div className="rounded-2xl bg-slate-50 p-3">
         <div className="flex items-center justify-between gap-2">
           <label htmlFor="horizon" className="text-sm font-semibold text-slate-700">
@@ -889,7 +888,7 @@ function BalanceProjection({ f, horizon, setHorizon }: { f: ReturnType<typeof us
       </div>
       {last.bad < 0 && (
         <p className="mt-2 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-800">
-          ⚠️ Kalau belanja seperti bulan paling boros, saldo bisa minus sebelum {formatMonth(t[t.findIndex((x) => x.bad < 0)].month)}.
+          Kalau belanja seperti bulan paling boros, saldo bisa minus sebelum {formatMonth(t[t.findIndex((x) => x.bad < 0)].month)}.
         </p>
       )}
 

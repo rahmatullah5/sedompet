@@ -4,6 +4,7 @@ import { setMainAccount, useCurrent, useMainAccount } from "../lib/hooks";
 import { formatCompact } from "../lib/format";
 import { formatMoney, isBase } from "../lib/currency";
 import { Icon } from "./Icon";
+import { LineIcon } from "./LineIcon";
 import { cx } from "./ui";
 
 
@@ -118,7 +119,7 @@ export function MultiAccountPicker({ accounts, value, onChange }: { accounts: Ac
             <span className="flex h-6 w-6 items-center justify-center rounded-full" style={{ background: on ? "rgba(255,255,255,0.15)" : `${a.colour}26` }}>
               <Icon value={a.icon ?? accountTypeIcon(a.type)} size={15} />
             </span>
-            {a.visibility === "private" && "🔒 "}
+            {a.visibility === "private" && <LineIcon name="lock" size={12} />}
             {a.name}
           </button>
         );
@@ -188,12 +189,12 @@ export function AccountPicker({
                     <Icon value={a.icon ?? accountTypeIcon(a.type)} size={18} />
                   </span>
                   <span className="flex items-center gap-0.5 text-xs leading-none">
-                    {main === a.id && <span title="Akun utama">⭐</span>}
+                    {main === a.id && <span title="Akun utama" className="text-amber-500"><LineIcon name="star" size={12} /></span>}
                     {a.visibility === "private" ? (
-                      <span>🔒</span>
+                      <LineIcon name="lock" size={12} className="text-slate-500" />
                     ) : a.holder_emoji ? (
                       <span title={`Dipegang ${a.holder_name}`} className="text-sm">
-                        {a.holder_emoji}
+                        <span className="font-bold text-slate-500">{a.holder_name?.trim().charAt(0).toUpperCase()}</span>
                       </span>
                     ) : null}
                   </span>
@@ -205,13 +206,13 @@ export function AccountPicker({
           })}
           {hidden > 0 && (
             <button type="button" onClick={() => setExpanded(true)} className={cx(tileCls, "items-center justify-center border-transparent bg-slate-50 text-xs font-semibold text-slate-600 hover:bg-slate-100")}>
-              <span className="text-lg leading-none">➕</span>
+              <LineIcon name="plus" size={18} />
               {hidden} lainnya
             </button>
           )}
           {expanded && sorted.length > LIMIT + 1 && (
             <button type="button" onClick={() => setExpanded(false)} className={cx(tileCls, "items-center justify-center border-transparent bg-slate-50 text-xs font-semibold text-slate-600 hover:bg-slate-100")}>
-              <span className="text-lg leading-none">➖</span>
+              <LineIcon name="minus" size={18} />
               Ringkas
             </button>
           )}
@@ -221,14 +222,14 @@ export function AccountPicker({
         <p className="mt-1 px-1 text-xs text-slate-500">
           {main === value ? (
             <>
-              ⭐ Akun utama: otomatis terpilih tiap catat baru.{" "}
+              Akun utama: otomatis terpilih tiap catat baru.{" "}
               <button type="button" className="font-semibold text-slate-600 underline" onClick={() => setMainAccount(me.id, null)}>
                 Lepas
               </button>
             </>
           ) : (
             <button type="button" className="font-semibold text-brand-700" onClick={() => setMainAccount(me.id, value)}>
-              ☆ Jadikan akun utama
+              Jadikan akun utama
             </button>
           )}
         </p>

@@ -32,14 +32,14 @@ export function Patungan({ onOpenTx }: { onOpenTx: (t: Transaction) => void }) {
         <a href="#/menu" className="text-sm font-semibold text-brand-700">
           ← Menu
         </a>
-        <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-slate-800">Patungan 👥</h1>
+        <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-slate-800">Patungan</h1>
         <p className="text-sm text-slate-500">Satu orang bayar, ditanggung bersama. Di sini kelihatan siapa masih utang ke siapa.</p>
       </div>
 
       {!any ? (
         <Card>
-          <Empty icon="🧾" title="Belum ada patungan">
-            Saat mencatat pengeluaran dari akun bersama, nyalakan <b>👥 Patungan / dibagi</b> lalu pilih siapa saja yang ikut. Cocok untuk kos bareng, trip, atau
+          <Empty icon="" title="Belum ada patungan">
+            Saat mencatat pengeluaran dari akun bersama, nyalakan <b>Patungan / dibagi</b> lalu pilih siapa saja yang ikut. Cocok untuk kos bareng, trip, atau
             belanja bulanan berdua.
           </Empty>
         </Card>
@@ -47,7 +47,7 @@ export function Patungan({ onOpenTx }: { onOpenTx: (t: Transaction) => void }) {
         <>
           <Card title="Cara melunasi">
             {plan.length === 0 ? (
-              <p className="py-2 text-center font-semibold text-mint-600">✅ Semua sudah lunas!</p>
+              <p className="py-2 text-center font-semibold text-mint-600">Semua sudah lunas!</p>
             ) : (
               <ul className="space-y-2">
                 {plan.map((p) => {
@@ -151,7 +151,7 @@ function SettleSheet({ settle, onClose }: { settle: { from: string; to: string; 
           note: "",
           settle: { debtor: settle.from, creditor: settle.to },
         }),
-      "Pelunasan tercatat 🤝",
+      "Pelunasan tercatat",
     );
     if (ok) onClose();
   }

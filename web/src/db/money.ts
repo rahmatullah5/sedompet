@@ -236,8 +236,8 @@ export const mm = {
         acc.visibility,
         actor,
         loan.direction === "lent"
-          ? `menerima ${formatMoney(data.amount, acc.currency)} dari ${loan.counterparty}${data.amount >= remaining ? " (lunas 🎉)" : ""}`
-          : `membayar utang ${formatMoney(data.amount, acc.currency)} ke ${loan.counterparty}${data.amount >= remaining ? " (lunas 🎉)" : ""}`,
+          ? `menerima ${formatMoney(data.amount, acc.currency)} dari ${loan.counterparty}${data.amount >= remaining ? " (lunas)" : ""}`
+          : `membayar utang ${formatMoney(data.amount, acc.currency)} ke ${loan.counterparty}${data.amount >= remaining ? " (lunas)" : ""}`,
       );
     });
   },

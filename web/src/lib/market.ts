@@ -41,10 +41,18 @@ export function liveRate(code: string): MarketPrice | null {
   return get<MarketPrice>("SELECT * FROM market_prices WHERE symbol = ?", [`FX:${code}`]) ?? null;
 }
 
-/** Last price per share of an IDX ticker, or null. */
-export function stockPrice(symbol: string): MarketPrice | null {
-  return get<MarketPrice>("SELECT * FROM market_prices WHERE symbol = ?", [`IDX:${symbol.toUpperCase()}`]) ?? null;
+export type PriceMarket = "IDX" | "US" | "CRYPTO" | "GOLD";
+
+/** Last price of an asset: IDX/CRYPTO/GOLD in rupiah, US in dollars. */
+export function stockPrice(symbol: string, market: PriceMarket = "IDX"): MarketPrice | null {
+  return get<MarketPrice>("SELECT * FROM market_prices WHERE symbol = ?", [`${market}:${symbol.toUpperCase()}`]) ?? null;
 }
+
+/** Names for coins (Indodax prices come without one). */
+const COIN_NAMES: Record<string, string> = {
+  BTC: "Bitcoin", ETH: "Ethereum", USDT: "Tether", BNB: "BNB", SOL: "Solana", XRP: "XRP", ADA: "Cardano",
+  DOGE: "Dogecoin", TRX: "TRON", DOT: "Polkadot", LTC: "Litecoin", AVAX: "Avalanche", SHIB: "Shiba Inu", USDC: "USD Coin",
+};
 
 interface ApiQuote {
   price: number;
@@ -55,14 +63,28 @@ interface ApiQuote {
 interface ApiResponse {
   fx: Record<string, ApiQuote>;
   stocks: Record<string, ApiQuote>;
+  us?: Record<string, ApiQuote>;
+  crypto?: Record<string, ApiQuote>;
+  gold?: ApiQuote | null;
   missing: string[];
   fetchedAt: string;
 }
 
-async function fetchMarket(fx: string[], stocks: string[]): Promise<ApiResponse> {
+interface Wanted {
+  fx?: string[];
+  stocks?: string[];
+  us?: string[];
+  crypto?: string[];
+  gold?: boolean;
+}
+
+async function fetchMarket(w: Wanted): Promise<ApiResponse> {
   const params = new URLSearchParams();
-  if (fx.length) params.set("fx", fx.join(","));
-  if (stocks.length) params.set("stocks", stocks.join(","));
+  if (w.fx?.length) params.set("fx", w.fx.join(","));
+  if (w.stocks?.length) params.set("stocks", w.stocks.join(","));
+  if (w.us?.length) params.set("us", w.us.join(","));
+  if (w.crypto?.length) params.set("crypto", w.crypto.join(","));
+  if (w.gold) params.set("gold", "1");
   const r = await fetch(`/api/market?${params}`);
   if (!r.ok) throw new Error(`Gagal ambil harga (${r.status})`);
   return (await r.json()) as ApiResponse;
@@ -72,6 +94,9 @@ async function store(data: ApiResponse) {
   const rows: [string, ApiQuote][] = [
     ...Object.entries(data.fx).map(([c, q]): [string, ApiQuote] => [`FX:${c}`, q]),
     ...Object.entries(data.stocks).map(([s, q]): [string, ApiQuote] => [`IDX:${s}`, q]),
+    ...Object.entries(data.us ?? {}).map(([s, q]): [string, ApiQuote] => [`US:${s}`, q]),
+    ...Object.entries(data.crypto ?? {}).map(([s, q]): [string, ApiQuote] => [`CRYPTO:${s}`, { ...q, name: q.name ?? COIN_NAMES[s] ?? s }]),
+    ...(data.gold ? [[`GOLD:EMAS`, data.gold] as [string, ApiQuote]] : []),
   ];
   if (!rows.length) return;
   await applyRemote((run) => {
@@ -91,25 +116,30 @@ export async function refreshMarket(force = false) {
   if (status.loading) return;
   if (!force && Date.now() - status.lastFetch < REFRESH_MS) return;
   if (typeof navigator !== "undefined" && navigator.onLine === false) return;
-  const stocks = all<{ symbol: string }>("SELECT DISTINCT symbol FROM holdings").map((r) => r.symbol);
+  const held = all<{ market: string; symbol: string }>("SELECT DISTINCT COALESCE(market, 'IDX') AS market, symbol FROM holdings");
+  const of = (m: string) => held.filter((h) => h.market === m).map((h) => h.symbol);
   const fx = CURRENCIES.map((c) => c.code).filter((c) => c !== "IDR");
   setStatus({ loading: true, error: null });
   try {
-    await store(await fetchMarket(fx, stocks));
+    await store(await fetchMarket({ fx, stocks: of("IDX"), us: of("US"), crypto: of("CRYPTO"), gold: of("GOLD").length > 0 }));
     setStatus({ loading: false, lastFetch: Date.now() });
   } catch (e) {
     setStatus({ loading: false, error: e instanceof Error ? e.message : String(e), lastFetch: Date.now() });
   }
 }
 
-/** Looks up one ticker (for the "add stock" form). Null = not found on IDX. */
-export async function lookupStock(symbol: string): Promise<MarketPrice | null> {
-  const s = symbol.trim().toUpperCase();
-  if (!/^[A-Z0-9]{2,6}$/.test(s)) return null;
-  const data = await fetchMarket([], [s]);
-  if (!data.stocks[s]) return null;
-  await store({ ...data, fx: {} });
-  return stockPrice(s);
+/** Looks up one asset (for the add/buy forms). Null = not found. */
+export async function lookupStock(symbol: string, market: PriceMarket = "IDX"): Promise<MarketPrice | null> {
+  const s = market === "GOLD" ? "EMAS" : symbol.trim().toUpperCase();
+  const re = market === "IDX" ? /^[A-Z0-9]{2,6}$/ : market === "US" ? /^[A-Z0-9.-]{1,10}$/ : /^[A-Z0-9]{2,10}$/;
+  if (!re.test(s)) return null;
+  const data = await fetchMarket(
+    market === "IDX" ? { stocks: [s] } : market === "US" ? { us: [s], fx: ["USD"] } : market === "CRYPTO" ? { crypto: [s] } : { gold: true },
+  );
+  const found = market === "IDX" ? data.stocks[s] : market === "US" ? data.us?.[s] : market === "CRYPTO" ? data.crypto?.[s] : data.gold;
+  if (!found) return null;
+  await store(data);
+  return stockPrice(s, market);
 }
 
 /** Keeps prices fresh while the app is open (on start, every 10 min, on focus). */

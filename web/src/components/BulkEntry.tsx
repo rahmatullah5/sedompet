@@ -68,7 +68,7 @@ export function BulkBody({ onClose, modeSwitch }: { onClose: () => void; modeSwi
     const c = parents.get(id);
     if (!c) return "";
     const p = c.parent_id ? parents.get(c.parent_id) : null;
-    return p ? `${p.icon} ${p.name} › ${c.name}` : `${c.icon} ${c.name}`;
+    return p ? `${p.name} › ${c.name}` : c.name;
   };
   const defaultAccount = (accounts.find((a) => a.id === getMainAccount(me.id)) ?? accounts.find((a) => (a.holder_member_id ?? a.owner_member_id) === me.id) ?? accounts[0])?.id ?? "";
   // From earlier entries: the whole note first, then its words (longest first).
@@ -129,7 +129,7 @@ export function BulkBody({ onClose, modeSwitch }: { onClose: () => void; modeSwi
             kind: r.kind, amount, account_id: r.accountId, category_id: r.categoryId || null, date: r.date, note: r.note, paid_by: r.paidBy,
           })),
         ),
-      `${parsed.length} catatan tersimpan 🎉`,
+      `${parsed.length} catatan tersimpan`,
     );
     if (ok) onClose();
   }
@@ -164,7 +164,7 @@ export function BulkBody({ onClose, modeSwitch }: { onClose: () => void; modeSwi
         </div>
       ) : (
         <button type="button" className="text-sm font-semibold text-brand-700" onClick={() => setPasteOpen(true)}>
-          📋 Tempel dari catatan / WhatsApp
+          Tempel dari catatan / WhatsApp
         </button>
       )}
 
@@ -223,15 +223,15 @@ export function BulkBody({ onClose, modeSwitch }: { onClose: () => void; modeSwi
               <Select aria-label={`Akun baris ${i + 1}`} value={r.accountId} onChange={(e) => update(r.key, { accountId: e.target.value })} className="!px-2 !py-1.5 text-xs">
                 {accounts.map((a) => (
                   <option key={a.id} value={a.id}>
-                    {a.visibility === "private" ? "🔒 " : ""}
                     {a.name}
+                    {a.visibility === "private" ? " (pribadi)" : ""}
                   </option>
                 ))}
               </Select>
               <Select aria-label={`Dibayar baris ${i + 1}`} value={r.paidBy} onChange={(e) => update(r.key, { paidBy: e.target.value })} className="!px-2 !py-1.5 text-xs">
                 {members.map((x) => (
                   <option key={x.id} value={x.id}>
-                    {x.emoji} {x.name}
+                    {x.name}
                   </option>
                 ))}
               </Select>

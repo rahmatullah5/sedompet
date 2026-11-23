@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { formatMoney } from "../lib/currency";
+import { LineIcon } from "./LineIcon";
+import { Icon } from "./Icon";
 
 /** Save/cancel row that stays pinned to the bottom of a scrolling sheet. */
 export const STICKY_ACTIONS =
@@ -75,9 +77,11 @@ export function Avatar({ emoji, colour, size = 32, title }: { emoji: string; col
     <span
       title={title}
       className="inline-flex shrink-0 items-center justify-center rounded-full"
-      style={{ width: size, height: size, background: `${colour}26`, boxShadow: `0 0 0 2px #fff, 0 0 0 ${size >= 40 ? 4 : 3}px ${colour}`, fontSize: size * 0.58 }}
+      style={{ width: size, height: size, background: `${colour}26`, boxShadow: `0 0 0 2px #fff, 0 0 0 ${size >= 40 ? 4 : 3}px ${colour}`, color: colour }}
+      data-emoji={emoji}
     >
-      {emoji}
+      {/* Members keep their stored emoji; it's drawn as a plain person outline in their colour. */}
+      <LineIcon name="user" size={Math.round(size * 0.6)} />
     </span>
   );
 }
@@ -111,7 +115,7 @@ export function Progress({ value, max, colour }: { value: number; max: number; c
 export function Empty({ icon, title, children }: { icon: string; title: string; children?: ReactNode }) {
   return (
     <div className="flex flex-col items-center gap-2 py-8 text-center">
-      <span className="text-5xl">{icon}</span>
+      {icon && <Icon value={icon} size={44} className="text-slate-400" />}
       <p className="font-bold">{title}</p>
       {children && <div className="text-sm text-slate-500">{children}</div>}
     </div>

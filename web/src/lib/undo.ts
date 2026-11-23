@@ -18,7 +18,7 @@ export async function deleteWithUndo(action: () => Promise<string | void>, text:
       label: "Urungkan",
       run: async () => {
         await trash.restore(trashId, { id: actor.id, dompet_id: actor.dompet_id, canManage: can.manage(actor.role) });
-        toast("Dipulihkan ↩️");
+        toast("Dipulihkan");
       },
     });
     return true;

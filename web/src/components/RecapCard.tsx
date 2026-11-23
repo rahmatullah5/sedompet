@@ -3,6 +3,7 @@ import { recapText, weeklyRecap } from "../db/recap";
 import { formatCompact, formatIDR } from "../lib/format";
 import { MASK, useCurrent, useHideBalance } from "../lib/hooks";
 import { Card, cx, toast } from "./ui";
+import { Icon } from "./Icon";
 
 /** "Rekap minggu ini / lalu" on Beranda, with sharing to WhatsApp. */
 export function RecapCard({ budgetLine }: { budgetLine?: string }) {
@@ -29,7 +30,7 @@ export function RecapCard({ budgetLine }: { budgetLine?: string }) {
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(text);
-      toast("Rekap disalin. Tempel di grup WhatsApp 📋");
+      toast("Rekap disalin. Tempel di grup WhatsApp");
     } catch {
       toast("Tidak bisa menyalin di browser ini", "error");
     }
@@ -38,7 +39,7 @@ export function RecapCard({ budgetLine }: { budgetLine?: string }) {
   return (
     <Card
       className="pop-in"
-      title="Rekap mingguan 📊"
+      title="Rekap mingguan"
       action={
         <div className="grid grid-cols-2 gap-0.5 rounded-full bg-slate-100 p-0.5 text-[11px] font-bold">
           {(
@@ -62,7 +63,7 @@ export function RecapCard({ budgetLine }: { budgetLine?: string }) {
         <span className="num text-2xl font-extrabold text-slate-800">{hidden ? MASK : formatIDR(r.spent)}</span>
         {r.change !== null && (
           <span className={cx("pb-1 text-sm font-semibold", r.change > 0 ? "text-red-600" : "text-mint-600")}>
-            {r.change > 0 ? "▲" : r.change < 0 ? "▼" : "="} {Math.abs(r.change)}% vs minggu sebelumnya
+            {r.change > 0 ? "+" : r.change < 0 ? "−" : "="}{Math.abs(r.change)}% vs minggu sebelumnya
           </span>
         )}
       </div>
@@ -73,8 +74,8 @@ export function RecapCard({ budgetLine }: { budgetLine?: string }) {
           {r.categories.map((c) => (
             <li key={c.name} className="text-sm">
               <div className="flex justify-between">
-                <span className="text-slate-700">
-                  {c.icon} {c.name}
+                <span className="flex items-center gap-1.5 text-slate-700">
+                  <Icon value={c.icon} size={14} /> {c.name}
                 </span>
                 <span className="num font-semibold text-slate-800">{c$(c.total)}</span>
               </div>
@@ -89,13 +90,13 @@ export function RecapCard({ budgetLine }: { budgetLine?: string }) {
       )}
       {r.biggest && r.biggest.total > 0 && (
         <p className="mt-2 text-xs text-slate-500">
-          🔝 Terbesar: <b className="text-slate-700">{r.biggest.note || r.biggest.category || "Tanpa catatan"}</b> · {c$(r.biggest.total)}
+          Terbesar: <b className="text-slate-700">{r.biggest.note || r.biggest.category || "Tanpa catatan"}</b> · {c$(r.biggest.total)}
         </p>
       )}
 
       <div className="mt-4 flex flex-wrap gap-2">
         <button type="button" onClick={share} className="flex items-center gap-1.5 rounded-full bg-[#128C7E] px-4 py-2 text-sm font-bold text-white hover:bg-[#0f7a6e]">
-          💬 Bagikan ke WhatsApp
+          Bagikan ke WhatsApp
         </button>
         <button type="button" onClick={copy} className="rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200">
           Salin teks

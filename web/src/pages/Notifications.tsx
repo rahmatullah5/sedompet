@@ -1,16 +1,17 @@
 import { useEffect, useState } from "react";
 import { getMode } from "../cloud/client";
 import { cloud, type PushPrefs } from "../cloud/sync";
-import { Button, Card, cx, Empty, toast } from "../components/ui";
+import { Button, Card, cx, toast } from "../components/ui";
+import { LineIcon, type LineIconName } from "../components/LineIcon";
 
 const DEFAULT_PREFS: PushPrefs = { entries: true, bills: true, budget: true, weekly: true, plan: true };
 
-const ITEMS: { key: keyof PushPrefs; icon: string; title: string; hint: string }[] = [
-  { key: "entries", icon: "✍️", title: "Catatan anggota lain", hint: "“Ibu mencatat pengeluaran · Pasar · Rp 85.000”" },
-  { key: "bills", icon: "🔁", title: "Tagihan & utang jatuh tempo", hint: "Sehari sebelum dan di hari jatuh tempo, jam 7 pagi" },
-  { key: "budget", icon: "🐷", title: "Anggaran total bulanan", hint: "Saat terpakai 80% dan saat terlewati" },
-  { key: "weekly", icon: "📊", title: "Rekap mingguan", hint: "Senin pagi: belanja minggu lalu" },
-  { key: "plan", icon: "⏳", title: "Masa langganan", hint: "7 hari, 1 hari sebelum, dan saat berakhir" },
+const ITEMS: { key: keyof PushPrefs; icon: LineIconName; title: string; hint: string }[] = [
+  { key: "entries", icon: "adjust", title: "Catatan anggota lain", hint: "“Ibu mencatat pengeluaran · Pasar · Rp 85.000”" },
+  { key: "bills", icon: "repeat", title: "Tagihan & utang jatuh tempo", hint: "Sehari sebelum dan di hari jatuh tempo, jam 7 pagi" },
+  { key: "budget", icon: "piggy", title: "Anggaran total bulanan", hint: "Saat terpakai 80% dan saat terlewati" },
+  { key: "weekly", icon: "bars", title: "Rekap mingguan", hint: "Senin pagi: belanja minggu lalu" },
+  { key: "plan", icon: "clock", title: "Masa langganan", hint: "7 hari, 1 hari sebelum, dan saat berakhir" },
 ];
 
 function urlBase64ToUint8Array(base64: string) {
@@ -65,7 +66,7 @@ export function Notifications() {
         (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(serverKey) }));
       await cloud.pushSubscribe(sub.toJSON(), prefs);
       setEndpoint(sub.endpoint);
-      toast("Notifikasi aktif di perangkat ini 🔔");
+      toast("Notifikasi aktif di perangkat ini");
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), "error");
     } finally {
@@ -104,7 +105,7 @@ export function Notifications() {
 
   let blocker: string | null = null;
   if (!cloudMode) blocker = "Notifikasi hanya untuk akun online. Demo berjalan di browser saja, jadi tidak bisa menerima pesan.";
-  else if (isIos() && !standalone()) blocker = "Di iPhone/iPad, pasang Sedompet dulu: di Safari ketuk Bagikan ⬆️ → “Tambah ke Layar Utama”, lalu buka dari ikonnya.";
+  else if (isIos() && !standalone()) blocker = "Di iPhone/iPad, pasang Sedompet dulu: di Safari ketuk Bagikan → “Tambah ke Layar Utama”, lalu buka dari ikonnya.";
   else if (!supported()) blocker = "Browser ini belum mendukung notifikasi web. Coba Chrome, Edge, Firefox, atau Safari terbaru.";
   else if (ready && serverKey === null) blocker = "Server belum siap untuk notifikasi. Admin perlu menyelesaikan pengaturan push (lihat SETUP-PUSH.md).";
 
@@ -114,15 +115,19 @@ export function Notifications() {
         <a href="#/menu" className="text-sm font-semibold text-brand-700">
           ← Menu
         </a>
-        <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-slate-800">Notifikasi 🔔</h1>
+        <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-slate-800">Notifikasi</h1>
         <p className="text-sm text-slate-500">Pengingat di HP, walau Sedompet sedang tidak dibuka.</p>
       </div>
 
       <Card>
         {blocker ? (
-          <Empty icon="🔕" title="Belum bisa di sini">
-            {blocker}
-          </Empty>
+          <div className="flex flex-col items-center gap-2 py-8 text-center">
+            <span className="text-slate-500">
+              <LineIcon name="bell" size={40} />
+            </span>
+            <p className="font-bold">Belum bisa di sini</p>
+            <div className="text-sm text-slate-500">{blocker}</div>
+          </div>
         ) : !ready ? (
           <p className="py-4 text-center text-sm text-slate-400">Memeriksa…</p>
         ) : (
@@ -149,7 +154,9 @@ export function Notifications() {
           {ITEMS.map((it) => (
             <li key={it.key}>
               <label className={cx("flex cursor-pointer items-center gap-3 py-3", !!blocker && "opacity-50")}>
-                <span className="text-2xl">{it.icon}</span>
+                <span className="shrink-0 text-slate-500">
+                  <LineIcon name={it.icon} size={22} />
+                </span>
                 <span className="min-w-0 flex-1">
                   <span className="block font-semibold text-slate-800">{it.title}</span>
                   <span className="block text-xs text-slate-500">{it.hint}</span>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { cloud, cloudStore } from "./sync";
-import { displayPhone, getPendingInvite, inviteLink, normalizePhone, setMode, setPendingInvite } from "./client";
+import { displayPhone, getPendingInvite, getRememberedPhone, getRememberMe, inviteLink, normalizePhone, setMode, setPendingInvite, setRememberMe } from "./client";
+import { LineIcon, type LineIconName } from "../components/LineIcon";
 import { ROLE_HINT, ROLE_LABEL, type Role } from "../lib/permissions";
 import { useCurrent } from "../lib/hooks";
 import { WA_ACTIVATE } from "../lib/contact";
@@ -28,7 +29,7 @@ function Hero({ subtitle }: { subtitle: string }) {
 export function CloudLoading() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-3 text-slate-500">
-      <span className="animate-bounce text-5xl">👛</span>
+      <LineIcon name="wallet" size={44} className="animate-pulse text-brand-600" />
       <p className="text-sm font-semibold">Menyiapkan dompet keluarga…</p>
     </div>
   );
@@ -40,7 +41,8 @@ export function CloudSignIn() {
   const [tab, setTab] = useState<"masuk" | "daftar">(invited ? "daftar" : "masuk");
   const [code, setCode] = useState(invited?.code ?? "");
   const [nick, setNick] = useState(invited?.name ?? "");
-  const [phone, setPhone] = useState("");
+  const [phone, setPhone] = useState(getRememberedPhone);
+  const [remember, setRemember] = useState(getRememberMe);
   const [pin, setPin] = useState("");
   const [pin2, setPin2] = useState("");
   const [busy, setBusy] = useState(false);
@@ -86,9 +88,11 @@ export function CloudSignIn() {
             const validCode = cleaned.length === 6 || cleaned.length === 8 ? cleaned : undefined;
             // Sign-up redeems the code on the server; existing users join after login.
             setPendingInvite(tab === "masuk" && validCode?.length === 6 ? { code: validCode, name: nick.trim() || undefined } : null);
+            // Must be set before signing in: it decides where the session is stored.
+            setRememberMe(remember, phone.trim());
             await attempt(
               () => (tab === "masuk" ? cloud.signInPhone(phone, pin) : cloud.signUpPhone(phone, pin, validCode, nick.trim())),
-              tab === "masuk" ? "Berhasil masuk 🎉" : "Akun dibuat 🎉",
+              tab === "masuk" ? "Berhasil masuk" : "Akun dibuat",
             );
             setBusy(false);
           }}
@@ -117,7 +121,7 @@ export function CloudSignIn() {
           {tab === "masuk" && code.replace(/[^A-Za-z0-9]/g, "").length === 6 && (
             <p className="flex items-start justify-between gap-2 rounded-2xl bg-brand-50 px-3 py-2 text-sm text-brand-800">
               <span>
-                💌 Ada undangan (<b className="tracking-wider">{code.toUpperCase()}</b>). Setelah masuk, kamu langsung bergabung.
+                Ada undangan (<b className="tracking-wider">{code.toUpperCase()}</b>). Setelah masuk, kamu langsung bergabung.
               </span>
               <button
                 type="button"
@@ -132,6 +136,15 @@ export function CloudSignIn() {
             </p>
           )}
           {tab === "daftar" && pin2.length === 6 && pin !== pin2 && <p className="text-sm text-red-600">PIN tidak sama.</p>}
+          <label className="flex items-start gap-2 text-sm text-slate-700">
+            <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[var(--color-brand-600)]" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+            <span>
+              Ingat saya di perangkat ini
+              <span className="block text-xs text-slate-500">
+                {remember ? "Tetap masuk dan nomor HP diisi otomatis. PIN tidak disimpan." : "Keluar otomatis saat browser/aplikasi ditutup. Cocok untuk HP orang lain."}
+              </span>
+            </span>
+          </label>
           <Button type="submit" className="w-full" disabled={busy || !normalizePhone(phone) || !pinOk}>
             {busy ? "Sebentar…" : tab === "masuk" ? "Masuk" : "Daftar"}
           </Button>
@@ -159,13 +172,13 @@ export function CloudNotActivated() {
   const { email, error } = cloudStore.get();
   return (
     <div className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-4 px-5 text-center">
-      <p className="text-6xl">⏳</p>
+      <LineIcon name="clock" size={52} className="text-slate-400" />
       <h1 className="text-2xl font-extrabold text-slate-800">Nomor belum aktif</h1>
       <p className="text-slate-500">
         {displayPhone(email)} belum diaktifkan. {error ?? ""} Minta admin Sedompet mengaktifkan nomormu, lalu coba lagi.
       </p>
       <a href={WA_ACTIVATE(displayPhone(email))} target="_blank" rel="noopener" className="inline-flex items-center justify-center gap-1.5 rounded-full bg-[#25D366] px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#1ebe5a]">
-        💬 Minta aktivasi via WhatsApp
+        Minta aktivasi via WhatsApp
       </a>
       <div className="flex gap-2">
         <Button onClick={() => location.reload()}>Coba lagi</Button>
@@ -181,14 +194,16 @@ export function CloudNotActivated() {
 export function CloudOnboard() {
   const { email } = cloudStore.get();
   const [choice, setChoice] = useState<"create" | "join" | null>(null);
-  const option = (key: "create" | "join", icon: string, title: string, text: string, primary: boolean) => (
+  const option = (key: "create" | "join", icon: LineIconName, title: string, text: string, primary: boolean) => (
     <button
       onClick={() => setChoice(key)}
       className={`pop-in group flex w-full items-center gap-4 rounded-3xl p-5 text-left transition hover:-translate-y-0.5 ${
-        primary ? "bg-gradient-to-br from-brand-500 to-brand-700 text-white shadow-[0_18px_40px_-18px_rgba(212,80,46,0.7)]" : "bg-white shadow-[0_8px_24px_-14px_rgba(120,72,40,0.3)]"
+        primary ? "bg-brand-600 text-white" : "bg-white shadow-[0_8px_24px_-14px_rgba(120,72,40,0.3)]"
       }`}
     >
-      <span className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl text-3xl ${primary ? "bg-white/20" : "bg-brand-50"}`}>{icon}</span>
+      <span className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl ${primary ? "bg-white/20" : "bg-brand-50 text-brand-700"}`}>
+        <LineIcon name={icon} size={28} />
+      </span>
       <span className="min-w-0 flex-1">
         <span className={`block text-lg font-bold ${primary ? "" : "text-slate-800"}`}>{title}</span>
         <span className={`block text-sm ${primary ? "text-brand-100" : "text-slate-500"}`}>{text}</span>
@@ -200,7 +215,6 @@ export function CloudOnboard() {
   return (
     <div className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-5 px-5 py-10">
       <div className="text-center">
-        <p className="text-5xl">👋</p>
         <h1 className="mt-3 text-3xl font-extrabold tracking-tight text-slate-800">Selamat datang!</h1>
         <p className="mt-1 text-sm text-slate-500">Masuk sebagai {displayPhone(email)}</p>
       </div>
@@ -208,8 +222,8 @@ export function CloudOnboard() {
       {choice === null && (
         <>
           <p className="text-center font-semibold text-slate-700">Mau mulai dari mana?</p>
-          {option("create", "🏠", "Buat Dompet baru", "Kamu yang memulai. Nanti bisa undang keluarga.", true)}
-          {option("join", "💌", "Gabung Dompet keluarga", "Sudah diajak? Punya kode undangan 6 huruf dari keluarga.", false)}
+          {option("create", "home", "Buat Dompet baru", "Kamu yang memulai. Nanti bisa undang keluarga.", true)}
+          {option("join", "people", "Gabung Dompet keluarga", "Sudah diajak? Punya kode undangan 6 huruf dari keluarga.", false)}
         </>
       )}
 
@@ -218,7 +232,7 @@ export function CloudOnboard() {
           <button onClick={() => setChoice(null)} className="mb-3 text-sm font-semibold text-brand-700">
             ← Kembali
           </button>
-          <p className="mb-1 text-lg font-bold text-slate-800">{choice === "create" ? "🏠 Buat Dompet baru" : "💌 Gabung Dompet keluarga"}</p>
+          <p className="mb-1 text-lg font-bold text-slate-800">{choice === "create" ? "Buat Dompet baru" : "Gabung Dompet keluarga"}</p>
           <p className="mb-4 text-sm text-slate-500">
             {choice === "create"
               ? "Beri nama dompetnya. Kamu jadi pemilik dan bisa mengundang keluarga setelah ini."
@@ -245,7 +259,7 @@ export function CreateForm({ onDone }: { onDone?: () => void }) {
       onSubmit={async (e) => {
         e.preventDefault();
         setBusy(true);
-        if (await attempt(() => cloud.createDompet(name, you), "Dompet dibuat 🎉")) onDone?.();
+        if (await attempt(() => cloud.createDompet(name, you), "Dompet dibuat")) onDone?.();
         setBusy(false);
       }}
     >
@@ -272,7 +286,7 @@ export function JoinForm({ onDone }: { onDone?: () => void }) {
       onSubmit={async (e) => {
         e.preventDefault();
         setBusy(true);
-        if (await attempt(() => cloud.joinWithCode(code, you), "Berhasil bergabung 🎉")) onDone?.();
+        if (await attempt(() => cloud.joinWithCode(code, you), "Berhasil bergabung")) onDone?.();
         setBusy(false);
       }}
     >
@@ -306,7 +320,7 @@ export function InviteCard() {
       if (navigator.share) await navigator.share({ text });
       else {
         await navigator.clipboard.writeText(text);
-        toast("Undangan disalin. Tempel di WhatsApp keluarga 📋");
+        toast("Undangan disalin. Tempel di WhatsApp keluarga.");
       }
     } catch {
       /* user cancelled */
@@ -314,7 +328,7 @@ export function InviteCard() {
   };
 
   return (
-    <Card title="Undang keluarga 💌">
+    <Card title="Undang keluarga">
       <p className="mb-3 text-sm text-slate-500">Buat kode, kirim lewat WhatsApp. Kode berlaku 7 hari untuk sampai 10 orang.</p>
       <div className="flex flex-wrap gap-2">
         {roles.map((r) => (
@@ -373,7 +387,7 @@ export function AccountSheet({ onClose }: { onClose: () => void }) {
         </div>
       </div>
       <p className={`rounded-2xl px-4 py-2.5 text-sm ${error ? "bg-red-50 text-red-700" : "bg-mint-100 text-slate-700"}`}>
-        {error ? `⚠️ ${error}` : syncing ? "🔄 Menyinkronkan…" : "✅ Tersinkron dengan keluarga"}
+        {error ? error : syncing ? "Menyinkronkan…" : "Tersinkron dengan keluarga"}
       </p>
       <div className="flex flex-wrap gap-2">
         <Button variant="secondary" onClick={() => (onClose(), (location.hash = "/keluarga"))}>

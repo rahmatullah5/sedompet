@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { LineIcon } from "./LineIcon";
 
 // Landing-page "recent purchase" popup. Every entry is randomly generated and
 // is always shown with a visible "Simulasi" label, so visitors are never told
@@ -74,7 +75,9 @@ export function SimulatedPurchases() {
       }`}
     >
       <div className="flex items-start gap-3 rounded-3xl bg-white p-3.5 pr-2 shadow-[0_18px_40px_-14px_rgba(120,72,40,0.45)] ring-1 ring-slate-100">
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-brand-50 text-2xl">🛒</span>
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-brand-50 text-brand-700">
+          <LineIcon name="cart" size={22} />
+        </span>
         <div className="min-w-0 flex-1 text-sm">
           <p className="text-slate-700">
             <b className="text-slate-800">

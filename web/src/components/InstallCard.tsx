@@ -42,7 +42,7 @@ export function InstallCard() {
       <div className="min-w-0 flex-1">
         <p className="font-bold text-slate-800">Pasang Sedompet di HP</p>
         <p className="text-xs text-slate-500">
-          {iosHelp ? "Di Safari: ketuk tombol Bagikan ⬆️, lalu pilih “Tambah ke Layar Utama”." : "Buka seperti aplikasi, tetap bisa dibuka tanpa sinyal."}
+          {iosHelp ? "Di Safari: ketuk tombol Bagikan, lalu pilih “Tambah ke Layar Utama”." : "Buka seperti aplikasi, tetap bisa dibuka tanpa sinyal."}
         </p>
       </div>
       {!iosHelp && (

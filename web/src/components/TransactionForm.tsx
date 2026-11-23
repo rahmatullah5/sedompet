@@ -240,7 +240,7 @@ function FormBody({
         />
         {onBulk && (
           <button type="button" onClick={onBulk} className="-mt-1 text-xs font-semibold text-brand-700">
-            📋 Catat banyak sekaligus
+            Catat banyak sekaligus
           </button>
         )}
 
@@ -296,7 +296,7 @@ function FormBody({
             className="text-sm font-semibold text-brand-700"
             onClick={() => setLines(multi ? null : [newLine(categoryId, amountText), newLine()])}
           >
-            {multi ? "← Satu kategori saja" : "➗ Pecah ke beberapa kategori"}
+            {multi ? "← Satu kategori saja" : "Pecah ke beberapa kategori"}
           </button>
         )}
 
@@ -305,7 +305,7 @@ function FormBody({
           <DatePicker label="Tanggal" value={date} onChange={setDate} />
           {date > todayISO() && (
             <p className="-mt-1 text-xs text-sky-700">
-              🗓️ Bertanggal nanti: sudah masuk catatan & anggaran bulan itu, tapi saldo akun baru berubah saat tanggalnya tiba.
+              Bertanggal nanti: sudah masuk catatan & anggaran bulan itu, tapi saldo akun baru berubah saat tanggalnya tiba.
             </p>
           )}
         </div>
@@ -334,7 +334,7 @@ function FormBody({
             ))}
           </div>
           {selectedAccount?.visibility === "private" && (
-            <p className="mt-1.5 text-xs text-violet-600 dark:text-violet-300">🔒 Akun pribadi: transaksi ini hanya terlihat olehmu.</p>
+            <p className="mt-1.5 text-xs text-violet-600 dark:text-violet-300">Akun pribadi: transaksi ini hanya terlihat olehmu.</p>
           )}
         </div>
 

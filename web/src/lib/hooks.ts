@@ -38,8 +38,18 @@ function readHidden() {
   }
 }
 let hidden = readHidden();
-function setHidden(v: boolean) {
+/** Cloud mode saves the choice to the account too (see sync.ts), so it follows the user. */
+let onHiddenChange: ((v: boolean) => void) | null = null;
+export function setHiddenSaver(fn: ((v: boolean) => void) | null) {
+  onHiddenChange = fn;
+}
+/** Applies the choice stored on the account (no save back). */
+export function applyHiddenFromAccount(v: boolean) {
+  if (v !== hidden) setHidden(v, false);
+}
+function setHidden(v: boolean, save = true) {
   hidden = v;
+  if (save) onHiddenChange?.(v);
   try {
     localStorage.setItem(HIDE_KEY, v ? "1" : "0");
   } catch {

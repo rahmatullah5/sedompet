@@ -39,7 +39,7 @@ export function GoalRow({ g, compact }: { g: Goal; compact?: boolean }) {
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-1.5">
             <span className="truncate font-semibold text-slate-800">{g.name}</span>
-            {s.done && <Badge tone="brand">Tercapai 🎉</Badge>}
+            {s.done && <Badge tone="brand">Tercapai</Badge>}
             {s.late && <Badge tone="amber">Lewat target</Badge>}
           </span>
           <span className="block text-xs text-slate-500">
@@ -56,7 +56,7 @@ export function GoalRow({ g, compact }: { g: Goal; compact?: boolean }) {
           {s.perMonth
             ? `Sisihkan ≈ ${formatIDR(s.perMonth)}/bulan selama ${s.months} bulan lagi.`
             : `Kurang ${formatIDR(s.left)}.`}
-          {g.account_id && ` Mengikuti saldo ${g.account_visibility === "private" ? "🔒 " : ""}${g.account_name}.`}
+          {g.account_id && ` Mengikuti saldo ${g.account_name}${g.account_visibility === "private" ? " (pribadi)" : ""}.`}
         </p>
       )}
     </div>
@@ -78,7 +78,7 @@ export function Goals() {
     <div className="space-y-4">
       <div>
         <a href="#/menu" className="text-sm font-semibold text-brand-700">← Menu</a>
-        <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-slate-800">Tabungan tujuan 🎯</h1>
+        <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-slate-800">Tabungan tujuan</h1>
         <p className="text-sm text-slate-500">Umroh, sekolah, laptop, dana darurat: kumpulkan bersama, pantau bersama.</p>
       </div>
       {goals.length > 0 && (
@@ -94,7 +94,7 @@ export function Goals() {
       )}
       <Card title={`Tujuan (${goals.length})`} action={manage && <Button onClick={() => setEditing("new")}>+ Tujuan</Button>}>
         {goals.length === 0 ? (
-          <Empty icon="🎯" title="Belum ada tujuan">
+          <Empty icon="" title="Belum ada tujuan">
             {manage ? "Buat tujuan pertama, mis. Umroh atau Dana darurat." : "Minta pemilik/admin membuat tujuan keluarga."}
           </Empty>
         ) : (
@@ -150,7 +150,7 @@ function GoalForm({ goal, onClose }: { goal: Goal | null; onClose: () => void })
         e.preventDefault();
         const ok = await attempt(
           () => m.saveGoal(me.id, { id: goal?.id, name, icon, target, target_date: date || null, account_id: accountId || null, saved: accountId ? (goal?.saved ?? 0) : saved }),
-          goal ? "Tujuan diperbarui" : "Tujuan dibuat 🎯",
+          goal ? "Tujuan diperbarui" : "Tujuan dibuat",
         );
         if (ok) onClose();
       }}
@@ -168,11 +168,11 @@ function GoalForm({ goal, onClose }: { goal: Goal | null; onClose: () => void })
       <DatePicker label="Target tercapai (opsional)" value={date} min={todayISO()} onChange={setDate} optional presets="goal" placeholder="Tanpa tenggat" />
       <Field label="Uangnya dikumpulkan di" hint={accountId ? "Progres mengikuti saldo akun ini (dalam Rupiah)." : "Catat sendiri tiap kali menabung lewat tombol Setor."}>
         <Select value={accountId} onChange={(e) => setAccountId(e.target.value)}>
-          <option value="">✍️ Catat manual</option>
+          <option value="">Catat manual</option>
           {accounts.map((a) => (
             <option key={a.id} value={a.id}>
-              {a.visibility === "private" ? "🔒 " : ""}
-              {a.name} · {formatCompact(a.balance_base)}
+              {a.name}
+              {a.visibility === "private" ? " (pribadi)" : ""} · {formatCompact(a.balance_base)}
             </option>
           ))}
         </Select>
@@ -223,7 +223,7 @@ function DepositForm({ goal, onClose }: { goal: Goal; onClose: () => void }) {
       className="space-y-3"
       onSubmit={async (e) => {
         e.preventDefault();
-        if (await attempt(() => m.adjustGoal(me.id, goal.id, dir === "in" ? amount : -amount), dir === "in" ? "Tersimpan! 💪" : "Dicatat")) onClose();
+        if (await attempt(() => m.adjustGoal(me.id, goal.id, dir === "in" ? amount : -amount), dir === "in" ? "Tersimpan!" : "Dicatat")) onClose();
       }}
     >
       <p className="text-sm text-slate-500">

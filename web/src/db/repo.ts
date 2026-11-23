@@ -80,16 +80,19 @@ export interface Account {
   scheduled: number;
 }
 
+export type Market = "IDX" | "US" | "CRYPTO" | "GOLD";
+
 export interface Holding {
   id: string;
   dompet_id: string;
   account_id: string;
+  market: Market;
   symbol: string;
   name: string | null;
   shares: number;
-  /** Rupiah per share. */
+  /** Per unit, in the market's currency (USD for US, else rupiah). */
   avg_price: number;
-  /** Live price per share; null = not fetched yet. */
+  /** Live price per unit (same currency); null = not fetched yet. */
   price: number | null;
   change_pct: number | null;
   price_at: string | null;
@@ -97,6 +100,15 @@ export interface Holding {
 
 /** 1 lot on IDX = 100 shares. */
 export const LOT = 100;
+
+/** What the units of a market are called, and its price currency. */
+export const MARKETS: Record<Market, { label: string; unit: string; currency: "IDR" | "USD"; decimals: number }> = {
+  IDX: { label: "Saham BEI", unit: "lot", currency: "IDR", decimals: 0 },
+  US: { label: "Saham & ETF AS", unit: "lembar", currency: "USD", decimals: 4 },
+  CRYPTO: { label: "Kripto", unit: "koin", currency: "IDR", decimals: 8 },
+  GOLD: { label: "Emas", unit: "gram", currency: "IDR", decimals: 3 },
+};
+const holdingsValueOrder = `h.shares * COALESCE(mp.price, h.avg_price) * (CASE WHEN h.market = 'US' THEN COALESCE((SELECT x.price FROM market_prices x WHERE x.symbol = 'FX:USD'), 1) ELSE 1 END) DESC`;
 
 export type Kind = "expense" | "income";
 
@@ -351,11 +363,11 @@ export const q = {
   /** Stocks held in the accounts you can see. */
   holdings: (dompetId: string, me: string, accountId?: string) =>
     all<Holding>(
-      `SELECT h.*, mp.price AS price, mp.change_pct AS change_pct, mp.fetched_at AS price_at, COALESCE(h.name, mp.name) AS name
+      `SELECT h.*, COALESCE(h.market, 'IDX') AS market, mp.price AS price, mp.change_pct AS change_pct, mp.fetched_at AS price_at, COALESCE(h.name, mp.name) AS name
        FROM holdings h JOIN accounts a ON a.id = h.account_id
-       LEFT JOIN market_prices mp ON mp.symbol = 'IDX:' || h.symbol
+       LEFT JOIN market_prices mp ON mp.symbol = COALESCE(h.market, 'IDX') || ':' || h.symbol
        WHERE h.dompet_id = $d AND ${VISIBLE_ACCOUNT} AND ($acc IS NULL OR h.account_id = $acc)
-       ORDER BY h.shares * COALESCE(mp.price, h.avg_price) DESC`,
+       ORDER BY ${holdingsValueOrder}`,
       { $d: dompetId, $me: me, $acc: accountId ?? null },
     ),
 
@@ -877,10 +889,19 @@ function editableAccount(actor: Member, accountId: string): AccountRow {
   return acc;
 }
 
-function cleanSymbol(symbol: string) {
+function cleanSymbol(symbol: string, market: Market = "IDX") {
+  if (market === "GOLD") return "EMAS";
   const s = symbol.trim().toUpperCase().replace(/\.JK$/, "");
-  if (!/^[A-Z0-9]{2,6}$/.test(s)) throw new Error("Kode saham tidak valid (mis. BBCA).");
+  const ok = market === "IDX" ? /^[A-Z0-9]{2,6}$/ : market === "US" ? /^[A-Z0-9.-]{1,10}$/ : /^[A-Z0-9]{2,10}$/;
+  if (!ok.test(s)) throw new Error(market === "IDX" ? "Kode saham tidak valid (mis. BBCA)." : market === "US" ? "Kode tidak valid (mis. AAPL, VOO)." : "Kode koin tidak valid (mis. BTC).");
   return s;
+}
+
+/** "2 lot", "0,0125 koin", "2,5 gram", "1,5 lembar". */
+export function unitsText(market: Market, shares: number) {
+  const m = MARKETS[market];
+  const n = market === "IDX" ? shares / LOT : shares;
+  return `${n.toLocaleString("id-ID", { maximumFractionDigits: m.decimals })} ${m.unit}`;
 }
 
 function requireText(value: string, label: string, max = 40) {
@@ -1211,15 +1232,15 @@ export const m = {
    * Sets a holding directly (for stocks already owned): lots and average
    * price. No cash moves. `lots` 0 removes it.
    */
-  setHolding(actorId: string, data: { accountId: string; symbol: string; name?: string | null; shares: number; avgPrice: number }) {
+  setHolding(actorId: string, data: { accountId: string; market?: Market; symbol: string; name?: string | null; shares: number; avgPrice: number }) {
     const actor = actorOf(actorId);
     if (!can.addTransaction(actor.role)) throw new PermissionError();
     const acc = visibleAccount(actor, data.accountId);
-    if (!isBase(acc.currency)) throw new Error("Saham IDX hanya bisa di akun Rupiah.");
-    const symbol = cleanSymbol(data.symbol);
-    if (!Number.isInteger(data.shares) || data.shares < 0) throw new Error("Jumlah lot tidak valid.");
+    const market = data.market ?? "IDX";
+    const symbol = cleanSymbol(data.symbol, market);
+    if (!Number.isFinite(data.shares) || data.shares < 0 || (market === "IDX" && !Number.isInteger(data.shares))) throw new Error("Jumlah tidak valid.");
     if (!Number.isFinite(data.avgPrice) || data.avgPrice < 0) throw new Error("Harga rata-rata tidak valid.");
-    const existing = get<{ id: string }>("SELECT id FROM holdings WHERE account_id = ? AND symbol = ?", [acc.id, symbol]);
+    const existing = get<{ id: string }>("SELECT id FROM holdings WHERE account_id = ? AND market = ? AND symbol = ?", [acc.id, market, symbol]);
     return write((run) => {
       if (data.shares === 0) {
         if (existing) run("DELETE FROM holdings WHERE id = ?", [existing.id]);
@@ -1228,11 +1249,12 @@ export const m = {
           data.shares, data.avgPrice, data.name ?? null, existing.id,
         ]);
       } else {
-        run("INSERT INTO holdings (id, dompet_id, account_id, symbol, name, shares, avg_price, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", [
-          uid(), actor.dompet_id, acc.id, symbol, data.name ?? null, data.shares, data.avgPrice, actor.id,
+        run("INSERT INTO holdings (id, dompet_id, account_id, market, symbol, name, shares, avg_price, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", [
+          uid(), actor.dompet_id, acc.id, market, symbol, data.name ?? null, data.shares, data.avgPrice, actor.id,
         ]);
       }
-      if (acc.visibility === "shared") log(run, actor, data.shares === 0 ? `menghapus saham ${symbol} dari ${acc.name}` : `mengatur saham ${symbol} di ${acc.name}: ${data.shares / LOT} lot`);
+      if (acc.visibility === "shared")
+        log(run, actor, data.shares === 0 ? `menghapus ${symbol} dari ${acc.name}` : `mengatur ${symbol} di ${acc.name}: ${unitsText(market, data.shares)}`);
     });
   },
 
@@ -1243,37 +1265,46 @@ export const m = {
    */
   tradeStock(
     actorId: string,
-    data: { accountId: string; side: "buy" | "sell"; symbol: string; name?: string | null; lots: number; price: number; fee: number; date: string; moveCash: boolean },
+    data: {
+      accountId: string; side: "buy" | "sell"; market?: Market; symbol: string; name?: string | null;
+      /** Units: lots for IDX, else shares / coins / grams. */
+      lots: number; price: number; fee: number; date: string; moveCash: boolean;
+    },
   ) {
     const actor = actorOf(actorId);
     if (!can.addTransaction(actor.role)) throw new PermissionError();
     const acc = visibleAccount(actor, data.accountId);
-    if (!isBase(acc.currency)) throw new Error("Saham IDX hanya bisa di akun Rupiah.");
-    const symbol = cleanSymbol(data.symbol);
-    if (!Number.isInteger(data.lots) || data.lots <= 0) throw new Error("Isi jumlah lot (bilangan bulat).");
-    if (!Number.isFinite(data.price) || data.price <= 0) throw new Error("Isi harga per lembar.");
+    const market = data.market ?? "IDX";
+    const priceCur = MARKETS[market].currency;
+    if (data.moveCash && acc.currency !== priceCur) throw new Error(`Saldo kas ${acc.name} dalam ${acc.currency}, harga dalam ${priceCur}. Matikan "potong saldo kas".`);
+    const symbol = cleanSymbol(data.symbol, market);
+    if (!Number.isFinite(data.lots) || data.lots <= 0 || (market === "IDX" && !Number.isInteger(data.lots))) throw new Error(market === "IDX" ? "Isi jumlah lot (bilangan bulat)." : "Isi jumlahnya.");
+    if (!Number.isFinite(data.price) || data.price <= 0) throw new Error("Isi harga.");
     if (!Number.isFinite(data.fee) || data.fee < 0) throw new Error("Biaya tidak valid.");
     if (!/^\d{4}-\d{2}-\d{2}$/.test(data.date)) throw new Error("Tanggal tidak valid.");
-    const shares = data.lots * LOT;
-    const existing = get<{ id: string; shares: number; avg_price: number }>("SELECT id, shares, avg_price FROM holdings WHERE account_id = ? AND symbol = ?", [acc.id, symbol]);
-    if (data.side === "sell" && (!existing || existing.shares < shares))
-      throw new Error(`Lot ${symbol} tidak cukup (punya ${(existing?.shares ?? 0) / LOT} lot).`);
-    const gross = Math.round(shares * data.price);
-    const cash = data.side === "buy" ? gross + Math.round(data.fee) : gross - Math.round(data.fee);
+    const shares = market === "IDX" ? data.lots * LOT : data.lots;
+    const existing = get<{ id: string; shares: number; avg_price: number }>("SELECT id, shares, avg_price FROM holdings WHERE account_id = ? AND market = ? AND symbol = ?", [acc.id, market, symbol]);
+    if (data.side === "sell" && (!existing || existing.shares < shares - 1e-9))
+      throw new Error(`${symbol} tidak cukup (punya ${unitsText(market, existing?.shares ?? 0)}).`);
+    // Money in minor units of the price currency (cents for USD).
+    const minor = priceCur === "USD" ? 100 : 1;
+    const gross = Math.round(shares * data.price * minor);
+    const fee = Math.round(data.fee * minor);
+    const cash = data.side === "buy" ? gross + fee : gross - fee;
     if (cash <= 0) throw new Error("Biaya lebih besar dari nilai jual.");
-    const label = `${data.side === "buy" ? "Beli" : "Jual"} ${symbol} ${data.lots} lot @ ${formatIDR(data.price)}`;
+    const label = `${data.side === "buy" ? "Beli" : "Jual"} ${symbol} ${unitsText(market, shares)} @ ${formatMoney(Math.round(data.price * minor), priceCur)}`;
     return write((run) => {
       if (data.side === "buy") {
         if (existing) {
           const total = existing.shares + shares;
-          const avg = (existing.shares * existing.avg_price + gross + Math.round(data.fee)) / total;
+          const avg = (existing.shares * existing.avg_price + (gross + fee) / minor) / total;
           run("UPDATE holdings SET shares = ?, avg_price = ?, name = COALESCE(?, name), updated_at = datetime('now') WHERE id = ?", [total, avg, data.name ?? null, existing.id]);
         } else {
-          run("INSERT INTO holdings (id, dompet_id, account_id, symbol, name, shares, avg_price, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", [
-            uid(), actor.dompet_id, acc.id, symbol, data.name ?? null, shares, (gross + Math.round(data.fee)) / shares, actor.id,
+          run("INSERT INTO holdings (id, dompet_id, account_id, market, symbol, name, shares, avg_price, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", [
+            uid(), actor.dompet_id, acc.id, market, symbol, data.name ?? null, shares, (gross + fee) / minor / shares, actor.id,
           ]);
         }
-      } else if (existing!.shares === shares) {
+      } else if (existing!.shares - shares < 1e-9) {
         run("DELETE FROM holdings WHERE id = ?", [existing!.id]);
       } else {
         run("UPDATE holdings SET shares = ?, updated_at = datetime('now') WHERE id = ?", [existing!.shares - shares, existing!.id]);

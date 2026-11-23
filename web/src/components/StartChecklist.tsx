@@ -48,7 +48,7 @@ export function StartChecklist({ onOpenTx }: { onOpenTx: (t: Transaction | null)
   return (
     <Card
       className="pop-in ring-2 ring-brand-200"
-      title={`Mulai di sini 👋 (${doneCount}/${steps.length})`}
+      title={`Mulai di sini (${doneCount}/${steps.length})`}
       action={
         <button onClick={hide} className="text-xs font-semibold text-slate-400 hover:text-slate-600">
           Sembunyikan
@@ -93,7 +93,7 @@ export function StartChecklist({ onOpenTx }: { onOpenTx: (t: Transaction | null)
       </ol>
       {starter && (
         <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-500">
-          💡 Catatan <b>“Berlangganan Aplikasi Sedompet”</b> sudah kami buat sebagai contoh, lengkap dengan pengingat perpanjangan di menu Rutin. Ubah akun
+          Catatan <b>“Berlangganan Aplikasi Sedompet”</b> sudah kami buat sebagai contoh, lengkap dengan pengingat perpanjangan di menu Rutin. Ubah akun
           atau hapus kalau tidak perlu.
         </p>
       )}

@@ -30,7 +30,7 @@ export function Loans() {
         <a href="#/menu" className="text-sm font-semibold text-brand-700">
           ← Menu
         </a>
-        <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-slate-800">Utang & Piutang 🤝</h1>
+        <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-slate-800">Utang & Piutang</h1>
         <p className="text-sm text-slate-500">Catat uang yang dipinjamkan atau dipinjam, lalu cicilannya. Tidak dihitung sebagai belanja.</p>
       </div>
 
@@ -57,7 +57,7 @@ export function Loans() {
 
       {open.length === 0 ? (
         <Card>
-          <Empty icon="🕊️" title="Tidak ada utang yang berjalan">
+          <Empty icon="" title="Tidak ada utang yang berjalan">
             Bebas utang itu tenang.
           </Empty>
         </Card>
@@ -104,7 +104,7 @@ function LoanCard({ loan, onPay }: { loan: Loan; onPay?: () => void }) {
           </p>
         </div>
         {loan.settled ? (
-          <Badge tone="brand">Lunas 🎉</Badge>
+          <Badge tone="brand">Lunas</Badge>
         ) : overdue ? (
           <Badge tone="amber">Lewat jatuh tempo</Badge>
         ) : loan.due_date ? (

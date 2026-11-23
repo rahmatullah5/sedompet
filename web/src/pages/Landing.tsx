@@ -1,14 +1,15 @@
 import { Avatar, MadeBy } from "../components/ui";
 import { SimulatedPurchases } from "../components/SimulatedPurchases";
+import { LineIcon, type LineIconName } from "../components/LineIcon";
 import { WA_ACTIVATE, WA_FEEDBACK, WA_SUBSCRIBE } from "../lib/contact";
 
-const FEATURES = [
-  { icon: "👨‍👩‍👧", title: "Satu dompet, banyak HP", text: "Ayah catat bensin, Ibu catat belanja dapur. Semua langsung muncul di HP seluruh keluarga." },
-  { icon: "🛡️", title: "Peran yang pas", text: "Orang tua mengatur, anak cukup melihat. Anggota hanya bisa mengubah catatannya sendiri." },
-  { icon: "🔒", title: "Tetap ada ruang pribadi", text: "Tabungan pribadi hanya terlihat oleh pemiliknya, tidak ikut tercampur ke anggaran keluarga." },
-  { icon: "🐷", title: "Anggaran & uang saku", text: "Batas belanja per kategori, anggaran 'semua kecuali cicilan', dan uang saku tiap anak." },
-  { icon: "🔁", title: "Tagihan rutin & utang", text: "SPP, Netflix, listrik, gaji. Muncul di Beranda saat jatuh tempo, sekali ketuk langsung tercatat. Pinjam-meminjam tercatat rapi." },
-  { icon: "🔮", title: "Laporan & perkiraan", text: "Ke mana uang pergi, laju belanja bulan ini, dan perkiraan saldo 3 bulan ke depan." },
+const FEATURES: { icon: LineIconName; title: string; text: string }[] = [
+  { icon: "users", title: "Satu dompet, banyak HP", text: "Ayah catat bensin, Ibu catat belanja dapur. Semua langsung muncul di HP seluruh keluarga." },
+  { icon: "shield", title: "Peran yang pas", text: "Orang tua mengatur, anak cukup melihat. Anggota hanya bisa mengubah catatannya sendiri." },
+  { icon: "lock", title: "Tetap ada ruang pribadi", text: "Tabungan pribadi hanya terlihat oleh pemiliknya, tidak ikut tercampur ke anggaran keluarga." },
+  { icon: "piggy", title: "Anggaran & uang saku", text: "Batas belanja per kategori, anggaran 'semua kecuali cicilan', dan uang saku tiap anak." },
+  { icon: "repeat", title: "Tagihan rutin & utang", text: "SPP, Netflix, listrik, gaji. Muncul di Beranda saat jatuh tempo, sekali ketuk langsung tercatat. Pinjam-meminjam tercatat rapi." },
+  { icon: "bars", title: "Laporan & perkiraan", text: "Ke mana uang pergi, laju belanja bulan ini, dan perkiraan saldo 3 bulan ke depan." },
 ];
 
 const STEPS = [
@@ -21,10 +22,10 @@ function PhoneMock() {
   return (
     <div className="relative mx-auto w-[300px] rounded-[2.5rem] border-[10px] border-slate-800 bg-[#fff8f1] p-4 shadow-[0_30px_60px_-20px_rgba(120,72,40,0.45)]">
       <div className="mb-3 flex items-center justify-between">
-        <span className="text-sm font-bold text-slate-800">Selamat pagi, Ibu 👋</span>
+        <span className="text-sm font-bold text-slate-800">Selamat pagi, Ibu</span>
         <Avatar emoji="👩" colour="#e5689b" size={28} />
       </div>
-      <div className="rounded-3xl bg-gradient-to-br from-brand-500 to-brand-700 p-4 text-white">
+      <div className="rounded-3xl bg-brand-600 p-4 text-white">
         <p className="text-[11px] text-brand-100">Uang keluarga sekarang</p>
         <p className="num text-2xl font-extrabold">Rp 12.480.000</p>
         <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
@@ -37,7 +38,7 @@ function PhoneMock() {
         </div>
       </div>
       <div className="mt-3 rounded-2xl bg-white p-3 text-[12px] shadow-sm">
-        <p>😊 <b>Masih aman!</b> Sisa Rp 3,9 jt, kira-kira Rp 260 rb per hari.</p>
+        <p><b>Masih aman!</b> Sisa Rp 3,9 jt, kira-kira Rp 260 rb per hari.</p>
         <div className="mt-2 h-2 rounded-full bg-slate-100">
           <div className="h-2 w-2/3 rounded-full bg-[#2fb67c]" />
         </div>
@@ -46,19 +47,19 @@ function PhoneMock() {
         <div className="flex items-end gap-2">
           <Avatar emoji="👨" colour="#f47c5a" size={24} />
           <p className="rounded-2xl rounded-bl-md bg-slate-100 px-3 py-1.5">
-            <b>Ayah</b> mencatat bensin Rp 50.000 🛵
+            <b>Ayah</b> mencatat bensin Rp 50.000
           </p>
         </div>
         <div className="flex flex-row-reverse items-end gap-2">
           <Avatar emoji="👩" colour="#e5689b" size={24} />
           <p className="rounded-2xl rounded-br-md bg-brand-100 px-3 py-1.5 text-brand-800">
-            <b>Kamu</b> mencatat belanja dapur Rp 186.000 🛒
+            <b>Kamu</b> mencatat belanja dapur Rp 186.000
           </p>
         </div>
         <div className="flex items-end gap-2">
           <Avatar emoji="🧑" colour="#4f8ef7" size={24} />
           <p className="rounded-2xl rounded-bl-md bg-slate-100 px-3 py-1.5">
-            <b>Kakak</b> membayar SPP Rp 750.000 🎒
+            <b>Kakak</b> membayar SPP Rp 750.000
           </p>
         </div>
       </div>
@@ -73,7 +74,9 @@ export function Landing() {
       <header className="sticky top-0 z-20 bg-[#fff8f1]/85 backdrop-blur">
         <nav className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-5 py-3" aria-label="Utama">
           <a href="/" className="flex items-center gap-2">
-            <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-brand-600 text-lg shadow-sm shadow-brand-600/30">👛</span>
+            <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-sm shadow-brand-600/30">
+              <LineIcon name="wallet" size={20} />
+            </span>
             <span className="text-lg font-extrabold tracking-tight text-slate-800">Sedompet</span>
           </a>
           <div className="hidden items-center gap-6 text-sm font-semibold text-slate-600 md:flex">
@@ -97,7 +100,7 @@ export function Landing() {
       <section className="mx-auto grid max-w-6xl items-center gap-12 px-5 pb-16 pt-10 md:grid-cols-2 md:pt-16">
         <div className="pop-in">
           <p className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-xs font-bold text-brand-700 shadow-sm">
-            🇮🇩 Untuk keluarga & teman Indonesia
+            Untuk keluarga & teman Indonesia
           </p>
           <h1 className="mt-5 text-4xl font-extrabold leading-[1.1] tracking-tight text-slate-800 sm:text-5xl md:text-6xl">
             Satu dompet,
@@ -127,18 +130,18 @@ export function Landing() {
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="rounded-3xl bg-white/70 p-6">
             <p className="text-sm font-bold text-slate-500">Biasanya…</p>
-            <ul className="mt-3 space-y-2 text-slate-600">
-              <li>😩 Tiap orang punya aplikasi & catatan sendiri</li>
-              <li>🤷 “Bulan ini uangnya ke mana ya?”</li>
-              <li>📒 Rekap di grup WA yang tenggelam</li>
+            <ul className="mt-3 list-disc space-y-2 pl-5 text-slate-600 marker:text-slate-400">
+              <li>Tiap orang punya aplikasi & catatan sendiri</li>
+              <li>“Bulan ini uangnya ke mana ya?”</li>
+              <li>Rekap di grup WA yang tenggelam</li>
             </ul>
           </div>
           <div className="rounded-3xl bg-white p-6 shadow-[0_8px_24px_-14px_rgba(120,72,40,0.3)]">
             <p className="text-sm font-bold text-brand-700">Dengan Sedompet</p>
-            <ul className="mt-3 space-y-2 text-slate-700">
-              <li>👛 Satu dompet untuk seluruh keluarga</li>
-              <li>⚡ Catatan siapa pun langsung terlihat</li>
-              <li>😊 Sisa uang per hari, dalam bahasa sehari-hari</li>
+            <ul className="mt-3 list-disc space-y-2 pl-5 text-slate-700 marker:text-brand-600">
+              <li>Satu dompet untuk seluruh keluarga</li>
+              <li>Catatan siapa pun langsung terlihat</li>
+              <li>Sisa uang per hari, dalam bahasa sehari-hari</li>
             </ul>
           </div>
         </div>
@@ -152,7 +155,9 @@ export function Landing() {
           <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {FEATURES.map((f) => (
               <div key={f.title} className="rounded-3xl bg-white p-6 shadow-[0_8px_24px_-14px_rgba(120,72,40,0.3)]">
-                <span className="text-4xl">{f.icon}</span>
+                <span className="block text-slate-700">
+                  <LineIcon name={f.icon} size={32} />
+                </span>
                 <h3 className="mt-3 text-lg font-bold text-slate-800">{f.title}</h3>
                 <p className="mt-1 text-slate-600">{f.text}</p>
               </div>
@@ -178,7 +183,9 @@ export function Landing() {
       {/* Moving from another app */}
       <section id="pindahan" className="mx-auto max-w-5xl scroll-mt-20 px-5 pb-16">
         <div className="flex flex-col items-start gap-5 rounded-[2rem] bg-sun-100 p-8 md:flex-row md:items-center">
-          <span className="text-5xl">📦</span>
+          <span className="text-slate-700">
+            <LineIcon name="box" size={44} />
+          </span>
           <div className="flex-1">
             <h2 className="text-2xl font-extrabold tracking-tight text-slate-800">Pindahan dari aplikasi lain? Bawa semua datamu.</h2>
             <p className="mt-1 text-slate-600">
@@ -196,14 +203,16 @@ export function Landing() {
       {/* Trust */}
       <section className="mx-auto max-w-5xl px-5 pb-16">
         <div className="grid gap-4 text-center sm:grid-cols-2 lg:grid-cols-4">
-          {[
-            ["🔐", "Data per keluarga", "Hanya anggota Dompet yang bisa melihat. Dijaga langsung oleh database."],
-            ["📴", "Tetap jalan saat sinyal hilang", "Pasang di layar utama HP. Data tersimpan di HP dan tersinkron lagi saat online."],
-            ["📤", "Datamu bisa dibawa pulang", "Unduh transaksi ke Excel / Google Sheets kapan saja. Salah hapus? Pulihkan dari Sampah."],
-            ["🙅", "Tanpa iklan", "Uang keluargamu bukan bahan jualan."],
-          ].map(([icon, title, text]) => (
+          {([
+            ["lock", "Data per keluarga", "Hanya anggota Dompet yang bisa melihat. Dijaga langsung oleh database."],
+            ["phone", "Tetap jalan saat sinyal hilang", "Pasang di layar utama HP. Data tersimpan di HP dan tersinkron lagi saat online."],
+            ["download", "Datamu bisa dibawa pulang", "Unduh transaksi ke Excel / Google Sheets kapan saja. Salah hapus? Pulihkan dari Sampah."],
+            ["shield", "Tanpa iklan", "Uang keluargamu bukan bahan jualan."],
+          ] as [LineIconName, string, string][]).map(([icon, title, text]) => (
             <div key={title} className="rounded-3xl bg-white/70 p-6">
-              <span className="text-3xl">{icon}</span>
+              <span className="flex justify-center text-slate-700">
+                <LineIcon name={icon} size={28} />
+              </span>
               <p className="mt-2 font-bold text-slate-800">{title}</p>
               <p className="mt-1 text-sm text-slate-600">{text}</p>
             </div>
@@ -213,12 +222,9 @@ export function Landing() {
 
       {/* Final CTA */}
       <section className="px-5 pb-20">
-        <div className="mx-auto max-w-4xl rounded-[2.5rem] bg-gradient-to-br from-brand-500 to-brand-700 px-8 py-12 text-center text-white shadow-[0_24px_50px_-20px_rgba(212,80,46,0.7)]">
-          <div className="flex justify-center -space-x-3">
-            <Avatar emoji="👨" colour="#fff" size={52} />
-            <Avatar emoji="👩" colour="#fff" size={52} />
-            <Avatar emoji="🧑" colour="#fff" size={52} />
-            <Avatar emoji="👧" colour="#fff" size={52} />
+        <div className="mx-auto max-w-4xl rounded-[2.5rem] bg-brand-600 px-8 py-12 text-center text-white shadow-[0_24px_50px_-20px_rgba(212,80,46,0.7)]">
+          <div className="flex justify-center">
+            <LineIcon name="people" size={44} />
           </div>
           <h2 className="mt-5 text-3xl font-extrabold tracking-tight">Yuk, satukan dompet keluarga.</h2>
           <p className="mx-auto mt-2 max-w-md text-brand-100">Coba demonya dulu, tidak perlu daftar. Kalau cocok, masuk dengan nomor HP dan undang keluarga.</p>
@@ -234,14 +240,14 @@ export function Landing() {
       </section>
 
       <footer className="border-t border-slate-200/70 py-8 text-center text-sm text-slate-500">
-        <p>👛 Sedompet · Satu dompet untuk keluarga</p>
+        <p>Sedompet · Satu dompet untuk keluarga</p>
         <MadeBy className="mt-2 text-sm" />
         <p className="mt-3 flex flex-wrap justify-center gap-x-4 gap-y-1">
           <a href={WA_ACTIVATE()} target="_blank" rel="noopener" className="font-semibold text-[#128C7E] hover:underline">
-            💬 Minta aktivasi nomor
+            Minta aktivasi nomor
           </a>
           <a href={WA_FEEDBACK} target="_blank" rel="noopener" className="font-semibold text-[#128C7E] hover:underline">
-            💬 Kirim masukan via WhatsApp
+            Kirim masukan via WhatsApp
           </a>
         </p>
         <p className="mt-1 text-xs text-slate-400">Open source (GPL-3.0).</p>
@@ -297,8 +303,8 @@ function Pricing() {
             <s className="num">Rp50.000</s> · hemat 80% selama promo
           </p>
           <div className="mt-5 space-y-2">
-            <Relatable icon="🧋">Seharga 2 gelas es teh manis, untuk sebulan penuh</Relatable>
-            <Relatable icon="🪙">≈ Rp333/hari untuk seluruh keluarga</Relatable>
+            <Relatable>Seharga 2 gelas es teh manis, untuk sebulan penuh</Relatable>
+            <Relatable>≈ Rp333/hari untuk seluruh keluarga</Relatable>
           </div>
           <div className="mt-auto pt-6">
             <PlanButton plan="bulanan">Pilih Bulanan</PlanButton>
@@ -307,7 +313,7 @@ function Pricing() {
 
         {/* Yearly promo (best value) */}
         <div className="relative flex flex-col rounded-[2rem] bg-white p-7 shadow-[0_24px_50px_-24px_rgba(212,80,46,0.55)] ring-2 ring-brand-500">
-          <span className="absolute -top-3 left-7 rounded-full bg-brand-600 px-3 py-1 text-xs font-bold text-white shadow-sm">🔥 Paling hemat</span>
+          <span className="absolute -top-3 left-7 rounded-full bg-brand-600 px-3 py-1 text-xs font-bold text-white shadow-sm">Paling hemat</span>
           <p className="text-sm font-bold uppercase tracking-wide text-brand-700">Tahunan</p>
           <div className="mt-2 flex flex-wrap items-end gap-x-2 gap-y-1">
             <span className="num text-5xl font-extrabold tracking-tight text-slate-800">Rp99.000</span>
@@ -317,8 +323,8 @@ function Pricing() {
             <s className="num">Rp600.000</s> · cuma <b className="num text-slate-700">Rp8.250/bulan</b>, gratis 2 bulan dibanding Bulanan
           </p>
           <div className="mt-5 space-y-2">
-            <Relatable icon="☕">Setara 2 gelas kopi susu kekinian, untuk setahun penuh</Relatable>
-            <Relatable icon="🛵">≈ Rp271/hari, lebih murah dari parkir motor</Relatable>
+            <Relatable>Setara 2 gelas kopi susu kekinian, untuk setahun penuh</Relatable>
+            <Relatable>≈ Rp271/hari, lebih murah dari parkir motor</Relatable>
           </div>
           <div className="mt-auto pt-6">
             <PlanButton plan="tahunan" primary>
@@ -349,10 +355,9 @@ function Pricing() {
   );
 }
 
-function Relatable({ icon, children }: { icon: string; children: React.ReactNode }) {
+function Relatable({ children }: { children: React.ReactNode }) {
   return (
     <div className="rounded-2xl bg-sun-100/70 px-3 py-2.5 text-sm text-slate-700">
-      <span className="mr-1">{icon}</span>
       {children}
     </div>
   );
