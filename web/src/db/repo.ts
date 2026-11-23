@@ -4,7 +4,7 @@ import { all, get, write } from "./database";
 import { putInTrash, snapshot } from "./trash";
 import { can, PermissionError, type Role } from "../lib/permissions";
 import { currentMonth, formatIDR, parseAmount, periodDay, periodKeyFromStart, periodRange, periodStartSql, toISODate, todayISO } from "../lib/format";
-import { baseSql, CURRENCIES, formatMoney, isBase, toBase } from "../lib/currency";
+import { baseSql, CURRENCIES, formatMoney, holdingsSql, isBase, rateSql, toBase } from "../lib/currency";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -54,8 +54,14 @@ export interface Account {
   opening_balance: number;
   /** ISO code; amounts on this account are minor units of it. */
   currency: string;
-  /** Rupiah per 1 unit of `currency` (1 for IDR). */
+  /** Rupiah per 1 unit of `currency` in use (live rate when fx_auto; 1 for IDR). */
   fx_rate: number;
+  /** The rate stored on the account (manual rate / offline fallback). */
+  fx_rate_saved: number;
+  /** 1 = follow the live rate. */
+  fx_auto: number;
+  /** Multi-currency pocket: the main account this currency belongs to. */
+  parent_id: string | null;
   colour: string;
   icon: string | null;
   visibility: "shared" | "private";
@@ -66,11 +72,31 @@ export interface Account {
   holder_colour: string | null;
   /** In the account's own currency. */
   balance: number;
-  /** Balance converted to rupiah, for totals. */
+  /** Market value of stocks held here (rupiah). */
+  holdings_value: number;
+  /** Balance converted to rupiah plus stocks, for totals. */
   balance_base: number;
   /** Net of entries dated after today (account currency); not in `balance` yet. */
   scheduled: number;
 }
+
+export interface Holding {
+  id: string;
+  dompet_id: string;
+  account_id: string;
+  symbol: string;
+  name: string | null;
+  shares: number;
+  /** Rupiah per share. */
+  avg_price: number;
+  /** Live price per share; null = not fetched yet. */
+  price: number | null;
+  change_pct: number | null;
+  price_at: string | null;
+}
+
+/** 1 lot on IDX = 100 shares. */
+export const LOT = 100;
 
 export type Kind = "expense" | "income";
 
@@ -298,7 +324,8 @@ export const q = {
 
   accounts: (dompetId: string, me: string) =>
     all<Omit<Account, "balance_base">>(
-      `SELECT a.*, h.name AS holder_name, h.emoji AS holder_emoji, h.colour AS holder_colour,
+      `SELECT a.*, a.fx_rate AS fx_rate_saved, ${rateSql("a")} AS fx_rate, ${holdingsSql("a")} AS holdings_value,
+         h.name AS holder_name, h.emoji AS holder_emoji, h.colour AS holder_colour,
          a.opening_balance + COALESCE((
            SELECT SUM(CASE t.kind WHEN 'income' THEN t.amount ELSE -t.amount END)
            FROM transactions t WHERE t.account_id = a.id AND t.date <= $today), 0) AS balance,
@@ -311,7 +338,26 @@ export const q = {
        ORDER BY a.visibility = 'private', a.created_at`,
       // Entries dated after today don't move the balance until their day comes.
       { $d: dompetId, $me: me, $today: todayISO() },
-    ).map((a): Account => ({ ...a, currency: a.currency || "IDR", fx_rate: a.fx_rate ?? 1, balance_base: toBase(a.balance, a.currency, a.fx_rate) })),
+    ).map((a): Account => ({
+      ...a,
+      currency: a.currency || "IDR",
+      fx_rate: a.fx_rate ?? 1,
+      fx_auto: a.fx_auto ?? 1,
+      parent_id: a.parent_id ?? null,
+      holdings_value: a.holdings_value ?? 0,
+      balance_base: toBase(a.balance, a.currency, a.fx_rate) + (a.holdings_value ?? 0),
+    })),
+
+  /** Stocks held in the accounts you can see. */
+  holdings: (dompetId: string, me: string, accountId?: string) =>
+    all<Holding>(
+      `SELECT h.*, mp.price AS price, mp.change_pct AS change_pct, mp.fetched_at AS price_at, COALESCE(h.name, mp.name) AS name
+       FROM holdings h JOIN accounts a ON a.id = h.account_id
+       LEFT JOIN market_prices mp ON mp.symbol = 'IDX:' || h.symbol
+       WHERE h.dompet_id = $d AND ${VISIBLE_ACCOUNT} AND ($acc IS NULL OR h.account_id = $acc)
+       ORDER BY h.shares * COALESCE(mp.price, h.avg_price) DESC`,
+      { $d: dompetId, $me: me, $acc: accountId ?? null },
+    ),
 
   /** How many transactions use each account / category (for "most used first" pickers). */
   usage(dompetId: string) {
@@ -808,6 +854,35 @@ function log(run: Run, actor: Member, message: string) {
   ]);
 }
 
+type AccountRow = {
+  id: string; name: string; type: string; currency: string; colour: string; icon: string | null; visibility: "shared" | "private";
+  owner_member_id: string | null; holder_member_id: string | null; parent_id: string | null;
+};
+
+/** An account the actor can see (shared, or their own private one). */
+function visibleAccount(actor: Member, accountId: string): AccountRow {
+  const acc = get<AccountRow>(
+    "SELECT id, name, type, currency, colour, icon, visibility, owner_member_id, holder_member_id, parent_id FROM accounts WHERE id = ? AND dompet_id = ?",
+    [accountId, actor.dompet_id],
+  );
+  if (!acc || (acc.visibility === "private" && acc.owner_member_id !== actor.id)) throw new Error("Akun tidak ditemukan.");
+  return acc;
+}
+
+/** An account the actor may change (admin, its holder, or its private owner). */
+function editableAccount(actor: Member, accountId: string): AccountRow {
+  const acc = visibleAccount(actor, accountId);
+  const ok = can.manage(actor.role) || (acc.visibility === "private" && acc.owner_member_id === actor.id) || (acc.visibility === "shared" && acc.holder_member_id === actor.id);
+  if (!ok) throw new PermissionError();
+  return acc;
+}
+
+function cleanSymbol(symbol: string) {
+  const s = symbol.trim().toUpperCase().replace(/\.JK$/, "");
+  if (!/^[A-Z0-9]{2,6}$/.test(s)) throw new Error("Kode saham tidak valid (mis. BBCA).");
+  return s;
+}
+
 function requireText(value: string, label: string, max = 40) {
   const v = value.trim();
   if (!v) throw new Error(`${label} wajib diisi.`);
@@ -976,7 +1051,7 @@ export const m = {
     actorId: string,
     data: {
       id?: string; name: string; type: AccountType; opening_balance: number; colour: string; icon?: string | null;
-      visibility: "shared" | "private"; holder_member_id?: string | null; currency?: string; fx_rate?: number;
+      visibility: "shared" | "private"; holder_member_id?: string | null; currency?: string; fx_rate?: number; fx_auto?: boolean;
     },
   ) {
     const actor = actorOf(actorId);
@@ -996,14 +1071,23 @@ export const m = {
     if (!CURRENCIES.some((c) => c.code === currency)) throw new Error("Mata uang tidak didukung.");
     const fxRate = isBase(currency) ? 1 : (data.fx_rate ?? NaN);
     if (!Number.isFinite(fxRate) || fxRate <= 0) throw new Error("Isi kurs ke Rupiah (lebih dari 0).");
+    const fxAuto = data.fx_auto === false ? 0 : 1;
     return write((run) => {
       if (data.id) {
         run(
-          `UPDATE accounts SET name = ?, type = ?, opening_balance = ?, colour = ?, icon = ?, visibility = ?, currency = ?, fx_rate = ?,
+          `UPDATE accounts SET name = ?, type = ?, opening_balance = ?, colour = ?, icon = ?, visibility = ?, currency = ?, fx_rate = ?, fx_auto = ?,
              owner_member_id = CASE WHEN ? = 'private' THEN COALESCE(owner_member_id, ?) ELSE NULL END
            WHERE id = ? AND dompet_id = ?`,
-          [name, type, data.opening_balance, data.colour, data.icon ?? null, data.visibility, currency, fxRate, data.visibility, actor.id, data.id, actor.dompet_id],
+          [name, type, data.opening_balance, data.colour, data.icon ?? null, data.visibility, currency, fxRate, fxAuto, data.visibility, actor.id, data.id, actor.dompet_id],
         );
+        // Currencies inside this pocket follow its name, group, look and visibility.
+        if (!get<{ parent_id: string | null }>("SELECT parent_id FROM accounts WHERE id = ?", [data.id])?.parent_id)
+          run(
+            `UPDATE accounts SET name = substr(?, 1, 35) || ' ' || currency, type = ?, colour = ?, icon = ?, visibility = ?,
+               owner_member_id = (SELECT owner_member_id FROM accounts p WHERE p.id = ?), holder_member_id = (SELECT holder_member_id FROM accounts p WHERE p.id = ?)
+             WHERE parent_id = ? AND dompet_id = ?`,
+            [name, type, data.colour, data.icon ?? null, data.visibility, data.id, data.id, data.id, actor.dompet_id],
+          );
         // Holder changes on shared accounts are an admin decision.
         if (can.manage(actor.role) && data.visibility === "shared" && data.holder_member_id !== undefined) {
           run("UPDATE accounts SET holder_member_id = ? WHERE id = ? AND dompet_id = ?", [data.holder_member_id, data.id, actor.dompet_id]);
@@ -1011,10 +1095,10 @@ export const m = {
         log(run, actor, `mengubah akun ${name}`);
       } else {
         run(
-          `INSERT INTO accounts (id, dompet_id, name, type, opening_balance, currency, fx_rate, colour, icon, visibility, owner_member_id, holder_member_id, created_by)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO accounts (id, dompet_id, name, type, opening_balance, currency, fx_rate, fx_auto, colour, icon, visibility, owner_member_id, holder_member_id, created_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
-            uid(), actor.dompet_id, name, type, data.opening_balance, currency, fxRate, data.colour, data.icon ?? null, data.visibility,
+            uid(), actor.dompet_id, name, type, data.opening_balance, currency, fxRate, fxAuto, data.colour, data.icon ?? null, data.visibility,
             data.visibility === "private" ? actor.id : null,
             data.visibility === "private" ? actor.id : (data.holder_member_id ?? null),
             actor.id,
@@ -1094,6 +1178,113 @@ export const m = {
     return write((run) => {
       run("DELETE FROM accounts WHERE id = ?", [accountId]);
       if (acc.visibility === "shared") log(run, actor, `menghapus akun ${acc.name} beserta transaksinya`);
+    });
+  },
+
+  // --- multi-currency pockets ---------------------------------------------
+  /**
+   * Adds another currency to a pocket (like BCA Valas). The new currency is a
+   * child account of `parentId`: same name + code, group, look and owner.
+   */
+  addPocketCurrency(actorId: string, parentId: string, currency: string, openingBalance: number) {
+    const actor = actorOf(actorId);
+    const parent = editableAccount(actor, parentId);
+    if (parent.parent_id) throw new Error("Pilih akun utama dompet valas.");
+    if (!CURRENCIES.some((c) => c.code === currency)) throw new Error("Mata uang tidak didukung.");
+    if (!Number.isFinite(openingBalance)) throw new Error("Saldo awal tidak valid.");
+    const taken = all<{ currency: string }>("SELECT currency FROM accounts WHERE id = ? OR parent_id = ?", [parentId, parentId]).map((r) => r.currency);
+    if (taken.includes(currency)) throw new Error(`${currency} sudah ada di ${parent.name}.`);
+    const rate = isBase(currency) ? 1 : (get<{ price: number }>("SELECT price FROM market_prices WHERE symbol = ?", [`FX:${currency}`])?.price ?? 1);
+    return write((run) => {
+      run(
+        `INSERT INTO accounts (id, dompet_id, name, type, opening_balance, currency, fx_rate, fx_auto, colour, icon, visibility, owner_member_id, holder_member_id, parent_id, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)`,
+        [uid(), actor.dompet_id, `${parent.name.slice(0, 35)} ${currency}`, parent.type, Math.round(openingBalance), currency, rate,
+          parent.colour, parent.icon, parent.visibility, parent.owner_member_id, parent.holder_member_id, parentId, actor.id],
+      );
+      if (parent.visibility === "shared") log(run, actor, `menambahkan ${currency} ke ${parent.name}`);
+    });
+  },
+
+  // --- stocks (IDX) ----------------------------------------------------------
+  /**
+   * Sets a holding directly (for stocks already owned): lots and average
+   * price. No cash moves. `lots` 0 removes it.
+   */
+  setHolding(actorId: string, data: { accountId: string; symbol: string; name?: string | null; shares: number; avgPrice: number }) {
+    const actor = actorOf(actorId);
+    if (!can.addTransaction(actor.role)) throw new PermissionError();
+    const acc = visibleAccount(actor, data.accountId);
+    if (!isBase(acc.currency)) throw new Error("Saham IDX hanya bisa di akun Rupiah.");
+    const symbol = cleanSymbol(data.symbol);
+    if (!Number.isInteger(data.shares) || data.shares < 0) throw new Error("Jumlah lot tidak valid.");
+    if (!Number.isFinite(data.avgPrice) || data.avgPrice < 0) throw new Error("Harga rata-rata tidak valid.");
+    const existing = get<{ id: string }>("SELECT id FROM holdings WHERE account_id = ? AND symbol = ?", [acc.id, symbol]);
+    return write((run) => {
+      if (data.shares === 0) {
+        if (existing) run("DELETE FROM holdings WHERE id = ?", [existing.id]);
+      } else if (existing) {
+        run("UPDATE holdings SET shares = ?, avg_price = ?, name = COALESCE(?, name), updated_at = datetime('now') WHERE id = ?", [
+          data.shares, data.avgPrice, data.name ?? null, existing.id,
+        ]);
+      } else {
+        run("INSERT INTO holdings (id, dompet_id, account_id, symbol, name, shares, avg_price, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", [
+          uid(), actor.dompet_id, acc.id, symbol, data.name ?? null, data.shares, data.avgPrice, actor.id,
+        ]);
+      }
+      if (acc.visibility === "shared") log(run, actor, data.shares === 0 ? `menghapus saham ${symbol} dari ${acc.name}` : `mengatur saham ${symbol} di ${acc.name}: ${data.shares / LOT} lot`);
+    });
+  },
+
+  /**
+   * Buy or sell: updates lots (and the average price on a buy) and, when
+   * `moveCash`, records the money on the account's cash balance as a
+   * correction (not counted as spending or income).
+   */
+  tradeStock(
+    actorId: string,
+    data: { accountId: string; side: "buy" | "sell"; symbol: string; name?: string | null; lots: number; price: number; fee: number; date: string; moveCash: boolean },
+  ) {
+    const actor = actorOf(actorId);
+    if (!can.addTransaction(actor.role)) throw new PermissionError();
+    const acc = visibleAccount(actor, data.accountId);
+    if (!isBase(acc.currency)) throw new Error("Saham IDX hanya bisa di akun Rupiah.");
+    const symbol = cleanSymbol(data.symbol);
+    if (!Number.isInteger(data.lots) || data.lots <= 0) throw new Error("Isi jumlah lot (bilangan bulat).");
+    if (!Number.isFinite(data.price) || data.price <= 0) throw new Error("Isi harga per lembar.");
+    if (!Number.isFinite(data.fee) || data.fee < 0) throw new Error("Biaya tidak valid.");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(data.date)) throw new Error("Tanggal tidak valid.");
+    const shares = data.lots * LOT;
+    const existing = get<{ id: string; shares: number; avg_price: number }>("SELECT id, shares, avg_price FROM holdings WHERE account_id = ? AND symbol = ?", [acc.id, symbol]);
+    if (data.side === "sell" && (!existing || existing.shares < shares))
+      throw new Error(`Lot ${symbol} tidak cukup (punya ${(existing?.shares ?? 0) / LOT} lot).`);
+    const gross = Math.round(shares * data.price);
+    const cash = data.side === "buy" ? gross + Math.round(data.fee) : gross - Math.round(data.fee);
+    if (cash <= 0) throw new Error("Biaya lebih besar dari nilai jual.");
+    const label = `${data.side === "buy" ? "Beli" : "Jual"} ${symbol} ${data.lots} lot @ ${formatIDR(data.price)}`;
+    return write((run) => {
+      if (data.side === "buy") {
+        if (existing) {
+          const total = existing.shares + shares;
+          const avg = (existing.shares * existing.avg_price + gross + Math.round(data.fee)) / total;
+          run("UPDATE holdings SET shares = ?, avg_price = ?, name = COALESCE(?, name), updated_at = datetime('now') WHERE id = ?", [total, avg, data.name ?? null, existing.id]);
+        } else {
+          run("INSERT INTO holdings (id, dompet_id, account_id, symbol, name, shares, avg_price, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", [
+            uid(), actor.dompet_id, acc.id, symbol, data.name ?? null, shares, (gross + Math.round(data.fee)) / shares, actor.id,
+          ]);
+        }
+      } else if (existing!.shares === shares) {
+        run("DELETE FROM holdings WHERE id = ?", [existing!.id]);
+      } else {
+        run("UPDATE holdings SET shares = ?, updated_at = datetime('now') WHERE id = ?", [existing!.shares - shares, existing!.id]);
+      }
+      if (data.moveCash)
+        run(
+          `INSERT INTO transactions (id, dompet_id, account_id, category_id, kind, amount, date, note, flag, paid_by, created_by, updated_by)
+           VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 'adjustment', ?, ?, ?)`,
+          [uid(), actor.dompet_id, acc.id, data.side === "buy" ? "expense" : "income", cash, data.date, label, actor.id, actor.id, actor.id],
+        );
+      if (acc.visibility === "shared") log(run, actor, `${label} di ${acc.name}`);
     });
   },
 

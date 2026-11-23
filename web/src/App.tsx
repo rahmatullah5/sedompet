@@ -29,6 +29,7 @@ import { Notifications } from "./pages/Notifications";
 import { PlanBanner, READ_ONLY_MESSAGE } from "./components/PlanBanner";
 import { setWriteGuard } from "./db/database";
 import { setPeriodStartDay } from "./lib/format";
+import { useMarketAutoRefresh } from "./lib/market";
 
 const PAGES = ["beranda", "riwayat", "laporan", "menu", "anggaran", "keluarga", "akun", "kategori", "rutin", "pinjaman", "tujuan", "sampah", "patungan", "neraca", "notifikasi", "admin"] as const;
 type PageId = (typeof PAGES)[number];
@@ -50,6 +51,8 @@ const noopSubscribe = () => () => {};
 
 export default function App() {
   useDbVersion();
+  // Live kurs + stock prices, so foreign-currency and stock balances stay current.
+  useMarketAutoRefresh();
   const session = useSession();
   const cloudState = useSyncExternalStore(MODE === "cloud" ? cloudStore.subscribe : noopSubscribe, cloudStore.get);
   const cloudMode = MODE === "cloud";

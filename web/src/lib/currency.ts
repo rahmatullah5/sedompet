@@ -48,6 +48,17 @@ export function minorFactor(code: string | null | undefined) {
 }
 
 /**
+ * SQL for the rate in use on account `alias`: rupiah per 1 unit. Accounts
+ * with `fx_auto` follow the live rate (market_prices, see lib/market.ts) and
+ * fall back to their stored `fx_rate` while offline.
+ */
+export function rateSql(alias = "a") {
+  return `(CASE WHEN COALESCE(${alias}.currency, 'IDR') = 'IDR' THEN 1.0
+    WHEN COALESCE(${alias}.fx_auto, 1) = 1 THEN COALESCE((SELECT mp.price FROM market_prices mp WHERE mp.symbol = 'FX:' || ${alias}.currency), ${alias}.fx_rate, 1)
+    ELSE COALESCE(${alias}.fx_rate, 1) END)`;
+}
+
+/**
  * SQL expression converting an amount column (minor units of `alias`'s
  * currency) to rupiah. `alias` is the accounts table alias.
  */
@@ -55,7 +66,17 @@ export function baseSql(amount: string, alias = "a") {
   const factors = CURRENCIES.filter((c) => c.decimals !== 0)
     .map((c) => `'${c.code}'`)
     .join(",");
-  return `ROUND(${amount} * (CASE WHEN COALESCE(${alias}.currency, 'IDR') = 'IDR' THEN 1.0 ELSE COALESCE(${alias}.fx_rate, 1) END) / (CASE WHEN ${alias}.currency IN (${factors}) THEN 100 ELSE 1 END))`;
+  return `ROUND(${amount} * ${rateSql(alias)} / (CASE WHEN ${alias}.currency IN (${factors}) THEN 100 ELSE 1 END))`;
+}
+
+/**
+ * SQL: market value in rupiah of the stocks held in account `alias` (live
+ * price, else the average buy price). `upto` (a SQL date expression) leaves
+ * out holdings added after that day.
+ */
+export function holdingsSql(alias = "a", upto?: string) {
+  return `COALESCE((SELECT ROUND(SUM(h.shares * COALESCE((SELECT mp.price FROM market_prices mp WHERE mp.symbol = 'IDX:' || h.symbol), h.avg_price)))
+    FROM holdings h WHERE h.account_id = ${alias}.id${upto ? ` AND date(h.created_at) <= ${upto}` : ""}), 0)`;
 }
 
 /** Minor units of `code` -> rupiah. */
@@ -105,4 +126,10 @@ export function moneyInputText(amount: number, code: string | null | undefined) 
   if (isBase(code)) return String(amount);
   const f = minorFactor(code);
   return f === 1 ? String(amount) : String(amount / f);
+}
+
+const rateFmt = new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0, maximumFractionDigits: 2 });
+/** A rate in rupiah: "Rp16.250", "Rp114,21" (decimals only for small rates). */
+export function formatRate(rate: number) {
+  return rate >= 1000 ? formatIDR(Math.round(rate)) : rateFmt.format(rate);
 }

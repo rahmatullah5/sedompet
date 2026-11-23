@@ -1,6 +1,7 @@
 // Neraca (balance sheet): what the family owns minus what it owes, in rupiah.
 //
-//   Harta  = every visible account's balance (credit cards excluded)
+//   Harta  = every visible account's balance (credit cards excluded), stocks
+//            at their live price
 //          + piutang: money lent out and not repaid yet
 //   Utang  = credit-card balances owed (negative balance on a 'credit' account)
 //          + utang: money borrowed and not repaid yet
@@ -9,7 +10,7 @@
 // be shown. Private accounts count only for their owner (same as everywhere).
 
 import { all } from "./database";
-import { baseSql } from "../lib/currency";
+import { baseSql, holdingsSql } from "../lib/currency";
 import { todayISO } from "../lib/format";
 
 const VISIBLE = `(a.visibility = 'shared' OR a.owner_member_id = $me)`;
@@ -46,7 +47,8 @@ export function netWorth(dompetId: string, me: string, upTo: string | null = nul
             COALESCE(a.holder_member_id, a.owner_member_id) AS owner,
             ${baseSql(`(a.opening_balance + COALESCE((
               SELECT SUM(CASE t.kind WHEN 'income' THEN t.amount ELSE -t.amount END)
-              FROM transactions t WHERE t.account_id = a.id AND ($upto IS NULL OR t.date <= $upto)), 0))`)} AS balance_base
+              FROM transactions t WHERE t.account_id = a.id AND ($upto IS NULL OR t.date <= $upto)), 0))`)}
+            + ${holdingsSql("a", "$upto")} AS balance_base
      FROM accounts a
      WHERE a.dompet_id = $d AND a.archived = 0 AND ${VISIBLE}
      ORDER BY a.visibility = 'private', a.created_at`,

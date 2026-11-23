@@ -54,6 +54,10 @@ CREATE TABLE IF NOT EXISTS accounts (
   visibility       TEXT NOT NULL DEFAULT 'shared' CHECK (visibility IN ('shared','private')),
   owner_member_id  TEXT REFERENCES members(id) ON DELETE SET NULL,
   holder_member_id TEXT REFERENCES members(id) ON DELETE SET NULL,  -- whose account it is
+  -- Multi-currency pocket (like BCA Valas): each extra currency is a child
+  -- account pointing at the pocket's main account.
+  parent_id        TEXT REFERENCES accounts(id) ON DELETE CASCADE,
+  fx_auto          INTEGER NOT NULL DEFAULT 1,  -- 1 = use the live rate (market_prices), else fx_rate
   archived         INTEGER NOT NULL DEFAULT 0,
   created_by       TEXT REFERENCES members(id) ON DELETE SET NULL,
   created_at       TEXT NOT NULL DEFAULT (datetime('now'))
@@ -175,6 +179,33 @@ CREATE TABLE IF NOT EXISTS activity (
 );
 CREATE INDEX IF NOT EXISTS activity_dompet ON activity(dompet_id, created_at);
 
+-- Stocks (IDX) held in an investment account. Value = shares x live price.
+CREATE TABLE IF NOT EXISTS holdings (
+  id          TEXT PRIMARY KEY,
+  dompet_id   TEXT NOT NULL REFERENCES dompets(id) ON DELETE CASCADE,
+  account_id  TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  symbol      TEXT NOT NULL,              -- IDX ticker without ".JK", e.g. BBCA
+  name        TEXT,                       -- company name, cached from the price feed
+  shares      INTEGER NOT NULL CHECK (shares >= 0),  -- 1 lot = 100 shares
+  avg_price   REAL NOT NULL DEFAULT 0,    -- rupiah per share (incl. buy fees)
+  created_by  TEXT REFERENCES members(id) ON DELETE SET NULL,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (account_id, symbol)
+);
+CREATE INDEX IF NOT EXISTS holdings_dompet ON holdings(dompet_id);
+
+-- Live prices (not synced; every device fetches its own, see lib/market.ts).
+-- symbol: 'FX:USD' = rupiah per 1 USD, 'IDX:BBCA' = rupiah per share.
+CREATE TABLE IF NOT EXISTS market_prices (
+  symbol      TEXT PRIMARY KEY,
+  price       REAL NOT NULL,
+  name        TEXT,
+  change_pct  REAL,
+  market_time TEXT,
+  fetched_at  TEXT NOT NULL
+);
+
 -- Local recycle bin (not synced): JSON copies of deleted rows, see db/trash.ts.
 CREATE TABLE IF NOT EXISTS trash (
   id          TEXT PRIMARY KEY,
@@ -195,6 +226,8 @@ export const COLUMN_UPGRADES: [table: string, column: string, definition: string
   ["accounts", "currency", "TEXT NOT NULL DEFAULT 'IDR'"],
   ["accounts", "fx_rate", "REAL NOT NULL DEFAULT 1"],
   ["accounts", "holder_member_id", "TEXT REFERENCES members(id) ON DELETE SET NULL"],
+  ["accounts", "parent_id", "TEXT REFERENCES accounts(id) ON DELETE CASCADE"],
+  ["accounts", "fx_auto", "INTEGER NOT NULL DEFAULT 1"],
   ["members", "phone", "TEXT"],
   ["categories", "parent_id", "TEXT REFERENCES categories(id) ON DELETE CASCADE"],
   ["budgets", "exclude_category_ids", "TEXT"],

@@ -18,11 +18,13 @@ const QUICK_FEES = [2_500, 6_500];
 export function TransferBody({
   transferId,
   initialFrom,
+  initialTo,
   onClose,
   modeSwitch,
 }: {
   transferId?: string | null;
   initialFrom?: string;
+  initialTo?: string;
   onClose: () => void;
   /** The Pengeluaran/Pemasukan/Transfer switch, rendered by the parent sheet. */
   modeSwitch?: React.ReactNode;
@@ -34,7 +36,7 @@ export function TransferBody({
   const existing = transferId ? q.transfer(dompet.id, transferId) : null;
 
   const [fromId, setFromId] = useState(existing?.fromAccountId ?? initialFrom ?? accounts[0]?.id ?? "");
-  const [toId, setToId] = useState(existing?.toAccountId ?? accounts.find((a) => a.id !== (existing?.fromAccountId ?? initialFrom ?? accounts[0]?.id))?.id ?? "");
+  const [toId, setToId] = useState(existing?.toAccountId ?? initialTo ?? accounts.find((a) => a.id !== (existing?.fromAccountId ?? initialFrom ?? accounts[0]?.id))?.id ?? "");
   const curOf = (id: string | undefined) => accounts.find((a) => a.id === id)?.currency ?? "IDR";
   const [amountText, setAmountText] = useState(existing ? moneyInputText(existing.amount, curOf(existing.fromAccountId)) : "");
   const [toAmountText, setToAmountText] = useState(existing ? moneyInputText(existing.toAmount, curOf(existing.toAccountId)) : "");

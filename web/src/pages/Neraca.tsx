@@ -96,8 +96,8 @@ export function Neraca() {
       </Card>
 
       <p className="px-1 text-xs text-slate-400">
-        Harta = saldo semua akun + piutang yang belum kembali. Utang = tagihan kartu kredit + pinjaman yang belum lunas. Nilai emas, saham atau rumah ikut
-        dihitung kalau dicatat sebagai akun; perbarui nilainya lewat koreksi saldo. Tabungan tujuan tanpa akun tidak dihitung, karena uangnya sudah ada di
+        Harta = saldo semua akun + piutang yang belum kembali. Utang = tagihan kartu kredit + pinjaman yang belum lunas. Saham BEI dan valas dihitung
+        dengan harga/kurs terkini secara otomatis. Emas atau rumah ikut dihitung kalau dicatat sebagai akun; perbarui nilainya lewat koreksi saldo. Tabungan tujuan tanpa akun tidak dihitung, karena uangnya sudah ada di
         salah satu akun.
       </p>
     </div>

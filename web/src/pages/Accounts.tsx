@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { DatePicker } from "../components/DatePicker";
-import { accountTypeIcon, accountTypeLabel, BUILTIN_ACCOUNT_TYPES, m, q, type Account } from "../db/repo";
+import { accountTypeIcon, accountTypeLabel, BUILTIN_ACCOUNT_TYPES, m, q, type Account, type Holding } from "../db/repo";
 import { Icon, IconPicker } from "../components/Icon";
 import { TransferBody } from "../components/TransferForm";
 import { can } from "../lib/permissions";
 import { formatIDR, todayISO } from "../lib/format";
-import { CURRENCIES, currencyInfo, formatMoney, isBase, moneyInputText, parseMoney } from "../lib/currency";
+import { CURRENCIES, currencyInfo, formatMoney, formatRate, isBase, moneyInputText, parseMoney } from "../lib/currency";
 import { useCurrent, useDbVersion } from "../lib/hooks";
+import { liveRate, priceTime, refreshMarket, useMarketStatus } from "../lib/market";
+import { HoldingLines, StockPanel } from "../components/StockPanel";
 import { attempt, Avatar, Badge, Button, Card, Field, Input, Modal, Money, Select, STICKY_ACTIONS } from "../components/ui";
 import { getMode } from "../cloud/client";
 import { cloud } from "../cloud/sync";
@@ -48,7 +50,7 @@ function Balance({ a }: { a: Account }) {
   return (
     <span className="flex flex-col items-end">
       <Money amount={a.balance} currency={a.currency} className={negative ? "text-red-600" : undefined} />
-      {!isBase(a.currency) && <span className="num text-[11px] text-slate-400">≈ {formatIDR(a.balance_base)}</span>}
+      {!isBase(a.currency) && <span className="num whitespace-nowrap text-[11px] text-slate-400">≈ {formatIDR(a.balance_base)}</span>}
     </span>
   );
 }
@@ -68,7 +70,7 @@ function TypeSummary({ accounts }: { accounts: Account[] }) {
               <Icon value={accountTypeIcon(g.type)} size={16} />
             </span>
             <span className="flex-1 font-semibold text-slate-700">
-              {accountTypeLabel(g.type)} <span className="text-xs font-normal text-slate-400">· {g.accounts.length} akun</span>
+              {accountTypeLabel(g.type)} <span className="text-xs font-normal text-slate-400">· {g.accounts.filter((a) => !a.parent_id).length} akun</span>
             </span>
             <span className={`num font-bold ${g.total < 0 ? "text-red-600" : "text-slate-800"}`}>{formatIDR(g.total)}</span>
           </li>
@@ -78,7 +80,45 @@ function TypeSummary({ accounts }: { accounts: Account[] }) {
         <span className="text-sm font-bold text-slate-800">Total posisi</span>
         <span className={`num text-lg font-extrabold ${total < 0 ? "text-red-600" : "text-slate-800"}`}>{formatIDR(total)}</span>
       </div>
-      {foreign && <p className="mt-1 px-2 text-xs text-slate-400">Akun mata uang asing dihitung ke Rupiah dengan kurs di masing-masing akun.</p>}
+      {foreign && <p className="mt-1 px-2 text-xs text-slate-400">Mata uang asing dihitung ke Rupiah dengan kurs terkini (otomatis), kecuali akun yang kursnya diatur manual.</p>}
+    </Card>
+  );
+}
+
+/** Today's rates for the currencies the family holds, with refresh. */
+function RatesCard({ accounts }: { accounts: Account[] }) {
+  const market = useMarketStatus();
+  const codes = [...new Set(accounts.filter((a) => !isBase(a.currency)).map((a) => a.currency))];
+  if (!codes.length) return null;
+  const rows = codes.map((c) => ({ code: c, live: liveRate(c) }));
+  const at = rows.map((r) => r.live?.fetched_at).filter(Boolean).sort().pop();
+  return (
+    <Card
+      title="Kurs hari ini 💱"
+      action={
+        <button type="button" className="text-sm font-semibold text-brand-700 disabled:text-slate-400" disabled={market.loading} onClick={() => refreshMarket(true)}>
+          {market.loading ? "Memuat…" : "↻ Perbarui"}
+        </button>
+      }
+    >
+      <ul className="grid grid-cols-2 gap-2">
+        {rows.map(({ code, live }) => (
+          <li key={code} className="rounded-2xl bg-slate-50 px-3 py-2">
+            <p className="text-xs font-semibold text-slate-500">
+              {currencyInfo(code).flag} 1 {code}
+            </p>
+            <p className="num font-bold text-slate-800">{live ? formatRate(live.price) : "—"}</p>
+            {live?.change_pct != null && (
+              <p className={`num text-[11px] font-semibold ${live.change_pct >= 0 ? "text-mint-600" : "text-red-600"}`}>
+                {live.change_pct >= 0 ? "▲" : "▼"} {Math.abs(live.change_pct).toFixed(2).replace(".", ",")}%
+              </p>
+            )}
+          </li>
+        ))}
+      </ul>
+      <p className="mt-2 px-1 text-xs text-slate-400">
+        {market.error ? `Gagal update (${market.error}). Pakai kurs terakhir.` : at ? `Diperbarui ${priceTime(at)}. Otomatis tiap 10 menit saat aplikasi dibuka.` : "Belum ada kurs. Sambungkan internet."}
+      </p>
     </Card>
   );
 }
@@ -90,6 +130,11 @@ export function Accounts() {
   const [editing, setEditing] = useState<Account | "new" | "new-private" | null>(null);
   const [correcting, setCorrecting] = useState<Account | null>(null);
   const [transferOpen, setTransferOpen] = useState(false);
+  const [exchange, setExchange] = useState<{ from: string; to: string } | null>(null);
+  const [addingCurrency, setAddingCurrency] = useState<Account | null>(null);
+  const [stocksOf, setStocksOf] = useState<Account | null>(null);
+  const holdings = q.holdings(dompet.id, me.id);
+  const holdingsOf = (id: string): Holding[] => holdings.filter((h) => h.account_id === id);
   const shared = accounts.filter((a) => a.visibility === "shared");
   const priv = accounts.filter((a) => a.visibility === "private");
   const manage = can.manage(me.role);
@@ -110,49 +155,135 @@ export function Accounts() {
       </div>
     ));
   };
-  const rows = (items: Account[]) => (
-    <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-      {items.map((a) => (
-        <li key={a.id} className="flex items-center gap-1">
-          <button
-            disabled={!canEdit(a)}
-            onClick={() => setEditing(a)}
-            className="flex w-full items-center gap-3 rounded-2xl px-2 py-3 text-left enabled:hover:bg-slate-50"
-          >
-            <span className="flex h-11 w-11 items-center justify-center rounded-2xl text-xl" style={{ background: `${a.colour}22` }}>
-              <Icon value={a.icon ?? accountTypeIcon(a.type)} size={26} />
-            </span>
-            <span className="flex-1">
-              <span className="block font-semibold text-slate-800">{a.name}</span>
-              <span className="flex items-center gap-1 text-xs text-slate-500">
-                {accountTypeLabel(a.type)}
-                {!isBase(a.currency) && <span className="rounded-full bg-sky-50 px-1.5 font-semibold text-sky-700">{currencyInfo(a.currency).flag} {a.currency}</span>}
-                {a.visibility === "shared" && a.holder_name && (
-                  <>
-                    <span>·</span>
-                    <span className="inline-flex items-center gap-0.5 rounded-full bg-slate-100 px-1.5 font-semibold text-slate-600">
-                      {a.holder_emoji} {a.holder_member_id === me.id ? "kamu" : a.holder_name}
+  const chip = "rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-200";
+  const rows = (items: Account[]) => {
+    // Currencies of a pocket are listed under its main account.
+    const kidsOf = (id: string) => items.filter((a) => a.parent_id === id);
+    const top = items.filter((a) => !a.parent_id || !items.some((p) => p.id === a.parent_id));
+    return (
+      <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+        {top.map((a) => {
+          const kids = kidsOf(a.id);
+          const pocket = kids.length > 0;
+          const stocks = holdingsOf(a.id);
+          const investing = isBase(a.currency) && (stocks.length > 0 || a.type === "investment");
+          const pocketTotal = pocket ? [a, ...kids].reduce((s, x) => s + x.balance_base, 0) : 0;
+          return (
+            <li key={a.id} className="py-1">
+              <div className="flex items-center gap-1">
+                <button
+                  disabled={!canEdit(a)}
+                  onClick={() => setEditing(a)}
+                  className="flex w-full items-center gap-3 rounded-2xl px-2 py-2 text-left enabled:hover:bg-slate-50"
+                >
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-xl" style={{ background: `${a.colour}22` }}>
+                    <Icon value={a.icon ?? accountTypeIcon(a.type)} size={26} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-semibold text-slate-800">{a.name}</span>
+                    <span className="flex flex-wrap items-center gap-1 text-xs text-slate-500">
+                      {accountTypeLabel(a.type)}
+                      {pocket ? (
+                        <span className="whitespace-nowrap rounded-full bg-sky-50 px-1.5 font-semibold text-sky-700">🌐 {kids.length + 1} mata uang</span>
+                      ) : (
+                        !isBase(a.currency) && <span className="rounded-full bg-sky-50 px-1.5 font-semibold text-sky-700">{currencyInfo(a.currency).flag} {a.currency}</span>
+                      )}
+                      {stocks.length > 0 && <span className="whitespace-nowrap rounded-full bg-mint-50 px-1.5 font-semibold text-mint-700">📈 {stocks.length} saham</span>}
+                      {a.visibility === "shared" && a.holder_name && (
+                        <>
+                          <span>·</span>
+                          <span className="inline-flex items-center gap-0.5 rounded-full bg-slate-100 px-1.5 font-semibold text-slate-600">
+                            {a.holder_emoji} {a.holder_member_id === me.id ? "kamu" : a.holder_name}
+                          </span>
+                        </>
+                      )}
                     </span>
-                  </>
+                  </span>
+                  {pocket ? (
+                    <span className="flex flex-col items-end">
+                      <span className={`num font-bold ${pocketTotal < 0 ? "text-red-600" : ""}`}>{formatIDR(pocketTotal)}</span>
+                      <span className="text-[11px] text-slate-400">total dalam Rupiah</span>
+                    </span>
+                  ) : stocks.length > 0 ? (
+                    <span className="flex flex-col items-end">
+                      <span className="num font-bold">{formatIDR(a.balance_base)}</span>
+                      <span className="num text-[11px] text-slate-400">kas {formatIDR(a.balance)}</span>
+                    </span>
+                  ) : (
+                    <Balance a={a} />
+                  )}
+                </button>
+                {can.addTransaction(me.role) && !pocket && (
+                  <button
+                    onClick={() => setCorrecting(a)}
+                    title="Koreksi saldo"
+                    aria-label={`Koreksi saldo ${a.name}`}
+                    className="shrink-0 rounded-full p-2 text-lg hover:bg-slate-100"
+                  >
+                    ⚖️
+                  </button>
                 )}
-              </span>
-            </span>
-            <Balance a={a} />
-          </button>
-          {can.addTransaction(me.role) && (
-            <button
-              onClick={() => setCorrecting(a)}
-              title="Koreksi saldo"
-              aria-label={`Koreksi saldo ${a.name}`}
-              className="shrink-0 rounded-full p-2 text-lg hover:bg-slate-100"
-            >
-              ⚖️
-            </button>
-          )}
-        </li>
-      ))}
-    </ul>
-  );
+              </div>
+              {pocket && (
+                <ul className="ml-5 mr-1 space-y-0.5 border-l-2 border-sky-100 pl-2 sm:ml-14 sm:pl-3">
+                  {[a, ...kids].map((c) => (
+                    <li key={c.id} className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        disabled={!canEdit(c)}
+                        onClick={() => setEditing(c)}
+                        className="flex flex-1 items-center justify-between gap-2 rounded-xl px-2 py-1.5 text-left text-sm enabled:hover:bg-slate-50"
+                      >
+                        <span className="flex flex-col whitespace-nowrap font-semibold text-slate-700">
+                          {currencyInfo(c.currency).flag} {c.currency}
+                          {!isBase(c.currency) && (
+                            <span className="text-[11px] font-normal text-slate-400">
+                              @ {formatRate(c.fx_rate)}
+                              {c.fx_auto === 0 && " manual"}
+                            </span>
+                          )}
+                        </span>
+                        <Balance a={c} />
+                      </button>
+                      {can.addTransaction(me.role) && (
+                        <button onClick={() => setCorrecting(c)} title="Koreksi saldo" aria-label={`Koreksi saldo ${c.name}`} className="shrink-0 rounded-full p-1.5 hover:bg-slate-100">
+                          ⚖️
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {stocks.length > 0 && (
+                <div className="ml-5 mr-3 border-l-2 border-mint-100 pl-2 sm:ml-14 sm:pl-3">
+                  <HoldingLines holdings={stocks} />
+                </div>
+              )}
+              {(pocket || investing) && (
+                <div className="ml-5 mt-1.5 flex flex-wrap gap-1.5 pb-1 sm:ml-14">
+                  {pocket && can.addTransaction(me.role) && (
+                    <button type="button" className={chip} onClick={() => setExchange({ from: a.id, to: kids[0].id })}>
+                      ⇄ Tukar valas
+                    </button>
+                  )}
+                  {pocket && canEdit(a) && (
+                    <button type="button" className={chip} onClick={() => setAddingCurrency(a)}>
+                      + Mata uang
+                    </button>
+                  )}
+                  {investing && (
+                    <button type="button" className={chip} onClick={() => setStocksOf(a)}>
+                      📈 Saham
+                    </button>
+                  )}
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    );
+  };
 
   return (
     <div className="space-y-4">
@@ -168,6 +299,7 @@ export function Accounts() {
       </div>
       <div className="space-y-4">
         <TypeSummary accounts={accounts} />
+        <RatesCard accounts={accounts} />
         <Card
           title={`Akun bersama · ${formatIDR(shared.reduce((s, a) => s + a.balance_base, 0))}`}
           action={manage && <Button onClick={() => setEditing("new")}>+ Akun</Button>}
@@ -187,7 +319,21 @@ export function Accounts() {
           {priv.length ? list(priv) : <p className="px-2 text-sm text-slate-500">Simpan tabungan atau dompet pribadi di sini. Anggota lain tidak bisa melihat saldonya.</p>}
         </Card>
       </div>
-      <AccountForm editing={editing} onClose={() => setEditing(null)} />
+      <AccountForm
+        editing={editing}
+        onClose={() => setEditing(null)}
+        onAddCurrency={(a) => (setEditing(null), setAddingCurrency(a))}
+        onStocks={(a) => (setEditing(null), setStocksOf(a))}
+      />
+      <Modal open={addingCurrency !== null} onClose={() => setAddingCurrency(null)} title="Tambah mata uang 🌐">
+        {addingCurrency && <AddCurrencyForm key={addingCurrency.id} parent={addingCurrency} onClose={() => setAddingCurrency(null)} />}
+      </Modal>
+      <Modal open={exchange !== null} onClose={() => setExchange(null)} title="Tukar valas ⇄">
+        {exchange && <TransferBody initialFrom={exchange.from} initialTo={exchange.to} onClose={() => setExchange(null)} />}
+      </Modal>
+      <Modal open={stocksOf !== null} onClose={() => setStocksOf(null)} title={stocksOf ? `Saham · ${stocksOf.name} 📈` : "Saham"}>
+        {stocksOf && <StockPanel key={stocksOf.id} account={stocksOf} onClose={() => setStocksOf(null)} />}
+      </Modal>
       <Modal open={transferOpen} onClose={() => setTransferOpen(false)} title="Transfer antar akun ⇄">
         {transferOpen && <TransferBody onClose={() => setTransferOpen(false)} />}
       </Modal>
@@ -198,24 +344,51 @@ export function Accounts() {
   );
 }
 
-function AccountForm({ editing, onClose }: { editing: Account | "new" | "new-private" | null; onClose: () => void }) {
+function AccountForm({
+  editing,
+  onClose,
+  onAddCurrency,
+  onStocks,
+}: {
+  editing: Account | "new" | "new-private" | null;
+  onClose: () => void;
+  onAddCurrency: (a: Account) => void;
+  onStocks: (a: Account) => void;
+}) {
   const open = editing !== null;
   const isNew = typeof editing === "string";
+  const title = editing === "new-private" ? "Akun pribadi baru" : isNew ? "Akun baru" : editing?.parent_id ? `${editing.currency} · ${editing.name}` : "Ubah akun";
   return (
-    <Modal open={open} onClose={onClose} title={editing === "new-private" ? "Akun pribadi baru" : isNew ? "Akun baru" : "Ubah akun"}>
+    <Modal open={open} onClose={onClose} title={title}>
       {open && (
         <AccountFormBody
           key={isNew ? editing : editing.id}
           account={isNew ? null : editing}
           initialVisibility={editing === "new-private" ? "private" : undefined}
           onClose={onClose}
+          onAddCurrency={onAddCurrency}
+          onStocks={onStocks}
         />
       )}
     </Modal>
   );
 }
 
-function AccountFormBody({ account, initialVisibility, onClose }: { account: Account | null; initialVisibility?: "private"; onClose: () => void }) {
+function AccountFormBody({
+  account,
+  initialVisibility,
+  onClose,
+  onAddCurrency,
+  onStocks,
+}: {
+  account: Account | null;
+  initialVisibility?: "private";
+  onClose: () => void;
+  onAddCurrency: (a: Account) => void;
+  onStocks: (a: Account) => void;
+}) {
+  // A currency inside a pocket: only its balance and rate are its own.
+  const isChild = !!account?.parent_id;
   const { me } = useCurrent();
   const manage = can.manage(me.role);
   const [name, setName] = useState(account?.name ?? "");
@@ -224,12 +397,16 @@ function AccountFormBody({ account, initialVisibility, onClose }: { account: Acc
   const [type, setType] = useState<string>(account?.type ?? "bank");
   const [newType, setNewType] = useState("");
   const [currency, setCurrency] = useState(account?.currency ?? "IDR");
-  const [rateText, setRateText] = useState(account && !isBase(account.currency) ? String(account.fx_rate) : "");
+  const [rateText, setRateText] = useState(account && !isBase(account.currency) ? String(account.fx_rate_saved) : "");
+  const [fxAuto, setFxAuto] = useState(account ? account.fx_auto !== 0 : true);
+  const live = isBase(currency) ? null : liveRate(currency);
   const [opening, setOpening] = useState(account ? moneyInputText(account.opening_balance, account.currency) : "0");
   const [colour, setColour] = useState(account?.colour ?? COLOURS[1]);
   const [icon, setIcon] = useState<string>(account?.icon ?? accountTypeIcon(account?.type ?? "bank"));
   const finalType = type === NEW_TYPE ? newType.trim() : type;
-  const rate = isBase(currency) ? 1 : parseRate(rateText);
+  // Auto: the live rate (saved as the offline fallback); manual: what was typed.
+  const typedRate = parseRate(rateText);
+  const rate = isBase(currency) ? 1 : fxAuto ? (live?.price ?? (typedRate > 0 ? typedRate : (account?.fx_rate_saved ?? NaN))) : typedRate;
   // Stored amounts are minor units of the currency, so it's fixed once used.
   const hasTx = !!account && q.transactions(account.dompet_id, me.id, { accountId: account.id, limit: 1 }).length > 0;
   const [visibility, setVisibility] = useState<"shared" | "private">(account?.visibility ?? initialVisibility ?? (manage ? "shared" : "private"));
@@ -258,7 +435,7 @@ function AccountFormBody({ account, initialVisibility, onClose }: { account: Acc
           if (visibility === "private" && holderId !== me.id) return;
         }
         await m.saveAccount(me.id, {
-          id: account?.id, name, type: finalType, opening_balance: openingValue, colour, icon, visibility, currency, fx_rate: rate,
+          id: account?.id, name, type: finalType, opening_balance: openingValue, colour, icon, visibility, currency, fx_rate: rate, fx_auto: fxAuto,
           holder_member_id: visibility === "shared" && manage ? holderId : undefined,
         });
       },
@@ -275,10 +452,17 @@ function AccountFormBody({ account, initialVisibility, onClose }: { account: Acc
         save();
       }}
     >
+      {isChild ? (
+        <p className="text-sm text-slate-600">
+          Saldo {currencyInfo(currency).flag} <b>{currency}</b> di dompet valas ini. Nama, ikon dan pemegang mengikuti akun utamanya.
+        </p>
+      ) : (
       <Field label="Nama akun">
         <Input autoFocus value={name} maxLength={40} placeholder="mis. BCA Keluarga, GoPay Ibu" onChange={(e) => setName(e.target.value)} />
       </Field>
+      )}
       <div className="grid grid-cols-2 gap-3">
+        {!isChild && (
         <Field label="Jenis / kelompok">
           <Select
             value={type}
@@ -303,8 +487,9 @@ function AccountFormBody({ account, initialVisibility, onClose }: { account: Acc
             <option value={NEW_TYPE}>➕ Jenis baru…</option>
           </Select>
         </Field>
-        <Field label="Mata uang" hint={hasTx ? "Tetap, sudah ada transaksi" : undefined}>
-          <Select value={currency} disabled={hasTx} onChange={(e) => setCurrency(e.target.value)}>
+        )}
+        <Field label="Mata uang" hint={isChild ? undefined : hasTx ? "Tetap, sudah ada transaksi" : undefined}>
+          <Select value={currency} disabled={hasTx || isChild} onChange={(e) => setCurrency(e.target.value)}>
             {CURRENCIES.map((c) => (
               <option key={c.code} value={c.code}>
                 {c.flag} {c.code} · {c.name}
@@ -325,18 +510,51 @@ function AccountFormBody({ account, initialVisibility, onClose }: { account: Acc
         >
           <Input inputMode="decimal" value={opening} onChange={(e) => setOpening(e.target.value)} />
         </Field>
-        {!isBase(currency) && (
+        {!isBase(currency) && !fxAuto && (
           <Field label={`Kurs 1 ${currency} = Rp`} hint={Number.isFinite(rate) && rate > 0 ? formatIDR(rate) : "Isi kurs"}>
-            <Input inputMode="decimal" value={rateText} placeholder="mis. 16250" onChange={(e) => setRateText(e.target.value)} />
+            <Input inputMode="decimal" value={rateText} placeholder={live ? String(Math.round(live.price)) : "mis. 16250"} onChange={(e) => setRateText(e.target.value)} />
           </Field>
         )}
+        {!isBase(currency) && fxAuto && (
+          <div className="rounded-2xl bg-sky-50 px-3 py-2">
+            <p className="text-xs font-semibold text-sky-800">Kurs otomatis</p>
+            <p className="num text-sm font-bold text-slate-800">{live ? `1 ${currency} = ${formatRate(live.price)}` : "Menunggu internet…"}</p>
+            {live && <p className="text-[11px] text-slate-500">per {priceTime(live.fetched_at)}</p>}
+          </div>
+        )}
       </div>
+      {!isBase(currency) && (
+        <label className="-mt-1 flex items-center gap-2 text-sm text-slate-700">
+          <input type="checkbox" className="h-4 w-4 accent-[var(--color-brand-600)]" checked={fxAuto} onChange={(e) => setFxAuto(e.target.checked)} />
+          Ikuti kurs pasar otomatis
+          {fxAuto && !live && (
+            <Input inputMode="decimal" className="!w-28 !py-1 text-xs" value={rateText} placeholder="kurs sementara" onChange={(e) => setRateText(e.target.value)} />
+          )}
+        </label>
+      )}
+      {account && !isChild && (
+        <div className="flex flex-wrap gap-2 rounded-2xl bg-slate-50 p-2.5">
+          {canEditPocket(account, me.id, manage) && (
+            <Button variant="secondary" className="!py-1.5 text-xs" onClick={() => onAddCurrency(account)}>
+              🌐 + Mata uang lain (valas)
+            </Button>
+          )}
+          {isBase(account.currency) && (
+            <Button variant="secondary" className="!py-1.5 text-xs" onClick={() => onStocks(account)}>
+              📈 Saham di akun ini
+            </Button>
+          )}
+          <p className="w-full px-1 text-[11px] text-slate-400">Satu akun bisa menyimpan banyak mata uang (seperti BCA Valas) dan saham BEI.</p>
+        </div>
+      )}
       {finalType === "credit" && <p className="-mt-1 text-xs text-slate-400">Tagihan kartu kredit: isi saldo awal negatif, mis. -2jt.</p>}
+      {!isChild && (
       <div>
         <span className="mb-1.5 block text-sm font-semibold text-slate-700">Ikon</span>
         <IconPicker value={icon} onChange={setIcon} />
       </div>
-      {canAssign && (
+      )}
+      {canAssign && !isChild && (
         <div>
           <span className="mb-1.5 block text-sm font-semibold text-slate-700">Dipegang oleh</span>
           <div className="flex flex-wrap gap-1.5">
@@ -373,6 +591,7 @@ function AccountFormBody({ account, initialVisibility, onClose }: { account: Acc
           </p>
         </div>
       )}
+      {!isChild && (
       <Field label="Siapa yang bisa lihat">
         <Select
           value={visibility}
@@ -387,6 +606,7 @@ function AccountFormBody({ account, initialVisibility, onClose }: { account: Acc
           <option value="private">🔒 Hanya {holderId && holderId !== me.id ? members.find((x) => x.id === holderId)?.name : "saya"}</option>
         </Select>
       </Field>
+      )}
       {account && handover && holderId && othersPaid > 0 && (
         <label className="flex items-start gap-2 rounded-2xl bg-sun-100 px-3 py-2 text-sm text-slate-700">
           <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[var(--color-brand-600)]" checked={movePaidBy} onChange={(e) => setMovePaidBy(e.target.checked)} />
@@ -399,7 +619,7 @@ function AccountFormBody({ account, initialVisibility, onClose }: { account: Acc
       {account && visibility === "private" && holderId && holderId !== me.id && (
         <p className="rounded-2xl bg-red-50 px-3 py-2 text-xs text-red-700">Setelah disimpan, akun ini pindah ke {members.find((x) => x.id === holderId)?.name} dan tidak terlihat lagi olehmu.</p>
       )}
-      <div className="flex gap-2">
+      <div className={isChild ? "hidden" : "flex gap-2"}>
         {COLOURS.map((c) => (
           <button
             key={c}
@@ -417,7 +637,8 @@ function AccountFormBody({ account, initialVisibility, onClose }: { account: Acc
             <Button
               variant="danger"
               onClick={async () => {
-                if (confirm(`Hapus akun ${account.name}? Semua transaksinya ikut terhapus.`) && (await attempt(() => m.deleteAccount(me.id, account.id), "Akun dihapus")))
+                const kids = q.accounts(account.dompet_id, me.id).filter((x) => x.parent_id === account.id).length;
+                if (confirm(`Hapus ${isChild ? `${account.currency} dari dompet valas` : `akun ${account.name}`}? Semua transaksinya${kids ? ` dan ${kids} mata uang lainnya` : ""} ikut terhapus.`) && (await attempt(() => m.deleteAccount(me.id, account.id), "Akun dihapus")))
                   onClose();
               }}
             >
@@ -473,6 +694,61 @@ function CorrectionForm({ account, onClose }: { account: Account; onClose: () =>
         </Button>
         <Button type="submit" disabled={!Number.isFinite(diff) || diff === 0 || text.trim() === ""}>
           Koreksi
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+const canEditPocket = (a: Account, me: string, manage: boolean) =>
+  manage || (a.visibility === "private" && a.owner_member_id === me) || (a.visibility === "shared" && a.holder_member_id === me);
+
+/** Adds a currency to a pocket (e.g. SGD into BCA Valas). */
+function AddCurrencyForm({ parent, onClose }: { parent: Account; onClose: () => void }) {
+  const { dompet, me } = useCurrent();
+  const taken = new Set(q.accounts(dompet.id, me.id).filter((a) => a.id === parent.id || a.parent_id === parent.id).map((a) => a.currency));
+  const options = CURRENCIES.filter((c) => !taken.has(c.code));
+  const [currency, setCurrency] = useState(options.find((c) => c.code !== "IDR")?.code ?? options[0]?.code ?? "USD");
+  const [opening, setOpening] = useState("0");
+  const value = opening.trim() === "" ? 0 : parseSigned(opening, currency);
+  const live = isBase(currency) ? null : liveRate(currency);
+  return (
+    <form
+      className="space-y-3"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (await attempt(() => m.addPocketCurrency(me.id, parent.id, currency, value), `${currency} ditambahkan ke ${parent.name}`)) onClose();
+      }}
+    >
+      <p className="text-sm text-slate-600">
+        Simpan beberapa mata uang di <b>{parent.name}</b>, seperti tabungan valas di bank. Tiap mata uang punya saldo sendiri; totalnya dihitung ke Rupiah dengan kurs terkini.
+      </p>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Mata uang">
+          <Select value={currency} onChange={(e) => setCurrency(e.target.value)}>
+            {options.map((c) => (
+              <option key={c.code} value={c.code}>
+                {c.flag} {c.code} · {c.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label={`Saldo awal (${currency})`} hint={Number.isFinite(value) ? formatMoney(value, currency) : "Tidak valid"}>
+          <Input inputMode="decimal" value={opening} onChange={(e) => setOpening(e.target.value)} />
+        </Field>
+      </div>
+      {live && (
+        <p className="rounded-2xl bg-sky-50 px-4 py-2 text-sm text-slate-700">
+          1 {currency} = <b className="num">{formatRate(live.price)}</b>
+          {Number.isFinite(value) && value !== 0 && <> · saldo ≈ <b className="num">{formatIDR(Math.round((value / 10 ** currencyInfo(currency).decimals) * live.price))}</b></>}
+        </p>
+      )}
+      <div className={`${STICKY_ACTIONS} justify-end`}>
+        <Button variant="secondary" onClick={onClose}>
+          Batal
+        </Button>
+        <Button type="submit" disabled={!options.length || !Number.isFinite(value)}>
+          Tambah
         </Button>
       </div>
     </form>

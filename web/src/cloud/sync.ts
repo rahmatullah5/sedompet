@@ -16,11 +16,11 @@ import { setSession } from "../lib/session";
 import type { Role } from "../lib/permissions";
 
 // Local table -> server table. Order matters for uploads of new rows.
-const SYNCED = ["dompets", "members", "accounts", "categories", "loans", "recurring", "transactions", "budgets", "goals", "activity"] as const;
+const SYNCED = ["dompets", "members", "accounts", "categories", "loans", "recurring", "transactions", "budgets", "goals", "holdings", "activity"] as const;
 type Synced = (typeof SYNCED)[number];
 const SERVER: Record<Synced, string> = {
   dompets: "dompets", members: "dompet_members", accounts: "accounts", categories: "categories", loans: "loans",
-  recurring: "recurring", transactions: "transactions", budgets: "budgets", goals: "goals", activity: "activity",
+  recurring: "recurring", transactions: "transactions", budgets: "budgets", goals: "goals", holdings: "holdings", activity: "activity",
 };
 
 // ---------------------------------------------------------------------------
@@ -100,6 +100,9 @@ function toServer(t: Synced, r: Row): Row {
         // Needs migration 20261119000000_account_currency.sql.
         currency: r.currency || "IDR",
         fx_rate: r.fx_rate ?? 1,
+        // Multi-currency pockets (migration 20261128): only sent once the
+        // server has the columns, or when used (then it fails loudly).
+        ...(serverHasPockets || r.parent_id || r.fx_auto === 0 ? { parent_id: r.parent_id ?? null, fx_auto: r.fx_auto !== 0 } : {}),
       };
     case "categories":
       return pick(r, ["id", "dompet_id", "name", "icon", "colour", "kind", "parent_id", "sort_order"]);
@@ -134,6 +137,8 @@ function toServer(t: Synced, r: Row): Row {
       };
     case "goals":
       return pick(r, ["id", "dompet_id", "name", "icon", "target", "target_date", "account_id", "saved", "created_by"]);
+    case "holdings":
+      return { ...pick(r, ["id", "dompet_id", "account_id", "symbol", "name", "shares", "avg_price", "created_by"]), updated_at: iso(r.updated_at) };
     case "activity":
       return pick(r, ["id", "dompet_id", "member_id", "message"]);
     case "dompets":
@@ -152,6 +157,8 @@ let serverHasPeriodStart = false;
 let serverHasSplit = false;
 /** Set by pullAll: whether the server has transactions.need/merchant/receipt_path (migration 20261124). */
 let serverHasDetails = false;
+/** Set by pullAll: whether the server has accounts.parent_id/fx_auto (migration 20261128). */
+let serverHasPockets = false;
 let uploading: Promise<void> | null = null;
 let uploadAgain = false;
 
@@ -306,11 +313,12 @@ export async function pullAll(): Promise<void> {
     return;
   }
   setState({ syncing: true });
-  const [dompets, members, accounts, categories, loans, recurring, transactions, budgets, goals] = await Promise.all([
+  const [dompets, members, accounts, categories, loans, recurring, transactions, budgets, goals, holdings] = await Promise.all([
     fetchAll("dompets"), fetchAll("dompet_members"), fetchAll("accounts"), fetchAll("categories"), fetchAll("loans"),
     fetchAll("recurring"), fetchAll("transactions"), fetchAll("budgets"),
-    // Servers without the goals migration yet: no goals rather than no sync.
+    // Servers without the goals / holdings migration yet: none rather than no sync.
     fetchAll("goals").catch(() => [] as Row[]),
+    fetchAll("holdings").catch(() => [] as Row[]),
   ]);
   const { data: activity, error: actErr } = await requireSupabase().from("activity").select("*").order("created_at", { ascending: false }).limit(500);
   if (actErr) throw actErr;
@@ -331,11 +339,17 @@ export async function pullAll(): Promise<void> {
         (m.colour as string) || MEMBER_COLOURS[i % MEMBER_COLOURS.length], (m.emoji as string) || "🙂", (m.user_id as string) ?? null, (m.phone as string) ?? null, sqliteTime(m.joined_at),
       ]),
     );
-    for (const a of accounts)
+    if (accounts.length > 0) serverHasPockets = "parent_id" in accounts[0];
+    // Pocket main accounts before their currencies (foreign key).
+    const accs = [...accounts].sort((x, y) => Number(!!x.parent_id) - Number(!!y.parent_id));
+    const accIds = new Set(accs.map((a) => a.id));
+    for (const a of accs)
       run(
-        `INSERT INTO accounts (id, dompet_id, name, type, opening_balance, currency, fx_rate, colour, icon, visibility, owner_member_id, holder_member_id, archived, created_by, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [a.id, a.dompet_id, a.name, a.type, a.opening_balance, (a.currency as string) || "IDR", a.fx_rate == null ? 1 : Number(a.fx_rate), a.colour, a.icon, a.visibility, a.owner_member_id, a.holder_member_id ?? null, a.archived ? 1 : 0, a.created_by, sqliteTime(a.created_at)] as (string | number | null)[],
+        `INSERT INTO accounts (id, dompet_id, name, type, opening_balance, currency, fx_rate, fx_auto, parent_id, colour, icon, visibility, owner_member_id, holder_member_id, archived, created_by, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [a.id, a.dompet_id, a.name, a.type, a.opening_balance, (a.currency as string) || "IDR", a.fx_rate == null ? 1 : Number(a.fx_rate),
+          a.fx_auto === false ? 0 : 1, a.parent_id && accIds.has(a.parent_id) ? a.parent_id : null,
+          a.colour, a.icon, a.visibility, a.owner_member_id, a.holder_member_id ?? null, a.archived ? 1 : 0, a.created_by, sqliteTime(a.created_at)] as (string | number | null)[],
       );
     const cats = [...categories].sort((x, y) => Number(!!x.parent_id) - Number(!!y.parent_id));
     for (const c of cats)
@@ -379,6 +393,10 @@ export async function pullAll(): Promise<void> {
     for (const g of goals)
       run("INSERT INTO goals (id, dompet_id, name, icon, target, target_date, account_id, saved, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [
         g.id, g.dompet_id, g.name, g.icon, g.target, g.target_date, g.account_id, g.saved, g.created_by, sqliteTime(g.created_at),
+      ] as (string | number | null)[]);
+    for (const h of holdings)
+      run("INSERT INTO holdings (id, dompet_id, account_id, symbol, name, shares, avg_price, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [
+        h.id, h.dompet_id, h.account_id, h.symbol, h.name ?? null, Number(h.shares), Number(h.avg_price), h.created_by, sqliteTime(h.created_at), sqliteTime(h.updated_at),
       ] as (string | number | null)[]);
     for (const a of (activity ?? []) as Row[])
       run("INSERT INTO activity (id, dompet_id, member_id, message, created_at) VALUES (?, ?, ?, ?, ?)", [
