@@ -3,7 +3,7 @@ import { m, q, type Kind } from "../db/repo";
 import { formatIDR, parseAmount, todayISO } from "../lib/format";
 import { parseMoney } from "../lib/currency";
 import { useCurrent, useDbVersion, getMainAccount } from "../lib/hooks";
-import { attempt, Button, cx, Select, STICKY_ACTIONS } from "./ui";
+import { attempt, Button, cx, Select, STICKY_ACTIONS, AmountInput } from "./ui";
 
 interface Row {
   key: string;
@@ -182,7 +182,7 @@ export function BulkBody({ onClose, modeSwitch }: { onClose: () => void; modeSwi
               >
                 {r.kind === "expense" ? "−" : "+"}
               </button>
-              <input
+              <AmountInput
                 inputMode="decimal"
                 aria-label={`Jumlah baris ${i + 1}`}
                 placeholder="25rb"

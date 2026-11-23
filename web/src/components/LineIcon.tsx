@@ -11,6 +11,11 @@ const PATHS = {
   refresh: "M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5",
   plus: "M12 5v14M5 12h14",
   minus: "M5 12h14",
+  up: "M6 15l6-6 6 6",
+  down: "M6 9l6 6 6-6",
+  // circle cut into a slice: share of a whole
+  pie: "M12 3v9h9M21 12a9 9 0 1 1-9-9 9 9 0 0 1 9 9z",
+  eyeOff: "M3 3l18 18M10.6 6a9.8 9.8 0 0 1 1.4-.1c6 0 9.5 6.1 9.5 6.1a17 17 0 0 1-2.6 3.3M6.5 7.6A16.6 16.6 0 0 0 2.5 12s3.5 6.5 9.5 6.5a9 9 0 0 0 4.3-1.1M9.9 9.9a3 3 0 0 0 4.2 4.2",
   // rising line with axis: stocks
   chart: "M4 4v16h16M7 15l4-4 3 3 5-6",
   // stacked coins: currencies

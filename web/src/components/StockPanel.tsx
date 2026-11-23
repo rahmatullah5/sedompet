@@ -17,18 +17,19 @@ const toIdr = (market: Market, amount: number) => (MARKETS[market].currency === 
 
 /** Market value of a holding in rupiah (live price, else average buy price). */
 export const holdingValue = (h: Holding) => Math.round(toIdr(h.market, h.shares * (h.price ?? h.avg_price)));
-const holdingCost = (h: Holding) => Math.round(toIdr(h.market, h.shares * h.avg_price));
+export const holdingCost = (h: Holding) => Math.round(toIdr(h.market, h.shares * h.avg_price));
 
 /** A price in its market's currency: "US$342,56", "Rp5.700", "Rp1.131.286.000". */
 export function formatPrice(market: Market, price: number) {
   return MARKETS[market].currency === "USD" ? formatMoney(Math.round(price * 100), "USD") : formatRate(price);
 }
 
-/** "12,5" / "0.0125" -> number (decimal comma or dot). */
+/** "12,5" / "1.250" -> number ("," decimal, "." thousands). */
 function parseUnits(text: string) {
   const t = text.trim().replace(/\s/g, "");
   if (!t) return NaN;
-  return Number(t.includes(",") ? t.replace(/\./g, "").replace(",", ".") : t);
+  // "." groups thousands (the amount field adds it), "," is the decimal mark
+  return Number(t.replace(/\./g, "").replace(",", "."));
 }
 /** Price typed in the market's currency (rupiah keeps "25rb"-style input). */
 const parsePrice = (market: Market, text: string) => (MARKETS[market].currency === "USD" ? parseUnits(text) : parseAmount(text));
@@ -282,7 +283,7 @@ function TradeForm({ account, side: initialSide, holding, holdings, onDone }: { 
   const cur = MARKETS[market].currency;
   const cashOk = account.currency === cur;
   const [moveCash, setMoveCash] = useState(cashOk);
-  const units = market === "IDX" ? Number(unitsTextIn) : parseUnits(unitsTextIn);
+  const units = parseUnits(unitsTextIn);
   const shares = market === "IDX" ? units * LOT : units;
   const price = priceText.trim() ? parsePrice(market, priceText) : (t.info?.price ?? NaN);
   const fee = feeText.trim() ? parsePrice(market, feeText) : 0;

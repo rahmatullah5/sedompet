@@ -268,7 +268,7 @@ function FormBody({
         <Field label={isBase(currency) ? "Berapa?" : `Berapa? (${currencyInfo(currency).flag} ${currency})`} hint={Number.isFinite(amount) && amount > 0 ? formatMoney(amount, currency) : undefined}>
           <Input
             inputMode="decimal"
-            placeholder={isBase(currency) ? "25rb" : "12.50"}
+            placeholder={isBase(currency) ? "25rb" : "12,50"}
             value={amountText}
             onChange={(e) => setAmountText(e.target.value)}
             className="py-2.5 text-center !text-3xl font-extrabold tracking-tight"

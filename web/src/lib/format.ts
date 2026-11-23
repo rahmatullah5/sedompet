@@ -148,3 +148,59 @@ export function timeAgo(sqliteUtc: string) {
   const day = Math.round(hr / 24);
   return `${day} hari lalu`;
 }
+
+// ---------------------------------------------------------------------------
+// Live grouping for amount fields: "1500000" shows as "1.500.000" while typing.
+// "." groups thousands and "," is the decimal mark (Indonesian style), so the
+// existing parsers (parseAmount, parseMoney) read the result unchanged.
+// Shorthand suffixes ("25rb", "1,5jt") and a leading "-" are kept.
+// ---------------------------------------------------------------------------
+
+const SIGNIFICANT = /[0-9a-z,-]/i;
+
+/** Groups the whole part of what was typed: "-1250000,5" -> "-1.250.000,5". */
+export function groupTyped(text: string): string {
+  const m = text.replace(/\s/g, "").replace(/^−/, "-").match(/^(-?)([\d.,]*)([a-z]*)$/i);
+  if (!m) return text; // not a number: leave it for the parser to reject
+  const [, sign, num, suffix] = m;
+  if (!num) return sign + suffix.toLowerCase();
+  const comma = num.indexOf(",");
+  let whole = (comma < 0 ? num : num.slice(0, comma)).replace(/\D/g, "");
+  const frac = comma < 0 ? null : num.slice(comma + 1).replace(/\D/g, "");
+  whole = whole.replace(/^0+(?=\d)/, "");
+  if (!whole && frac !== null) whole = "0";
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return sign + grouped + (frac !== null ? "," + frac : "") + suffix.toLowerCase();
+}
+
+/**
+ * Normalises a raw edit of `prev` (already grouped): a "." the user just typed
+ * is a decimal mark; a pasted "1,234.56" / "0.0125" is read the usual way.
+ * Returns the grouped text and where the caret should go.
+ */
+export function editTyped(prev: string, raw: string, caret: number): { text: string; caret: number } {
+  let t = raw;
+  let pos = caret;
+  const inserted = raw.length - prev.length;
+  if (inserted === 1 && raw[pos - 1] === ".") {
+    // typed "." -> decimal comma (dropped when there already is one)
+    t = raw.slice(0, pos - 1) + (raw.slice(0, pos - 1).includes(",") || raw.slice(pos).includes(",") ? "" : ",") + raw.slice(pos);
+    if (t.length < raw.length) pos -= 1;
+  } else if (inserted > 1) {
+    // paste: US style "1,234.56" or a lone decimal dot "0.0125" / "12.5"
+    const lastDot = t.lastIndexOf(".");
+    const lastComma = t.lastIndexOf(",");
+    if (lastDot > lastComma && lastComma >= 0) t = t.replace(/,/g, "").replace(/\.(?=[^.]*$)/, ",");
+    else if (lastComma < 0 && /^-?\d*\.\d+[a-z]*$/i.test(t) && !/^-?\d{1,3}(\.\d{3})+[a-z]*$/i.test(t)) t = t.replace(".", ",");
+  }
+  const text = groupTyped(t);
+  // keep the caret after the same number of significant characters
+  let want = 0;
+  for (let i = 0; i < Math.min(pos, t.length); i++) if (SIGNIFICANT.test(t[i])) want++;
+  let at = 0;
+  while (at < text.length && want > 0) {
+    if (SIGNIFICANT.test(text[at])) want--;
+    at++;
+  }
+  return { text, caret: at };
+}

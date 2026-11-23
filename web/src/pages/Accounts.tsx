@@ -401,7 +401,7 @@ function AccountFormBody({
   const [type, setType] = useState<string>(account?.type ?? "bank");
   const [newType, setNewType] = useState("");
   const [currency, setCurrency] = useState(account?.currency ?? "IDR");
-  const [rateText, setRateText] = useState(account && !isBase(account.currency) ? String(account.fx_rate_saved) : "");
+  const [rateText, setRateText] = useState(account && !isBase(account.currency) ? String(account.fx_rate_saved).replace(".", ",") : "");
   const [fxAuto, setFxAuto] = useState(account ? account.fx_auto !== 0 : true);
   const live = isBase(currency) ? null : liveRate(currency);
   const [opening, setOpening] = useState(account ? moneyInputText(account.opening_balance, account.currency) : "0");
@@ -684,7 +684,7 @@ function CorrectionForm({ account, onClose }: { account: Account; onClose: () =>
         (lihat di aplikasi bank/e-wallet).
       </p>
       <Field label="Saldo sebenarnya">
-        <Input autoFocus inputMode="decimal" value={text} placeholder={isBase(account.currency) ? "mis. 2.350.000" : "mis. 1250.75"} onChange={(e) => setText(e.target.value)} className="py-3 text-center !text-2xl font-extrabold" />
+        <Input autoFocus inputMode="decimal" value={text} placeholder={isBase(account.currency) ? "mis. 2.350.000" : "mis. 1.250,75"} onChange={(e) => setText(e.target.value)} className="py-3 text-center !text-2xl font-extrabold" />
       </Field>
       {Number.isFinite(diff) && text.trim() !== "" && (
         <p className={`rounded-2xl px-4 py-2.5 text-sm ${diff === 0 ? "bg-slate-100 text-slate-600" : "bg-sun-100 text-slate-700"}`}>

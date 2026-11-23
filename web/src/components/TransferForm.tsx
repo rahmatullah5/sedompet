@@ -106,7 +106,7 @@ export function TransferBody({
         <Field label={cross ? `Berapa? (${currencyInfo(fromCur).flag} ${fromCur})` : "Berapa?"} hint={amount > 0 ? formatMoney(amount, fromCur) : undefined}>
           <Input
             inputMode="decimal"
-            placeholder={isBase(fromCur) ? "500rb" : "100.00"}
+            placeholder={isBase(fromCur) ? "500rb" : "100,00"}
             value={amountText}
             onChange={(e) => setAmountText(e.target.value)}
             className="py-2.5 text-center !text-3xl font-extrabold tracking-tight"

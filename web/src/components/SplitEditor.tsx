@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { splitEqually, type Member, type SplitShare } from "../db/repo";
 import { formatMoney, moneyInputText, parseMoney } from "../lib/currency";
-import { Avatar, cx } from "./ui";
+import { Avatar, cx, AmountInput } from "./ui";
 
 export interface SplitState {
   on: boolean;
@@ -133,7 +133,7 @@ export function SplitEditor({
                   <li key={mem.id} className="flex items-center gap-2">
                     <Avatar emoji={mem.emoji} colour={mem.colour} size={26} />
                     <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700">{mem.name}</span>
-                    <input
+                    <AmountInput
                       inputMode="decimal"
                       aria-label={`Bagian ${mem.name}`}
                       className="w-32 rounded-xl border-2 border-transparent bg-white px-3 py-1.5 text-right text-sm font-semibold outline-none focus:border-brand-500"

@@ -14,6 +14,7 @@ import { MEMBER_COLOURS } from "../db/repo";
 import { friendlyError, getPendingInvite, inviteCodeFromUrl, normalizePhone, phoneEmail, requireSupabase, setPendingInvite, stripInviteFromUrl } from "./client";
 import { setSession } from "../lib/session";
 import { applyHiddenFromAccount, setHiddenSaver } from "../lib/hooks";
+import { applyReportLayoutFromAccount, setReportLayoutSaver } from "../lib/reportLayout";
 import type { Role } from "../lib/permissions";
 
 // Local table -> server table. Order matters for uploads of new rows.
@@ -436,6 +437,7 @@ async function onSession(session: Session | null) {
     channel?.unsubscribe();
     channel = null;
     setHiddenSaver(null);
+    setReportLayoutSaver(null);
     await applyRemote((run) => {
       run("DELETE FROM dompets");
       run("DELETE FROM outbox");
@@ -450,6 +452,10 @@ async function onSession(session: Session | null) {
   const savedHide = session.user.user_metadata?.hide_balance;
   if (typeof savedHide === "boolean") applyHiddenFromAccount(savedHide);
   setHiddenSaver((v) => void sb.auth.updateUser({ data: { hide_balance: v } }));
+  // So is the Laporan layout (which widgets, in what order).
+  const savedLayout = session.user.user_metadata?.reports_widgets;
+  if (savedLayout !== undefined) applyReportLayoutFromAccount(savedLayout);
+  setReportLayoutSaver((v) => void sb.auth.updateUser({ data: { reports_widgets: v } }));
   if (switchedUser) await applyRemote((run) => run("DELETE FROM outbox"));
   // Link any Dompet the admin pre-assigned to this phone number.
   const { error: claimError } = await sb.rpc("claim_phone_membership");

@@ -7,6 +7,9 @@ import { Card, cx } from "../components/ui";
 import { cashFlow, netWorth } from "../db/networth";
 import { netWorthTrend } from "./Neraca";
 import { Icon } from "../components/Icon";
+import { LineIcon } from "../components/LineIcon";
+import { resolveLayout, useReportLayout } from "../lib/reportLayout";
+import { AccountPieCard, AssetSummaryCard, BudgetPieCard, CategoryPieCard, InvestmentPieCard } from "./ReportWidgets";
 
 // Chart colours (validated: lightness/chroma pass; CVD 7.4 => secondary
 // encoding via legend, fixed order and the table view).
@@ -195,6 +198,30 @@ function loadHorizon() {
   }
 }
 
+type Forecast = ReturnType<typeof useForecast>;
+interface WidgetProps {
+  f: Forecast;
+  horizon: number;
+  setHorizon: (h: number) => void;
+}
+
+/** Every Laporan widget, in default order. `defaultOn: false` = only when added. */
+const WIDGETS: { id: string; title: string; hint: string; defaultOn: boolean; render: (p: WidgetProps) => React.ReactNode }[] = [
+  { id: "forecast", title: "Perkiraan akhir bulan", hint: "pengeluaran & saldo di akhir bulan", defaultOn: true, render: ({ f }) => <ForecastCard f={f} /> },
+  { id: "pace", title: "Laju belanja bulan ini", hint: "dibanding bulan lalu dan anggaran", defaultOn: true, render: () => <PaceChart /> },
+  { id: "monthly", title: "Masuk vs keluar", hint: "6 bulan terakhir", defaultOn: true, render: () => <MonthlyChart /> },
+  { id: "cashflow", title: "Arus kas", hint: "bulanan atau tahunan", defaultOn: true, render: () => <CashFlowCard /> },
+  { id: "category", title: "Ke mana uangnya?", hint: "pengeluaran per kategori", defaultOn: true, render: () => <CategoryChart /> },
+  { id: "needwant", title: "Kebutuhan vs keinginan", hint: "muncul kalau ada yang ditandai", defaultOn: true, render: () => <NeedWantCard /> },
+  { id: "networth", title: "Kekayaan bersih", hint: "harta dikurangi utang", defaultOn: true, render: () => <NetWorthCard /> },
+  { id: "assets", title: "Ringkasan aset", hint: "per jenis aset / tipe akun, untung-rugi investasi", defaultOn: true, render: () => <AssetSummaryCard /> },
+  { id: "projection", title: "Proyeksi saldo", hint: "1–12 bulan ke depan", defaultOn: true, render: (p) => <BalanceProjection {...p} /> },
+  { id: "pie-accounts", title: "Porsi saldo", hint: "diagram lingkaran per akun, tipe, atau jenis aset", defaultOn: false, render: () => <AccountPieCard /> },
+  { id: "pie-investments", title: "Porsi investasi", hint: "diagram lingkaran saham, kripto, emas", defaultOn: false, render: () => <InvestmentPieCard /> },
+  { id: "pie-budgets", title: "Porsi anggaran", hint: "diagram lingkaran terpakai / batas", defaultOn: false, render: () => <BudgetPieCard /> },
+  { id: "pie-categories", title: "Porsi pengeluaran", hint: "diagram lingkaran per kategori", defaultOn: false, render: () => <CategoryPieCard /> },
+];
+
 export function Reports() {
   useDbVersion();
   const [horizon, setHorizonState] = useState(loadHorizon);
@@ -207,80 +234,174 @@ export function Reports() {
     }
   };
   const f = useForecast(horizon);
+  const [saved, setSaved] = useReportLayout();
+  const [editing, setEditing] = useState(false);
+  const widgets = resolveLayout(WIDGETS, saved);
+  const shown = widgets.filter((w) => w.on);
+  const off = widgets.filter((w) => !w.on);
+
+  const save = (list: { id: string; on: boolean }[]) => setSaved({ order: list.map((w) => w.id), hidden: list.filter((w) => !w.on).map((w) => w.id) });
+  // Moves among the visible widgets; hidden ones keep their place in between.
+  const move = (id: string, dir: -1 | 1) => {
+    const i = shown.findIndex((w) => w.id === id);
+    const other = shown[i + dir];
+    if (!other) return;
+    const list = [...widgets];
+    const a = list.findIndex((w) => w.id === id);
+    const b = list.findIndex((w) => w.id === other.id);
+    [list[a], list[b]] = [list[b], list[a]];
+    save(list);
+  };
+  const toggle = (id: string, on: boolean) => {
+    const list = widgets.filter((w) => w.id !== id);
+    const w = widgets.find((x) => x.id === id)!;
+    // An added widget goes to the bottom of the page.
+    save(on ? [...list, { ...w, on }] : widgets.map((x) => (x.id === id ? { ...x, on } : x)));
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-extrabold tracking-tight text-slate-800">Laporan</h1>
+          <p className="text-sm text-slate-500">{editing ? "Atur urutan, sembunyikan, atau tambah widget." : "Ke mana uang keluarga pergi, dan perkiraan ke depan."}</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setEditing((e) => !e)}
+          className={cx("flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-semibold", editing ? "bg-slate-800 text-white" : "bg-white text-slate-700 shadow-sm")}
+        >
+          <LineIcon name={editing ? "check" : "settings"} size={16} />
+          {editing ? "Selesai" : "Atur"}
+        </button>
+      </div>
+
+      {editing ? (
+        <>
+          <Card title="Ditampilkan">
+            <ul className="divide-y divide-slate-100">
+              {shown.map((w, i) => (
+                <li key={w.id} className="flex items-center gap-2 py-2">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-slate-700">{w.title}</span>
+                    <span className="block truncate text-xs text-slate-400">{w.hint}</span>
+                  </span>
+                  <IconButton label={`Naikkan ${w.title}`} icon="up" disabled={i === 0} onClick={() => move(w.id, -1)} />
+                  <IconButton label={`Turunkan ${w.title}`} icon="down" disabled={i === shown.length - 1} onClick={() => move(w.id, 1)} />
+                  <IconButton label={`Sembunyikan ${w.title}`} icon="eyeOff" onClick={() => toggle(w.id, false)} />
+                </li>
+              ))}
+              {shown.length === 0 && <li className="py-3 text-center text-sm text-slate-400">Belum ada widget. Tambahkan dari daftar di bawah.</li>}
+            </ul>
+          </Card>
+          <Card title="Tambah widget">
+            {off.length ? (
+              <ul className="divide-y divide-slate-100">
+                {off.map((w) => (
+                  <li key={w.id} className="flex items-center gap-2 py-2">
+                    <LineIcon name={w.id.startsWith("pie-") ? "pie" : "chart"} size={18} className="shrink-0 text-slate-400" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold text-slate-700">{w.title}</span>
+                      <span className="block truncate text-xs text-slate-400">{w.hint}</span>
+                    </span>
+                    <button type="button" onClick={() => toggle(w.id, true)} className="flex shrink-0 items-center gap-1 rounded-full bg-brand-50 px-3 py-1.5 text-xs font-bold text-brand-700 hover:bg-brand-100">
+                      <LineIcon name="plus" size={14} />
+                      Tambah
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="py-2 text-sm text-slate-400">Semua widget sudah ditampilkan.</p>
+            )}
+          </Card>
+          {saved && (
+            <button type="button" onClick={() => setSaved(null)} className="w-full rounded-full py-2 text-sm font-semibold text-slate-500 hover:bg-white">
+              Kembalikan tampilan awal
+            </button>
+          )}
+        </>
+      ) : (
+        <>
+          {shown.map((w) => (
+            <div key={w.id}>{w.render({ f, horizon, setHorizon })}</div>
+          ))}
+          {shown.length === 0 && (
+            <Card>
+              <p className="py-4 text-center text-sm text-slate-500">Semua widget disembunyikan. Tekan Atur untuk menambah.</p>
+            </Card>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function IconButton({ label, icon, onClick, disabled }: { label: string; icon: "up" | "down" | "eyeOff"; onClick: () => void; disabled?: boolean }) {
+  return (
+    <button type="button" aria-label={label} title={label} disabled={disabled} onClick={onClick} className="rounded-full p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-25">
+      <LineIcon name={icon} size={18} />
+    </button>
+  );
+}
+
+function ForecastCard({ f }: { f: Forecast }) {
   const overBudget = f.overall && f.overall.projected > f.overall.amount;
   const atRisk = f.budgetOutlook.filter((b) => b.over > 0);
   const daysLeft = Math.max(1, f.daysInMonth - f.day);
   const warn = overBudget || atRisk.length > 0;
-
   return (
-    <div className="space-y-5">
-      <div>
-        <h1 className="text-2xl font-extrabold tracking-tight text-slate-800">Laporan</h1>
-        <p className="text-sm text-slate-500">Ke mana uang keluarga pergi, dan perkiraan ke depan.</p>
+    <Card className="pop-in">
+      <p className="text-sm font-semibold text-slate-500">
+        Perkiraan akhir {formatMonth(f.month)}
+        {formatPeriodRange(f.month) && <span className="font-normal text-slate-400"> · {formatPeriodRange(f.month)}</span>}
+      </p>
+      <div className="mt-2 grid grid-cols-2 gap-4">
+        <div>
+          <p className="text-xs text-slate-500">Total pengeluaran</p>
+          <p className="num text-2xl font-extrabold text-slate-800">{formatCompact(Math.round(f.expenseEnd))}</p>
+          <p className="text-xs text-slate-500">sekarang {formatCompact(f.totals.expense)}</p>
+        </div>
+        <div>
+          <p className="text-xs text-slate-500">Saldo di akhir bulan</p>
+          <p className="num text-2xl font-extrabold text-slate-800">{formatCompact(Math.round(f.balanceEnd))}</p>
+          <p className="text-xs text-slate-500">sekarang {formatCompact(f.balanceNow)}</p>
+        </div>
       </div>
-
-      {/* Forecast hero */}
-      <Card className="pop-in">
-        <p className="text-sm font-semibold text-slate-500">
-          Perkiraan akhir {formatMonth(f.month)}
-          {formatPeriodRange(f.month) && <span className="font-normal text-slate-400"> · {formatPeriodRange(f.month)}</span>}
+      <div className={cx("mt-4 space-y-2 rounded-2xl px-4 py-3 text-sm", warn ? "bg-red-50 text-red-800" : "bg-mint-100 text-slate-700")}>
+        <p>
+          {f.overall && overBudget
+            ? `Dengan kebiasaan sekarang, ${f.overall.combined ? "belanja yang dianggarkan" : "total pengeluaran"} bisa lewat ${f.overall.combined ? `gabungan ${f.overall.combined} anggaran` : "anggaran"} ${formatIDR(Math.round(f.overall.projected - f.overall.amount))}. Kurangi sekitar ${formatIDR(Math.ceil((f.overall.projected - f.overall.amount) / daysLeft))} per hari.`
+            : f.budgetOutlook.length === 0
+              ? `Rata-rata belanja harian keluarga ${formatIDR(Math.round(f.dailyVar))}. Buat anggaran supaya ada pembanding.`
+              : atRisk.length > 0
+                ? `${atRisk.length} dari ${f.budgetOutlook.length} anggaran diperkirakan lewat di akhir bulan:`
+                : `Semua ${f.budgetOutlook.length} anggaran diperkirakan aman sampai akhir bulan. Lanjutkan!`}
         </p>
-        <div className="mt-2 grid grid-cols-2 gap-4">
-          <div>
-            <p className="text-xs text-slate-500">Total pengeluaran</p>
-            <p className="num text-2xl font-extrabold text-slate-800">{formatCompact(Math.round(f.expenseEnd))}</p>
-            <p className="text-xs text-slate-500">sekarang {formatCompact(f.totals.expense)}</p>
-          </div>
-          <div>
-            <p className="text-xs text-slate-500">Saldo di akhir bulan</p>
-            <p className="num text-2xl font-extrabold text-slate-800">{formatCompact(Math.round(f.balanceEnd))}</p>
-            <p className="text-xs text-slate-500">sekarang {formatCompact(f.balanceNow)}</p>
-          </div>
-        </div>
-        <div className={cx("mt-4 space-y-2 rounded-2xl px-4 py-3 text-sm", warn ? "bg-red-50 text-red-800" : "bg-mint-100 text-slate-700")}>
-          <p>
-            {f.overall && overBudget
-              ? `Dengan kebiasaan sekarang, ${f.overall.combined ? "belanja yang dianggarkan" : "total pengeluaran"} bisa lewat ${f.overall.combined ? `gabungan ${f.overall.combined} anggaran` : "anggaran"} ${formatIDR(Math.round(f.overall.projected - f.overall.amount))}. Kurangi sekitar ${formatIDR(Math.ceil((f.overall.projected - f.overall.amount) / daysLeft))} per hari.`
-              : f.budgetOutlook.length === 0
-                ? `Rata-rata belanja harian keluarga ${formatIDR(Math.round(f.dailyVar))}. Buat anggaran supaya ada pembanding.`
-                : atRisk.length > 0
-                  ? `${atRisk.length} dari ${f.budgetOutlook.length} anggaran diperkirakan lewat di akhir bulan:`
-                  : `Semua ${f.budgetOutlook.length} anggaran diperkirakan aman sampai akhir bulan. Lanjutkan!`}
-          </p>
-          {atRisk.length > 0 && (
-            <ul className="space-y-1">
-              {atRisk.map((b) => (
-                <li key={b.id} className="flex flex-wrap items-baseline justify-between gap-x-2 rounded-xl bg-white/70 px-3 py-1.5">
-                  <span className="font-semibold">{b.name}</span>
-                  <span className="num text-xs">
-                    ≈ {formatCompact(b.projected)} / {formatCompact(b.limit)} · lebih {formatIDR(b.over)} · kurangi ≈ {formatIDR(Math.ceil(b.over / daysLeft))}/hari
-                  </span>
-                  <span className="num w-full text-[11px] opacity-75">
-                    = sudah {formatCompact(b.spent)}
-                    {b.bills > 0 && ` + rutin ${formatCompact(b.bills)}`}
-                    {b.daily > 0 && ` + biasanya ${formatCompact(b.daily)} untuk ${daysLeft} hari lagi`}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-        {f.restOfMonth.items.length > 0 && (
-          <p className="mt-2 text-xs text-slate-500">
-            Sudah termasuk {f.restOfMonth.items.length} tagihan/pemasukan rutin yang belum jatuh tempo bulan ini.
-          </p>
+        {atRisk.length > 0 && (
+          <ul className="space-y-1">
+            {atRisk.map((b) => (
+              <li key={b.id} className="flex flex-wrap items-baseline justify-between gap-x-2 rounded-xl bg-white/70 px-3 py-1.5">
+                <span className="font-semibold">{b.name}</span>
+                <span className="num text-xs">
+                  ≈ {formatCompact(b.projected)} / {formatCompact(b.limit)} · lebih {formatIDR(b.over)} · kurangi ≈ {formatIDR(Math.ceil(b.over / daysLeft))}/hari
+                </span>
+                <span className="num w-full text-[11px] opacity-75">
+                  = sudah {formatCompact(b.spent)}
+                  {b.bills > 0 && ` + rutin ${formatCompact(b.bills)}`}
+                  {b.daily > 0 && ` + biasanya ${formatCompact(b.daily)} untuk ${daysLeft} hari lagi`}
+                </span>
+              </li>
+            ))}
+          </ul>
         )}
-      </Card>
-
-      <PaceChart />
-      <MonthlyChart />
-      <CashFlowCard />
-      <CategoryChart />
-      <NeedWantCard />
-      <NetWorthCard />
-
-      <BalanceProjection f={f} horizon={horizon} setHorizon={setHorizon} />
-    </div>
+      </div>
+      {f.restOfMonth.items.length > 0 && (
+        <p className="mt-2 text-xs text-slate-500">
+          Sudah termasuk {f.restOfMonth.items.length} tagihan/pemasukan rutin yang belum jatuh tempo bulan ini.
+        </p>
+      )}
+    </Card>
   );
 }
 
@@ -774,7 +895,7 @@ const SCENARIOS = [
   { key: "bad", label: "Boros", colour: "#e5484d", text: "text-red-700", bg: "bg-red-50" },
 ] as const;
 
-function BalanceProjection({ f, horizon, setHorizon }: { f: ReturnType<typeof useForecast>; horizon: number; setHorizon: (h: number) => void }) {
+function BalanceProjection({ f, horizon, setHorizon }: WidgetProps) {
   const [tip, setTip] = useState<number | null>(null);
   const t = f.trajectory;
   const last = t[t.length - 1];

@@ -105,7 +105,7 @@ export function formatMoney(amount: number, code: string | null | undefined = BA
 
 /**
  * Parses what was typed into minor units of `code`. Rupiah keeps the familiar
- * "25rb / 1,5jt / 25.000" input; other currencies accept "12.50", "12,50"
+ * "25rb / 1,5jt / 25.000" input; other currencies accept "12,50", "12.50"
  * or "1,234.56" (the last "." or "," followed by 1-2 digits is the decimal mark).
  */
 export function parseMoney(input: string, code: string | null | undefined = BASE_CURRENCY): number {
@@ -122,11 +122,11 @@ export function parseMoney(input: string, code: string | null | undefined = BASE
   return Math.round(value * minorFactor(info.code));
 }
 
-/** Minor units -> editable text ("12.5" for USD, "25000" for IDR). */
+/** Minor units -> editable text ("12,5" for USD, "25000" for IDR). */
 export function moneyInputText(amount: number, code: string | null | undefined) {
   if (isBase(code)) return String(amount);
   const f = minorFactor(code);
-  return f === 1 ? String(amount) : String(amount / f);
+  return f === 1 ? String(amount) : String(amount / f).replace(".", ",");
 }
 
 const rateFmt = new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0, maximumFractionDigits: 2 });

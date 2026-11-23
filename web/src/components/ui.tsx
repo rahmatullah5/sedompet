@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { formatMoney } from "../lib/currency";
+import { editTyped, groupTyped } from "../lib/format";
 import { LineIcon } from "./LineIcon";
 import { Icon } from "./Icon";
 
@@ -65,7 +66,40 @@ const inputClass =
   "w-full rounded-2xl border-2 border-transparent bg-slate-100 px-4 py-2.5 text-[15px] outline-none transition focus:border-brand-500 focus:bg-white";
 
 export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
+  if (props.inputMode === "decimal") return <AmountInput {...props} className={cx(inputClass, props.className)} />;
   return <input {...props} className={cx(inputClass, props.className)} />;
+}
+
+/**
+ * A text box for amounts that shows thousand separators while typing
+ * ("1.500.000"). The parent's onChange receives the grouped text.
+ */
+export function AmountInput({ value, onChange, ...rest }: React.InputHTMLAttributes<HTMLInputElement>) {
+  const ref = useRef<HTMLInputElement>(null);
+  const caret = useRef<number | null>(null);
+  const shown = groupTyped(String(value ?? ""));
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el && caret.current !== null && document.activeElement === el) el.setSelectionRange(caret.current, caret.current);
+    caret.current = null;
+  });
+  return (
+    <input
+      {...rest}
+      ref={ref}
+      inputMode="decimal"
+      autoComplete="off"
+      value={shown}
+      onChange={(e) => {
+        const el = e.target;
+        const next = editTyped(shown, el.value, el.selectionStart ?? el.value.length);
+        el.value = next.text;
+        caret.current = next.caret;
+        el.setSelectionRange(next.caret, next.caret);
+        onChange?.(e);
+      }}
+    />
+  );
 }
 
 export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {

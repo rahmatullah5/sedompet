@@ -1,6 +1,6 @@
 import type { Category } from "../db/repo";
 import { formatMoney, parseMoney } from "../lib/currency";
-import { Select } from "./ui";
+import { Select, AmountInput } from "./ui";
 
 export interface Line {
   key: string;
@@ -53,7 +53,7 @@ export function CategoryLines({
               </option>
             ))}
           </Select>
-          <input
+          <AmountInput
             inputMode="decimal"
             aria-label={`Jumlah baris ${i + 1}`}
             placeholder="0"
