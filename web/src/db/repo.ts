@@ -1292,7 +1292,7 @@ export const m = {
     const fee = Math.round(data.fee * minor);
     const cash = data.side === "buy" ? gross + fee : gross - fee;
     if (cash <= 0) throw new Error("Biaya lebih besar dari nilai jual.");
-    const label = `${data.side === "buy" ? "Beli" : "Jual"} ${symbol} ${unitsText(market, shares)} @ ${formatMoney(Math.round(data.price * minor), priceCur)}`;
+    const label = `${data.side === "buy" ? "Beli" : "Jual"} ${symbol} ${unitsText(market, shares)} @ ${formatMoney(Math.round(data.price * minor * (market === "IDX" ? LOT : 1)), priceCur)}${market === "IDX" ? "/lot" : ""}`;
     return write((run) => {
       if (data.side === "buy") {
         if (existing) {

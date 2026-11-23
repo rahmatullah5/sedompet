@@ -19,9 +19,16 @@ const toIdr = (market: Market, amount: number) => (MARKETS[market].currency === 
 export const holdingValue = (h: Holding) => Math.round(toIdr(h.market, h.shares * (h.price ?? h.avg_price)));
 export const holdingCost = (h: Holding) => Math.round(toIdr(h.market, h.shares * h.avg_price));
 
-/** A price in its market's currency: "US$342,56", "Rp5.700", "Rp1.131.286.000". */
-export function formatPrice(market: Market, price: number) {
-  return MARKETS[market].currency === "USD" ? formatMoney(Math.round(price * 100), "USD") : formatRate(price);
+/**
+ * Prices are stored per share/coin/gram; IDX stocks are shown and typed per
+ * lot (100 shares), the way Indonesian brokers quote a buy.
+ */
+const unitSize = (market: Market) => (market === "IDX" ? LOT : 1);
+
+/** A price per unit in its market's currency: "US$342,56", "Rp570.000/lot", "Rp1.131.286.000". */
+export function formatPrice(market: Market, perShare: number, suffix = true) {
+  const v = perShare * unitSize(market);
+  return MARKETS[market].currency === "USD" ? formatMoney(Math.round(v * 100), "USD") : formatRate(v) + (suffix && market === "IDX" ? "/lot" : "");
 }
 
 /** "12,5" / "1.250" -> number ("," decimal, "." thousands). */
@@ -36,10 +43,42 @@ const parsePrice = (market: Market, text: string) => (MARKETS[market].currency =
 
 const label = (h: Holding) => (h.market === "GOLD" ? "Emas" : h.symbol);
 
+/**
+ * IDX holdings whose average price looks typed per lot into the old
+ * "per lembar" field: about 100x the live price per share.
+ */
+const lotTypos = (holdings: Holding[]) =>
+  holdings.filter((h) => h.market === "IDX" && h.price && h.avg_price / h.price >= 30 && h.avg_price / h.price <= 300);
+
+/** Offers to divide those average prices by 100 (one tap, for every such stock). */
+export function LotPriceFix({ holdings }: { holdings: Holding[] }) {
+  const { me } = useCurrent();
+  const bad = lotTypos(holdings);
+  if (!bad.length || !can.addTransaction(me.role)) return null;
+  const fix = () =>
+    attempt(async () => {
+      for (const h of bad)
+        await m.setHolding(me.id, { accountId: h.account_id, market: h.market, symbol: h.symbol, name: h.name, shares: h.shares, avgPrice: h.avg_price / LOT });
+    }, "Harga rata-rata diperbaiki");
+  return (
+    <div className="rounded-2xl bg-amber-50 px-3 py-2.5 text-xs text-amber-900">
+      <p>
+        Harga rata-rata {bad.map((h) => h.symbol).join(", ")} sekitar 100× harga pasar per lembar. Sepertinya dulu diisi <b>per lot</b>. Sekarang harga saham BEI memang
+        diisi per lot.
+      </p>
+      <button type="button" onClick={fix} className="mt-2 rounded-full bg-amber-600 px-3 py-1.5 font-bold text-white hover:bg-amber-700">
+        Perbaiki ({bad.length} saham)
+      </button>
+    </div>
+  );
+}
+
 /** Compact list of holdings shown under an account row, with profit/loss vs the average buy price. */
 export function HoldingLines({ holdings }: { holdings: Holding[] }) {
   if (!holdings.length) return null;
   return (
+    <>
+    <LotPriceFix holdings={holdings} />
     <ul className="space-y-1">
       {holdings.map((h) => {
         const value = holdingValue(h);
@@ -66,6 +105,7 @@ export function HoldingLines({ holdings }: { holdings: Holding[] }) {
         );
       })}
     </ul>
+    </>
   );
 }
 
@@ -93,6 +133,7 @@ export function StockPanel({ account: initial, onClose }: { account: Account; on
 
   return (
     <div className="space-y-4">
+      <LotPriceFix holdings={holdings} />
       <div className="grid grid-cols-3 gap-2 text-center">
         <div className="rounded-2xl bg-slate-50 p-2.5">
           <p className="text-[11px] text-slate-500">Kas</p>
@@ -282,7 +323,7 @@ function TickerField({ t, market, disabled }: { t: ReturnType<typeof useTicker>;
 
 const unitLabel = (market: Market) => (market === "IDX" ? "Jumlah lot" : market === "GOLD" ? "Berat (gram)" : market === "CRYPTO" ? "Jumlah koin" : "Jumlah lembar");
 const priceLabel = (market: Market) =>
-  market === "GOLD" ? "Harga per gram (Rp)" : market === "CRYPTO" ? "Harga per koin (Rp)" : market === "US" ? "Harga per lembar (US$)" : "Harga per lembar";
+  market === "GOLD" ? "Harga per gram (Rp)" : market === "CRYPTO" ? "Harga per koin (Rp)" : market === "US" ? "Harga per lembar (US$)" : "Harga per lot (Rp)";
 
 function TradeForm({ account, side: initialSide, holding, holdings, onDone }: { account: Account; side: "buy" | "sell"; holding?: Holding; holdings: Holding[]; onDone: () => void }) {
   const { me } = useCurrent();
@@ -299,7 +340,7 @@ function TradeForm({ account, side: initialSide, holding, holdings, onDone }: { 
   const [moveCash, setMoveCash] = useState(cashOk);
   const units = parseUnits(unitsTextIn);
   const shares = market === "IDX" ? units * LOT : units;
-  const price = priceText.trim() ? parsePrice(market, priceText) : (t.info?.price ?? NaN);
+  const price = priceText.trim() ? parsePrice(market, priceText) / unitSize(market) : (t.info?.price ?? NaN);
   const fee = feeText.trim() ? parsePrice(market, feeText) : 0;
   const gross = Number.isFinite(shares) && Number.isFinite(price) ? shares * price : NaN;
   const total = side === "buy" ? gross + fee : gross - fee;
@@ -365,7 +406,7 @@ function TradeForm({ account, side: initialSide, holding, holdings, onDone }: { 
           <Input inputMode="decimal" value={unitsTextIn} placeholder={market === "CRYPTO" ? "0,005" : market === "GOLD" ? "5" : "1"} onChange={(e) => setUnitsText(e.target.value)} />
         </Field>
         <Field label={priceLabel(market)} hint={!priceText.trim() && t.info ? "Harga terakhir" : undefined}>
-          <Input inputMode="decimal" value={priceText} placeholder={t.info ? formatPrice(market, t.info.price) : ""} onChange={(e) => setPriceText(e.target.value)} />
+          <Input inputMode="decimal" value={priceText} placeholder={t.info ? formatPrice(market, t.info.price, false) : ""} onChange={(e) => setPriceText(e.target.value)} />
         </Field>
       </div>
       <Field label={`Biaya (opsional, ${cur === "USD" ? "US$" : "Rp"})`} hint="Fee broker/exchange + pajak">
@@ -407,10 +448,10 @@ function SetHoldingForm({ account, holding, onDone }: { account: Account; holdin
   const [market, setMarket] = useState<Market>(holding?.market ?? "IDX");
   const t = useTicker(market, holding?.symbol ?? "");
   const [unitsTextIn, setUnitsText] = useState(holding ? String(holding.market === "IDX" ? holding.shares / LOT : holding.shares).replace(".", ",") : "");
-  const [avgText, setAvgText] = useState(holding ? String(Math.round(holding.avg_price * 100) / 100).replace(".", ",") : "");
+  const [avgText, setAvgText] = useState(holding ? String(Math.round(holding.avg_price * unitSize(holding.market) * 100) / 100).replace(".", ",") : "");
   const units = parseUnits(unitsTextIn);
   const shares = market === "IDX" ? Math.round(units * LOT) : units;
-  const avg = avgText.trim() ? parsePrice(market, avgText) : NaN;
+  const avg = avgText.trim() ? parsePrice(market, avgText) / unitSize(market) : NaN;
   const valid = !!t.clean && Number.isFinite(units) && units >= 0 && avg >= 0 && (market !== "IDX" || Number.isInteger(shares));
   const cur = MARKETS[market].currency;
   const money = (v: number) => (cur === "USD" ? formatMoney(Math.round(v * 100), "USD") : formatIDR(Math.round(v)));
@@ -438,8 +479,8 @@ function SetHoldingForm({ account, holding, onDone }: { account: Account; holdin
         <Field label={unitLabel(market)} hint={market === "IDX" && units > 0 ? `${shares.toLocaleString("id-ID")} lembar` : undefined}>
           <Input inputMode="decimal" value={unitsTextIn} placeholder={market === "CRYPTO" ? "0,005" : "5"} onChange={(e) => setUnitsText(e.target.value)} />
         </Field>
-        <Field label={`Harga rata-rata (${cur === "USD" ? "US$" : "Rp"})`} hint={market === "GOLD" ? "per gram" : market === "CRYPTO" ? "per koin" : "per lembar"}>
-          <Input inputMode="decimal" value={avgText} placeholder={t.info ? formatPrice(market, t.info.price) : ""} onChange={(e) => setAvgText(e.target.value)} />
+        <Field label={`Harga rata-rata (${cur === "USD" ? "US$" : "Rp"})`} hint={market === "GOLD" ? "per gram" : market === "CRYPTO" ? "per koin" : market === "IDX" ? "per lot (100 lembar)" : "per lembar"}>
+          <Input inputMode="decimal" value={avgText} placeholder={t.info ? formatPrice(market, t.info.price, false) : ""} onChange={(e) => setAvgText(e.target.value)} />
         </Field>
       </div>
       {valid && units > 0 && (
