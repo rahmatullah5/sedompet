@@ -95,11 +95,14 @@ export default async function handler(req: Request): Promise<Response> {
   // USD/IDR is needed to convert crypto fallbacks and gold.
   const needUsd = wantGold || crypto.length > 0;
 
-  const [fxQuotes, stockQuotes, usQuotes, cryptoIdr, usdIdr, goldUsd] = await Promise.all([
+  // Yahoo's USD pair gives a coin's name and daily change (Indodax has neither),
+  // and is the price fallback when Indodax doesn't list the coin.
+  const [fxQuotes, stockQuotes, usQuotes, cryptoIdr, viaUsd, usdIdr, goldUsd] = await Promise.all([
     Promise.all(fx.map((c) => yahoo(`${c}IDR=X`))),
     Promise.all(stocks.map((s) => yahoo(`${s}.JK`))),
     Promise.all(us.map((s) => yahoo(s))),
     Promise.all(crypto.map((c) => indodax(c))),
+    Promise.all(crypto.map((c) => yahoo(`${c}-USD`))),
     needUsd ? yahoo("USDIDR=X") : Promise.resolve(null),
     wantGold ? yahoo("GC=F") : Promise.resolve(null),
   ]);
@@ -132,11 +135,10 @@ export default async function handler(req: Request): Promise<Response> {
     else out.missing.push(`US:${s}`);
   });
   const usd = needUsd ? (usdIdr?.price ?? (await fallbackFx()).USD) : undefined;
-  const viaUsd = await Promise.all(crypto.map((c, i) => (cryptoIdr[i] ? null : yahoo(`${c}-USD`))));
   crypto.forEach((c, i) => {
     const idr = cryptoIdr[i];
     const u = viaUsd[i];
-    if (idr) out.crypto[c] = { ...idr, name: u?.name, changePct: u?.changePct };
+    if (idr) out.crypto[c] = { ...idr, name: u?.name?.replace(/ USD$/, ""), changePct: u?.changePct };
     else if (u && usd) out.crypto[c] = { price: u.price * usd, name: u.name?.replace(/ USD$/, ""), changePct: u.changePct, time: u.time };
     else out.missing.push(`CRYPTO:${c}`);
   });
