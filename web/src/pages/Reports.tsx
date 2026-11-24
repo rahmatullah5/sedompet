@@ -9,6 +9,7 @@ import { netWorthTrend } from "./Neraca";
 import { Icon } from "../components/Icon";
 import { LineIcon } from "../components/LineIcon";
 import { resolveLayout, useReportLayout } from "../lib/reportLayout";
+import { SortableList } from "../components/SortableList";
 import { AccountPieCard, AssetSummaryCard, BudgetPieCard, CategoryPieCard, InvestmentPieCard } from "./ReportWidgets";
 
 // Chart colours (validated: lightness/chroma pass; CVD 7.4 => secondary
@@ -241,16 +242,11 @@ export function Reports() {
   const off = widgets.filter((w) => !w.on);
 
   const save = (list: { id: string; on: boolean }[]) => setSaved({ order: list.map((w) => w.id), hidden: list.filter((w) => !w.on).map((w) => w.id) });
-  // Moves among the visible widgets; hidden ones keep their place in between.
-  const move = (id: string, dir: -1 | 1) => {
-    const i = shown.findIndex((w) => w.id === id);
-    const other = shown[i + dir];
-    if (!other) return;
-    const list = [...widgets];
-    const a = list.findIndex((w) => w.id === id);
-    const b = list.findIndex((w) => w.id === other.id);
-    [list[a], list[b]] = [list[b], list[a]];
-    save(list);
+  // Reorders the visible widgets; hidden ones keep their slots in between.
+  const reorder = (ids: string[]) => {
+    const byId = new Map(widgets.map((w) => [w.id, w]));
+    let k = 0;
+    save(widgets.map((w) => (w.on ? byId.get(ids[k++])! : w)));
   };
   const toggle = (id: string, on: boolean) => {
     const list = widgets.filter((w) => w.id !== id);
@@ -264,7 +260,7 @@ export function Reports() {
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-extrabold tracking-tight text-slate-800">Laporan</h1>
-          <p className="text-sm text-slate-500">{editing ? "Atur urutan, sembunyikan, atau tambah widget." : "Ke mana uang keluarga pergi, dan perkiraan ke depan."}</p>
+          <p className="text-sm text-slate-500">{editing ? "Tahan dan geser untuk mengatur urutan, sembunyikan, atau tambah widget." : "Ke mana uang keluarga pergi, dan perkiraan ke depan."}</p>
         </div>
         <button
           type="button"
@@ -279,20 +275,22 @@ export function Reports() {
       {editing ? (
         <>
           <Card title="Ditampilkan">
-            <ul className="divide-y divide-slate-100">
-              {shown.map((w, i) => (
-                <li key={w.id} className="flex items-center gap-2 py-2">
-                  <span className="min-w-0 flex-1">
+            <SortableList
+              items={shown}
+              onReorder={reorder}
+              label={(w) => w.title}
+              className="divide-y divide-slate-100"
+              render={(w) => (
+                <>
+                  <span className="min-w-0 flex-1 py-2">
                     <span className="block truncate text-sm font-semibold text-slate-700">{w.title}</span>
                     <span className="block truncate text-xs text-slate-400">{w.hint}</span>
                   </span>
-                  <IconButton label={`Naikkan ${w.title}`} icon="up" disabled={i === 0} onClick={() => move(w.id, -1)} />
-                  <IconButton label={`Turunkan ${w.title}`} icon="down" disabled={i === shown.length - 1} onClick={() => move(w.id, 1)} />
                   <IconButton label={`Sembunyikan ${w.title}`} icon="eyeOff" onClick={() => toggle(w.id, false)} />
-                </li>
-              ))}
-              {shown.length === 0 && <li className="py-3 text-center text-sm text-slate-400">Belum ada widget. Tambahkan dari daftar di bawah.</li>}
-            </ul>
+                </>
+              )}
+            />
+            {shown.length === 0 && <p className="py-3 text-center text-sm text-slate-400">Belum ada widget. Tambahkan dari daftar di bawah.</p>}
           </Card>
           <Card title="Tambah widget">
             {off.length ? (
@@ -337,7 +335,7 @@ export function Reports() {
   );
 }
 
-function IconButton({ label, icon, onClick, disabled }: { label: string; icon: "up" | "down" | "eyeOff"; onClick: () => void; disabled?: boolean }) {
+function IconButton({ label, icon, onClick, disabled }: { label: string; icon: "eyeOff"; onClick: () => void; disabled?: boolean }) {
   return (
     <button type="button" aria-label={label} title={label} disabled={disabled} onClick={onClick} className="rounded-full p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-25">
       <LineIcon name={icon} size={18} />

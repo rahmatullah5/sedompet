@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { cloud, cloudStore } from "./sync";
 import { displayPhone, getPendingInvite, getRememberedPhone, getRememberMe, inviteLink, normalizePhone, setMode, setPendingInvite, setRememberMe } from "./client";
 import { LineIcon, type LineIconName } from "../components/LineIcon";
+import { LoadingLogo } from "../components/LoadingLogo";
 import { ROLE_HINT, ROLE_LABEL, type Role } from "../lib/permissions";
 import { useCurrent } from "../lib/hooks";
 import { WA_ACTIVATE } from "../lib/contact";
@@ -28,9 +29,10 @@ function Hero({ subtitle }: { subtitle: string }) {
 
 export function CloudLoading() {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-3 text-slate-500">
-      <LineIcon name="wallet" size={44} className="animate-pulse text-brand-600" />
+    <div role="status" className="flex min-h-screen flex-col items-center justify-center gap-4 text-slate-500">
+      <LoadingLogo />
       <p className="text-sm font-semibold">Menyiapkan dompet keluarga…</p>
+      <div className="ll-bar" />
     </div>
   );
 }

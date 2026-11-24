@@ -9,10 +9,13 @@ import { LineIcon } from "../components/LineIcon";
 import { MultiAccountPicker, MultiCategoryPicker } from "../components/Pickers";
 import { SpendingCalendar, type DayFlow } from "../components/SpendingCalendar";
 
-export function MonthNav({ month, setMonth }: { month: string; setMonth: (m: string) => void }) {
+const PILL = "flex items-center gap-1 rounded-full bg-white p-1 shadow-[0_4px_14px_-8px_rgba(120,72,40,0.35)]";
+
+/** Month stepper. With `onRange`, a calendar button at its end switches to a date range. */
+export function MonthNav({ month, setMonth, onRange }: { month: string; setMonth: (m: string) => void; onRange?: () => void }) {
   const isCurrent = month === currentMonth();
   return (
-    <div className="flex items-center gap-1 rounded-full bg-white p-1 shadow-[0_4px_14px_-8px_rgba(120,72,40,0.35)]">
+    <div className={PILL}>
       <Button variant="ghost" className="px-3" aria-label="Bulan sebelumnya" onClick={() => setMonth(shiftMonth(month, -1))}>
         ‹
       </Button>
@@ -23,7 +26,43 @@ export function MonthNav({ month, setMonth }: { month: string; setMonth: (m: str
       <Button variant="ghost" className="px-3" aria-label="Bulan berikutnya" disabled={isCurrent} onClick={() => setMonth(shiftMonth(month, 1))}>
         ›
       </Button>
+      {onRange && <RangeToggle on={false} onClick={onRange} />}
     </div>
+  );
+}
+
+/** Same pill as MonthNav while a date range is chosen: back to months on either side. */
+function RangeNav({ onMonths }: { onMonths: () => void }) {
+  return (
+    <div className={PILL}>
+      <Button variant="ghost" className="px-3" aria-label="Kembali per bulan" onClick={onMonths}>
+        ‹
+      </Button>
+      <span className="min-w-32 text-center text-sm font-bold leading-tight">
+        Rentang tanggal
+        <span className="block text-[11px] font-semibold text-slate-400">atur di bawah</span>
+      </span>
+      <RangeToggle on onClick={onMonths} />
+    </div>
+  );
+}
+
+function RangeToggle({ on, onClick }: { on: boolean; onClick: () => void }) {
+  const label = on ? "Kembali per bulan" : "Pilih rentang tanggal";
+  return (
+    <>
+      <span className="mx-0.5 h-6 w-px bg-slate-100" aria-hidden />
+      <button
+        type="button"
+        aria-label={label}
+        aria-pressed={on}
+        title={label}
+        onClick={onClick}
+        className={`flex h-9 w-9 items-center justify-center rounded-full transition ${on ? "bg-brand-600 text-white" : "text-slate-500 hover:bg-brand-50 hover:text-brand-700"}`}
+      >
+        <LineIcon name="calendar" size={18} />
+      </button>
+    </>
   );
 }
 
@@ -249,20 +288,7 @@ export function Transactions({
           <p className="text-sm text-slate-500">Semua catatan keluarga, siapa pun yang mencatat.</p>
         </div>
         {!searching && (
-          <div className="flex flex-col items-end gap-1">
-            {range ? (
-              <button type="button" onClick={() => setRange(null)} className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm">
-                ‹ Per bulan
-              </button>
-            ) : (
-              <MonthNav month={month} setMonth={setMonth} />
-            )}
-            {!range && (
-              <button type="button" onClick={() => setRange(periodRange(month))} className="px-2 text-xs font-semibold text-brand-700">
-                Pilih rentang tanggal
-              </button>
-            )}
-          </div>
+          range ? <RangeNav onMonths={() => setRange(null)} /> : <MonthNav month={month} setMonth={setMonth} onRange={() => setRange(periodRange(month))} />
         )}
       </div>
       {!searching && range && <RangeBar range={range} setRange={setRange} />}

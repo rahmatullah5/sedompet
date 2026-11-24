@@ -1,4 +1,5 @@
-import { Avatar, MadeBy } from "../components/ui";
+import { MadeBy } from "../components/ui";
+import { PhoneDemo } from "../components/PhoneDemo";
 import { SimulatedPurchases } from "../components/SimulatedPurchases";
 import { LineIcon, type LineIconName } from "../components/LineIcon";
 import { WA_ACTIVATE, WA_FEEDBACK, WA_SUBSCRIBE } from "../lib/contact";
@@ -17,55 +18,6 @@ const STEPS = [
   { n: "2", title: "Undang keluarga", text: "Bagikan kode lewat WhatsApp. Pilih perannya: admin, anggota, atau hanya lihat." },
   { n: "3", title: "Catat bersama", text: "Tekan ＋, ketik jumlah, pilih kategori. Seluruh keluarga langsung tahu sisa bulan ini." },
 ];
-
-function PhoneMock() {
-  return (
-    <div className="relative mx-auto w-[300px] rounded-[2.5rem] border-[10px] border-slate-800 bg-[#fff8f1] p-4 shadow-[0_30px_60px_-20px_rgba(120,72,40,0.45)]">
-      <div className="mb-3 flex items-center justify-between">
-        <span className="text-sm font-bold text-slate-800">Selamat pagi, Ibu</span>
-        <Avatar emoji="👩" colour="#e5689b" size={28} />
-      </div>
-      <div className="rounded-3xl bg-brand-600 p-4 text-white">
-        <p className="text-[11px] text-brand-100">Uang keluarga sekarang</p>
-        <p className="num text-2xl font-extrabold">Rp 12.480.000</p>
-        <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
-          <span className="rounded-xl bg-white/15 px-2 py-1.5">
-            Masuk <b className="block text-sm">+20,5 jt</b>
-          </span>
-          <span className="rounded-xl bg-white/15 px-2 py-1.5">
-            Keluar <b className="block text-sm">−8,1 jt</b>
-          </span>
-        </div>
-      </div>
-      <div className="mt-3 rounded-2xl bg-white p-3 text-[12px] shadow-sm">
-        <p><b>Masih aman!</b> Sisa Rp 3,9 jt, kira-kira Rp 260 rb per hari.</p>
-        <div className="mt-2 h-2 rounded-full bg-slate-100">
-          <div className="h-2 w-2/3 rounded-full bg-[#2fb67c]" />
-        </div>
-      </div>
-      <div className="mt-3 space-y-2 text-[12px]">
-        <div className="flex items-end gap-2">
-          <Avatar emoji="👨" colour="#f47c5a" size={24} />
-          <p className="rounded-2xl rounded-bl-md bg-slate-100 px-3 py-1.5">
-            <b>Ayah</b> mencatat bensin Rp 50.000
-          </p>
-        </div>
-        <div className="flex flex-row-reverse items-end gap-2">
-          <Avatar emoji="👩" colour="#e5689b" size={24} />
-          <p className="rounded-2xl rounded-br-md bg-brand-100 px-3 py-1.5 text-brand-800">
-            <b>Kamu</b> mencatat belanja dapur Rp 186.000
-          </p>
-        </div>
-        <div className="flex items-end gap-2">
-          <Avatar emoji="🧑" colour="#4f8ef7" size={24} />
-          <p className="rounded-2xl rounded-bl-md bg-slate-100 px-3 py-1.5">
-            <b>Kakak</b> membayar SPP Rp 750.000
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export function Landing() {
   return (
@@ -121,7 +73,7 @@ export function Landing() {
           <p className="mt-4 text-sm text-slate-500">Demo berjalan di browser, tanpa daftar. Ada contoh “Keluarga Santoso” lengkap.</p>
         </div>
         <div className="pop-in">
-          <PhoneMock />
+          <PhoneDemo />
         </div>
       </section>
 
