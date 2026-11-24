@@ -183,20 +183,32 @@ body {
   from { transform: translateX(-100%); }
   to { transform: translateX(250%); }
 }
+/* Reduce Motion: no drops or bounces; the coin fades in above the slot
+   and the clasp glints, so it still reads as working. */
 @media (prefers-reduced-motion: reduce) {
-  .ll-tile, .ll-wallet, .ll-coin, .ll-flap, .ll-dot, .ll-shadow, .ll-bar::after {
-    animation-duration: 0s;
-    animation-iteration-count: 1;
-  }
-  .ll-coin { opacity: 0; }
-  .ll-bar::after { width: 100%; transform: none; opacity: 0.5; }
+  .ll-tile, .ll-wallet, .ll-flap, .ll-shadow { animation: none; }
+  .ll-coin { animation: ll-coin-fade 1.6s ease-in-out infinite; }
+}
+@keyframes ll-coin-fade {
+  0%, 100% { opacity: 0; }
+  40%, 60% { opacity: 1; }
 }
 
 /* Landing phone demo (components/PhoneDemo.tsx): a finger tap. */
 @keyframes pd-tap {
-  from { transform: translate(-50%, -50%) scale(0.3); opacity: 1; }
-  to { transform: translate(-50%, -50%) scale(2.2); opacity: 0; }
+  from { transform: scale(0.3); opacity: 1; }
+  to { transform: scale(2.2); opacity: 0; }
 }
 .pd-tap {
   animation: pd-tap 0.5s ease-out forwards;
+}
+@keyframes pd-fade {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+/* Reduce Motion: the walk-through still plays, but screens, sheet and
+   banners fade in place instead of sliding. */
+@media (prefers-reduced-motion: reduce) {
+  .pd-root * { transform: none !important; }
+  .pd-root .pd-tap { animation-name: pd-fade; }
 }

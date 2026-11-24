@@ -2,7 +2,7 @@
 // Ibu taps ＋, types an amount, picks a category and saves; the family total
 // drops and her note joins the feed; Ayah's note arrives as a notification;
 // then Laporan shows where the month went. Runs only while on screen, and
-// shows the end state without motion under prefers-reduced-motion.
+// under prefers-reduced-motion swaps slides and bounces for fades (index.css).
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Avatar, cx } from "./ui";
@@ -50,7 +50,6 @@ const START: State = {
   toast: false,
 };
 
-const END: State = { ...START, feed: [AYAH, KAMU, KAKAK], balance: 12_244_000, left: 3_900_000 };
 
 const BUDGET = 6_000_000;
 const TYPED = ["1", "18", "186", "1.860", "18.600", "186.000"];
@@ -89,15 +88,12 @@ function useOnScreen<T extends Element>() {
   return [ref, on] as const;
 }
 
-const reducedMotion = () => typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
-
 export function PhoneDemo() {
   const [ref, onScreen] = useOnScreen<HTMLDivElement>();
-  const [still] = useState(reducedMotion);
-  const [s, setS] = useState<State>(still ? END : START);
+  const [s, setS] = useState<State>(START);
 
   useEffect(() => {
-    if (still || !onScreen) return;
+    if (!onScreen) return;
     let timers: number[] = [];
     const run = () => {
       setS(START);
@@ -106,7 +102,7 @@ export function PhoneDemo() {
     };
     run();
     return () => timers.forEach(clearTimeout);
-  }, [onScreen, still]);
+  }, [onScreen]);
 
   const spent = 8_100_000 + START.balance - s.balance;
   return (
@@ -114,7 +110,7 @@ export function PhoneDemo() {
       ref={ref}
       role="img"
       aria-label="Contoh Sedompet: Ibu mencatat belanja dapur, saldo keluarga langsung berkurang, catatan Ayah masuk, lalu laporan pengeluaran bulan ini."
-      className="relative mx-auto w-[300px] rounded-[2.5rem] border-[10px] border-slate-800 bg-slate-800 shadow-[0_30px_60px_-20px_rgba(120,72,40,0.45)]"
+      className="pd-root relative mx-auto w-[300px] rounded-[2.5rem] border-[10px] border-slate-800 bg-slate-800 shadow-[0_30px_60px_-20px_rgba(120,72,40,0.45)]"
     >
       <div aria-hidden className="relative h-[540px] overflow-hidden rounded-[1.9rem] bg-[#fff8f1] text-left">
         {/* Home */}
@@ -223,7 +219,7 @@ export function PhoneDemo() {
 
         {/* Add sheet */}
         <div className={cx("absolute inset-0 z-30 bg-slate-900/30 transition-opacity duration-300", s.sheet ? "opacity-100" : "pointer-events-none opacity-0")} />
-        <div className={cx("absolute inset-x-0 bottom-0 z-40 rounded-t-3xl bg-white p-4 shadow-2xl transition-transform duration-300 ease-out", s.sheet ? "translate-y-0" : "translate-y-full")}>
+        <div className={cx("absolute inset-x-0 bottom-0 z-40 rounded-t-3xl bg-white p-4 shadow-2xl transition duration-300 ease-out", s.sheet ? "translate-y-0 opacity-100" : "translate-y-full opacity-0")}>
           <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-200" />
           <p className="text-[11px] font-bold text-slate-500">Pengeluaran baru</p>
           <p className="num mt-1 text-3xl font-extrabold text-slate-800">
@@ -265,7 +261,7 @@ function Tab({ active, icon, label, tapped }: { active: boolean; icon: "home" | 
 /** A finger tap: a soft circle that grows and fades. Re-plays for each new n. */
 function Ripple({ n }: { n: number }): ReactNode {
   if (!n) return null;
-  return <span key={n} className="pd-tap pointer-events-none absolute left-1/2 top-1/2 h-10 w-10 rounded-full bg-slate-900/25" />;
+  return <span key={n} className="pd-tap pointer-events-none absolute left-1/2 top-1/2 -ml-5 -mt-5 h-10 w-10 rounded-full bg-slate-900/25" />;
 }
 
 /** Tweens a rupiah amount to its new value. */
