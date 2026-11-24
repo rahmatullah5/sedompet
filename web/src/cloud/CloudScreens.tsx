@@ -48,6 +48,7 @@ export function CloudSignIn() {
   const [pin, setPin] = useState("");
   const [pin2, setPin2] = useState("");
   const [busy, setBusy] = useState(false);
+  const [shake, setShake] = useState(0);
   const pinOk = /^\d{6}$/.test(pin) && (tab === "masuk" || pin === pin2);
   const pinInput = (value: string, set: (v: string) => void, label: string, auto: string) => (
     <Field label={label}>
@@ -61,6 +62,11 @@ export function CloudSignIn() {
         placeholder="••••••"
         className="text-center !text-2xl font-extrabold tracking-[0.5em]"
       />
+      <span className="mt-2 flex justify-center gap-2" aria-hidden>
+        {Array.from({ length: 6 }, (_, i) => (
+          <span key={`${i}-${i < value.length}`} className={i < value.length ? "dot-pop h-2.5 w-2.5 rounded-full bg-brand-600" : "h-2.5 w-2.5 rounded-full bg-slate-200"} />
+        ))}
+      </span>
     </Field>
   );
   return (
@@ -80,7 +86,8 @@ export function CloudSignIn() {
           ))}
         </div>
         <form
-          className="space-y-3"
+          key={shake}
+          className={shake ? "shake space-y-3" : "space-y-3"}
           onSubmit={async (e) => {
             e.preventDefault();
             setBusy(true);
@@ -92,10 +99,11 @@ export function CloudSignIn() {
             setPendingInvite(tab === "masuk" && validCode?.length === 6 ? { code: validCode, name: nick.trim() || undefined } : null);
             // Must be set before signing in: it decides where the session is stored.
             setRememberMe(remember, phone.trim());
-            await attempt(
+            const ok = await attempt(
               () => (tab === "masuk" ? cloud.signInPhone(phone, pin) : cloud.signUpPhone(phone, pin, validCode, nick.trim())),
               tab === "masuk" ? "Berhasil masuk" : "Akun dibuat",
             );
+            if (!ok) setShake((n) => n + 1);
             setBusy(false);
           }}
         >

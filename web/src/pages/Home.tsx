@@ -12,6 +12,17 @@ import { GoalRow } from "./Goals";
 import { StartChecklist } from "../components/StartChecklist";
 import { RecapCard } from "../components/RecapCard";
 import { LineIcon } from "../components/LineIcon";
+import { useCountUp } from "../lib/motion";
+
+/** The family total: counts up on open, glows briefly when it changes. */
+function BigBalance({ value, hidden }: { value: number; hidden: boolean }) {
+  const [shown, bump] = useCountUp(value, { from: value * 0.6 });
+  return (
+    <span key={bump} className={cx("num relative mt-2 block pr-12 text-4xl font-extrabold tracking-tight", bump > 0 && "value-flash")}>
+      {hidden ? MASK : formatIDR(shown)}
+    </span>
+  );
+}
 
 function greeting() {
   const h = new Date().getHours();
@@ -121,7 +132,7 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction | null) => 
             ))}
           </span>
         </span>
-        <span className="num relative mt-2 block pr-12 text-4xl font-extrabold tracking-tight">{money(formatIDR(sharedTotal))}</span>
+        <BigBalance value={sharedTotal} hidden={hidden} />
         {privateTotal > 0 && <span className="relative mt-1 block text-xs text-brand-100">+ {money(formatIDR(privateTotal))} di tabungan pribadimu</span>}
         <span className="relative mt-5 grid grid-cols-2 gap-3">
           <span className="rounded-2xl bg-white/15 px-4 py-3">
@@ -251,7 +262,7 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction | null) => 
             </button>
           }
         >
-          <ul className="space-y-3">
+          <ul className="stagger space-y-3">
             {goals.slice(0, 3).map((g) => (
               <li key={g.id}>
                 <button className="w-full text-left" onClick={() => goTo("tujuan")}>
@@ -308,7 +319,7 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction | null) => 
         {activity.length === 0 ? (
           <Empty icon="" title="Belum ada kabar" />
         ) : (
-          <ul className="space-y-3">
+          <ul className="stagger space-y-3">
             {activity.map((a) => {
               const mine = a.member_id === me.id;
               return (
@@ -371,7 +382,7 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction | null) => 
             Tekan tombol <b>+</b> di bawah untuk mencatat.
           </Empty>
         ) : (
-          <ul className="-mx-2">
+          <ul className="stagger -mx-2">
             {recent.map((t) => (
               <TxRow key={t.id} t={t} onClick={() => onOpenTx(t)} />
             ))}

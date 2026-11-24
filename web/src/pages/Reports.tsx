@@ -462,7 +462,7 @@ function PaceChart() {
       <div className="relative mt-2">
         <svg
           viewBox={`0 0 ${W} ${H}`}
-          className="w-full touch-none"
+          className="chart-wipe w-full touch-none"
           role="img"
           aria-label={`Belanja kumulatif: ${formatIDR(cur[cur.length - 1] ?? 0)} sampai hari ini, perkiraan ${formatIDR(Math.round(end))} di akhir bulan.`}
           onPointerMove={(e) => {
@@ -580,7 +580,7 @@ function MonthlyChart() {
             ]}
           />
           <div className="relative mt-2">
-            <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="Pemasukan dan pengeluaran 6 bulan terakhir. Gunakan Lihat tabel untuk angkanya.">
+            <svg viewBox={`0 0 ${W} ${H}`} className="bars-grow w-full" role="img" aria-label="Pemasukan dan pengeluaran 6 bulan terakhir. Gunakan Lihat tabel untuk angkanya.">
               {[0, max / 2, max].map((t) => (
                 <g key={t}>
                   <line x1={pad.l} x2={W - pad.r} y1={y(t)} y2={y(t)} stroke={GRID} />
@@ -999,7 +999,7 @@ function BalanceProjection({ f, horizon, setHorizon }: WidgetProps) {
 
       <svg
         viewBox={`0 0 ${W} ${H}`}
-        className="mt-3 w-full touch-none"
+        className="chart-wipe mt-3 w-full touch-none"
         role="img"
         aria-label={`Proyeksi saldo ${horizon} bulan: hemat ${formatCompact(Math.round(last.good))}, normal ${formatCompact(Math.round(last.balance))}, boros ${formatCompact(Math.round(last.bad))}`}
         onPointerMove={(e) => {

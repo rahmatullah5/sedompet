@@ -141,7 +141,7 @@ export function Progress({ value, max, colour }: { value: number; max: number; c
   const auto = value > max ? "#e5484d" : pct >= 80 ? "#f5a524" : "#2fb67c";
   return (
     <div className="h-3 w-full overflow-hidden rounded-full bg-slate-100" role="progressbar" aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}>
-      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: colour ?? auto }} />
+      <div className="bar-fill h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, background: colour ?? auto }} />
     </div>
   );
 }
@@ -149,7 +149,7 @@ export function Progress({ value, max, colour }: { value: number; max: number; c
 export function Empty({ icon, title, children }: { icon: string; title: string; children?: ReactNode }) {
   return (
     <div className="flex flex-col items-center gap-2 py-8 text-center">
-      {icon && <Icon value={icon} size={44} className="text-slate-400" />}
+      {icon && <Icon value={icon} size={44} className="float text-slate-400" />}
       <p className="font-bold">{title}</p>
       {children && <div className="text-sm text-slate-500">{children}</div>}
     </div>
@@ -174,7 +174,7 @@ export function Modal({ open, onClose, title, children, footer }: { open: boolea
       ref={ref}
       onClose={onClose}
       onClick={(e) => e.target === ref.current && onClose()}
-      className="mx-auto mb-0 mt-auto w-full max-w-none rounded-t-[2rem] bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-slate-900/40 backdrop:backdrop-blur-[2px] sm:m-auto sm:max-w-lg sm:rounded-[2rem]"
+      className="sheet mx-auto mb-0 mt-auto w-full max-w-none rounded-t-[2rem] bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-slate-900/40 backdrop:backdrop-blur-[2px] sm:m-auto sm:max-w-lg sm:rounded-[2rem]"
     >
       {open && (
         <div className="pop-in flex max-h-[90vh] flex-col">
@@ -254,11 +254,16 @@ export function Toasts() {
         <div
           key={t.id}
           className={cx(
-            "pop-in pointer-events-auto max-w-md rounded-full px-5 py-3 text-sm font-semibold shadow-lg",
-            t.tone === "ok" ? "bg-slate-800 text-white" : "bg-red-600 text-white",
+            "toast-in pointer-events-auto flex max-w-md items-center gap-2.5 rounded-full py-3 pl-3 pr-5 text-sm font-semibold shadow-lg",
+            t.tone === "ok" ? "bg-slate-800 text-white" : "shake bg-red-600 text-white",
           )}
         >
-          {t.text}
+          <span className={cx("check-pop flex h-6 w-6 shrink-0 items-center justify-center rounded-full", t.tone === "ok" ? "bg-mint-400" : "bg-white/25")}>
+            <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path className="check-draw" pathLength={1} d={t.tone === "ok" ? "M5 12.5l4.5 4.5L19 7.5" : "M7 7l10 10M17 7L7 17"} />
+            </svg>
+          </span>
+          <span>{t.text}</span>
           {t.action && (
             <button
               type="button"

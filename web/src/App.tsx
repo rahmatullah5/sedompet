@@ -194,6 +194,7 @@ export default function App() {
 
         <main className="pt-2">
           <PlanBanner sub={sub} isOwner={me.role === "owner"} />
+          <div key={page} className="page-enter">
           {page === "beranda" && <Home onOpenTx={openTx} goTo={goTo} />}
           {page === "riwayat" && <Transactions onOpenTx={openTx} onAddOnDate={canAdd ? (d) => openTx(null, d) : undefined} onBulk={canAdd ? () => openTx(null, undefined, true) : undefined} />}
           {page === "anggaran" && <Budgets />}
@@ -210,6 +211,7 @@ export default function App() {
           {page === "neraca" && <Neraca />}
           {page === "notifikasi" && <Notifications />}
           {page === "admin" && cloudMode && <Admin />}
+          </div>
         </main>
       </div>
 
@@ -230,7 +232,7 @@ export default function App() {
             )}
             aria-label={canAdd ? "Catat transaksi" : "Mode lihat saja"}
           >
-            {canAdd ? "+" : <LineIcon name="eye" size={24} />}
+            {canAdd ? <span className="fab-plus leading-none">+</span> : <LineIcon name="eye" size={24} />}
           </button>
           {NAV.slice(2).map((n) => (
             <NavItem key={n.id} {...n} active={page === n.id || (n.id === "menu" && !["beranda", "riwayat", "laporan"].includes(page))} />
@@ -303,7 +305,7 @@ function NavItem({ id, label, icon, active }: { id: string; label: string; icon:
         active ? "text-brand-700" : "text-slate-400 hover:text-slate-600",
       )}
     >
-      <LineIcon name={icon} size={22} className={cx("transition", active ? "scale-110" : "")} />
+      <LineIcon key={String(active)} name={icon} size={22} className={cx("transition", active ? "nav-hop scale-110" : "")} />
       {label}
     </a>
   );

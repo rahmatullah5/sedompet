@@ -60,7 +60,7 @@ export function PieChart({ slices, total: totalLabel, empty }: { slices: Slice[]
 
   return (
     <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
-      <svg viewBox="0 0 160 160" className="w-40 shrink-0" role="img" aria-label={parts.map((p) => `${p.label} ${Math.round((p.value / total) * 100)}%`).join(", ")}>
+      <svg viewBox="0 0 160 160" className="donut-in w-40 shrink-0" role="img" aria-label={parts.map((p) => `${p.label} ${Math.round((p.value / total) * 100)}%`).join(", ")}>
         {arcs.length === 1 ? (
           <circle cx={C} cy={C} r={(R + r) / 2} fill="none" stroke={arcs[0].colour} strokeWidth={R - r} />
         ) : (

@@ -500,7 +500,7 @@ export function Transactions({
         </Card>
       ) : byAmount ? (
         <Card className="p-2 sm:p-3">
-          <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+          <ul className="stagger divide-y divide-slate-100 dark:divide-slate-800">
             {shown.map((t) => (
               <TxRow key={t.id} t={t} showDate onClick={() => onOpenTx(t)} />
             ))}
@@ -517,7 +517,7 @@ export function Transactions({
                 <span className="capitalize">{formatDay(date)}</span>
                 {everyday.length > 0 && <span className="num">{formatIDR(dayNet)}</span>}
               </div>
-              <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+              <ul className="stagger divide-y divide-slate-100 dark:divide-slate-800">
                 {list.map((t) => (
                   <TxRow key={t.id} t={t} onClick={() => onOpenTx(t)} />
                 ))}

@@ -14,6 +14,7 @@ import { AccountPicker, CategoryPicker } from "./Pickers";
 import { TransferBody } from "./TransferForm";
 import { BulkBody } from "./BulkEntry";
 import { SuggestionList, type Suggestion } from "./Suggestions";
+import { coinBurst } from "../lib/motion";
 
 const QUICK = [10_000, 25_000, 50_000, 100_000];
 
@@ -266,7 +267,10 @@ function FormBody({
         }),
       editing ? "Transaksi diperbarui" : "Tercatat! Keluarga bisa langsung lihat.",
     );
-    if (ok) onClose();
+    if (ok) {
+      if (!editing) coinBurst(kind === "income" ? "income" : "expense");
+      onClose();
+    }
   }
 
   async function remove() {

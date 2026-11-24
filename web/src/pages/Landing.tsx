@@ -1,4 +1,5 @@
 import { MadeBy } from "../components/ui";
+import { useReveal } from "../lib/motion";
 import { PhoneDemo } from "../components/PhoneDemo";
 import { SimulatedPurchases } from "../components/SimulatedPurchases";
 import { LineIcon, type LineIconName } from "../components/LineIcon";
@@ -20,8 +21,9 @@ const STEPS = [
 ];
 
 export function Landing() {
+  const revealRef = useReveal<HTMLDivElement>();
   return (
-    <div className="min-h-screen">
+    <div ref={revealRef} className="min-h-screen">
       {/* Nav */}
       <header className="sticky top-0 z-20 bg-[#fff8f1]/85 backdrop-blur">
         <nav className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-5 py-3" aria-label="Utama">
@@ -80,7 +82,7 @@ export function Landing() {
       {/* Problem → solution */}
       <section className="mx-auto max-w-4xl px-5 pb-16">
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="rounded-3xl bg-white/70 p-6">
+          <div className="reveal rounded-3xl bg-white/70 p-6">
             <p className="text-sm font-bold text-slate-500">Biasanya…</p>
             <ul className="mt-3 list-disc space-y-2 pl-5 text-slate-600 marker:text-slate-400">
               <li>Tiap orang punya aplikasi & catatan sendiri</li>
@@ -88,7 +90,7 @@ export function Landing() {
               <li>Rekap di grup WA yang tenggelam</li>
             </ul>
           </div>
-          <div className="rounded-3xl bg-white p-6 shadow-[0_8px_24px_-14px_rgba(120,72,40,0.3)]">
+          <div className="reveal rounded-3xl bg-white p-6 shadow-[0_8px_24px_-14px_rgba(120,72,40,0.3)]" style={{ "--d": "120ms" } as React.CSSProperties}>
             <p className="text-sm font-bold text-brand-700">Dengan Sedompet</p>
             <ul className="mt-3 list-disc space-y-2 pl-5 text-slate-700 marker:text-brand-600">
               <li>Satu dompet untuk seluruh keluarga</li>
@@ -102,12 +104,16 @@ export function Landing() {
       {/* Features */}
       <section id="fitur" className="scroll-mt-20 bg-white/60 py-16">
         <div className="mx-auto max-w-6xl px-5">
-          <h2 className="text-center text-3xl font-extrabold tracking-tight text-slate-800">Semua yang dibutuhkan keluarga</h2>
+          <h2 className="reveal text-center text-3xl font-extrabold tracking-tight text-slate-800">Semua yang dibutuhkan keluarga</h2>
           <p className="mx-auto mt-2 max-w-xl text-center text-slate-500">Bukan cuma untuk berdua: satu akun bisa punya Dompet keluarga, kos bareng, sampai trip bareng teman.</p>
           <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {FEATURES.map((f) => (
-              <div key={f.title} className="rounded-3xl bg-white p-6 shadow-[0_8px_24px_-14px_rgba(120,72,40,0.3)]">
-                <span className="block text-slate-700">
+            {FEATURES.map((f, i) => (
+              <div
+                key={f.title}
+                className="reveal wiggle rounded-3xl bg-white p-6 shadow-[0_8px_24px_-14px_rgba(120,72,40,0.3)] hover:shadow-[0_16px_32px_-14px_rgba(120,72,40,0.4)]"
+                style={{ "--d": `${(i % 3) * 90}ms` } as React.CSSProperties}
+              >
+                <span className="wiggle-target inline-block text-slate-700">
                   <LineIcon name={f.icon} size={32} />
                 </span>
                 <h3 className="mt-3 text-lg font-bold text-slate-800">{f.title}</h3>
@@ -120,11 +126,11 @@ export function Landing() {
 
       {/* How it works */}
       <section id="cara" className="mx-auto max-w-5xl scroll-mt-20 px-5 py-16">
-        <h2 className="text-center text-3xl font-extrabold tracking-tight text-slate-800">Mulai dalam 3 langkah</h2>
+        <h2 className="reveal text-center text-3xl font-extrabold tracking-tight text-slate-800">Mulai dalam 3 langkah</h2>
         <ol className="mt-10 grid gap-4 md:grid-cols-3">
-          {STEPS.map((s) => (
-            <li key={s.n} className="rounded-3xl bg-white p-6 shadow-[0_8px_24px_-14px_rgba(120,72,40,0.3)]">
-              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-600 text-lg font-extrabold text-white">{s.n}</span>
+          {STEPS.map((s, i) => (
+            <li key={s.n} className="reveal wiggle rounded-3xl bg-white p-6 shadow-[0_8px_24px_-14px_rgba(120,72,40,0.3)]" style={{ "--d": `${i * 140}ms` } as React.CSSProperties}>
+              <span className="wiggle-target flex h-10 w-10 items-center justify-center rounded-full bg-brand-600 text-lg font-extrabold text-white">{s.n}</span>
               <h3 className="mt-4 text-lg font-bold text-slate-800">{s.title}</h3>
               <p className="mt-1 text-slate-600">{s.text}</p>
             </li>
@@ -134,7 +140,7 @@ export function Landing() {
 
       {/* Moving from another app */}
       <section id="pindahan" className="mx-auto max-w-5xl scroll-mt-20 px-5 pb-16">
-        <div className="flex flex-col items-start gap-5 rounded-[2rem] bg-sun-100 p-8 md:flex-row md:items-center">
+        <div className="reveal flex flex-col items-start gap-5 rounded-[2rem] bg-sun-100 p-8 md:flex-row md:items-center">
           <span className="text-slate-700">
             <LineIcon name="box" size={44} />
           </span>
@@ -160,8 +166,8 @@ export function Landing() {
             ["phone", "Tetap jalan saat sinyal hilang", "Pasang di layar utama HP. Data tersimpan di HP dan tersinkron lagi saat online."],
             ["download", "Datamu bisa dibawa pulang", "Unduh transaksi ke Excel / Google Sheets kapan saja. Salah hapus? Pulihkan dari Sampah."],
             ["shield", "Tanpa iklan", "Uang keluargamu bukan bahan jualan."],
-          ] as [LineIconName, string, string][]).map(([icon, title, text]) => (
-            <div key={title} className="rounded-3xl bg-white/70 p-6">
+          ] as [LineIconName, string, string][]).map(([icon, title, text], i) => (
+            <div key={title} className="reveal rounded-3xl bg-white/70 p-6" style={{ "--d": `${i * 90}ms` } as React.CSSProperties}>
               <span className="flex justify-center text-slate-700">
                 <LineIcon name={icon} size={28} />
               </span>
@@ -174,7 +180,7 @@ export function Landing() {
 
       {/* Final CTA */}
       <section className="px-5 pb-20">
-        <div className="mx-auto max-w-4xl rounded-[2.5rem] bg-brand-600 px-8 py-12 text-center text-white shadow-[0_24px_50px_-20px_rgba(212,80,46,0.7)]">
+        <div className="reveal mx-auto max-w-4xl rounded-[2.5rem] bg-brand-600 px-8 py-12 text-center text-white shadow-[0_24px_50px_-20px_rgba(212,80,46,0.7)]">
           <div className="flex justify-center">
             <LineIcon name="people" size={44} />
           </div>
@@ -238,14 +244,14 @@ function PlanButton({ plan, primary, children }: { plan: "bulanan" | "tahunan"; 
 function Pricing() {
   return (
     <section id="harga" className="mx-auto max-w-5xl scroll-mt-20 px-5 pb-16">
-      <h2 className="text-center text-3xl font-extrabold tracking-tight text-slate-800">Sehari lebih murah dari sepotong gorengan</h2>
+      <h2 className="reveal text-center text-3xl font-extrabold tracking-tight text-slate-800">Sehari lebih murah dari sepotong gorengan</h2>
       <p className="mx-auto mt-2 max-w-xl text-center text-slate-500">
         Harga promo untuk keluarga pertama Sedompet. Setelah promo selesai, harga normalnya <b className="num text-slate-700">Rp50.000/bulan</b>.
       </p>
 
       <div className="mt-10 grid items-stretch gap-4 md:grid-cols-2">
         {/* Monthly promo */}
-        <div className="flex flex-col rounded-[2rem] bg-white p-7 shadow-[0_8px_24px_-14px_rgba(120,72,40,0.3)]">
+        <div className="reveal flex flex-col rounded-[2rem] bg-white p-7 shadow-[0_8px_24px_-14px_rgba(120,72,40,0.3)]">
           <p className="text-sm font-bold uppercase tracking-wide text-slate-500">Bulanan</p>
           <div className="mt-2 flex flex-wrap items-end gap-x-2 gap-y-1">
             <span className="num text-5xl font-extrabold tracking-tight text-slate-800">Rp10.000</span>
@@ -264,7 +270,7 @@ function Pricing() {
         </div>
 
         {/* Yearly promo (best value) */}
-        <div className="relative flex flex-col rounded-[2rem] bg-white p-7 shadow-[0_24px_50px_-24px_rgba(212,80,46,0.55)] ring-2 ring-brand-500">
+        <div className="reveal relative flex flex-col rounded-[2rem] bg-white p-7 shadow-[0_24px_50px_-24px_rgba(212,80,46,0.55)] ring-2 ring-brand-500" style={{ "--d": "120ms" } as React.CSSProperties}>
           <span className="absolute -top-3 left-7 rounded-full bg-brand-600 px-3 py-1 text-xs font-bold text-white shadow-sm">Paling hemat</span>
           <p className="text-sm font-bold uppercase tracking-wide text-brand-700">Tahunan</p>
           <div className="mt-2 flex flex-wrap items-end gap-x-2 gap-y-1">

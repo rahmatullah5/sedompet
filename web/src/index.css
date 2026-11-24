@@ -82,8 +82,11 @@ body {
 }
 @media (prefers-reduced-motion: reduce) {
   .pop-in {
-    animation: none;
+    animation-name: fade-in;
   }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
 }
 
 /* Loading logo (components/LoadingLogo.tsx). One 1.6s beat:
@@ -211,4 +214,230 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .pd-root * { transform: none !important; }
   .pd-root .pd-tap { animation-name: pd-fade; }
+}
+
+/* ------------------------------------------------------------------
+   App motion. Under Reduce Motion everything below still plays, but as
+   fades in place (the user's devices report reduce; never freeze).
+   ------------------------------------------------------------------ */
+
+/* Page change: the page's blocks rise in one after another. */
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(14px); }
+}
+.page-enter > * > * {
+  animation: rise-in 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+.page-enter > * > *:nth-child(2) { animation-delay: 50ms; }
+.page-enter > * > *:nth-child(3) { animation-delay: 100ms; }
+.page-enter > * > *:nth-child(4) { animation-delay: 150ms; }
+.page-enter > * > *:nth-child(5) { animation-delay: 200ms; }
+.page-enter > * > *:nth-child(6) { animation-delay: 250ms; }
+.page-enter > * > *:nth-child(n + 7) { animation-delay: 300ms; }
+
+/* Lists: rows slide in one by one (first 12 only). */
+.stagger > * {
+  animation: rise-in 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+.stagger > *:nth-child(1) { animation-delay: 60ms; }
+.stagger > *:nth-child(2) { animation-delay: 100ms; }
+.stagger > *:nth-child(3) { animation-delay: 140ms; }
+.stagger > *:nth-child(4) { animation-delay: 180ms; }
+.stagger > *:nth-child(5) { animation-delay: 220ms; }
+.stagger > *:nth-child(6) { animation-delay: 260ms; }
+.stagger > *:nth-child(7) { animation-delay: 300ms; }
+.stagger > *:nth-child(8) { animation-delay: 340ms; }
+.stagger > *:nth-child(n + 9) { animation-delay: 380ms; }
+
+/* Bottom sheet slides up on phones; dialog pops on wider screens. */
+@keyframes sheet-up {
+  from { transform: translateY(100%); }
+}
+@media (max-width: 639px) {
+  dialog[open].sheet {
+    animation: sheet-up 0.35s cubic-bezier(0.2, 0.9, 0.25, 1) backwards;
+  }
+}
+
+/* Toast drops in with a little overshoot; its check mark draws itself. */
+@keyframes toast-in {
+  0% { opacity: 0; transform: translateY(-24px) scale(0.9); }
+  60% { opacity: 1; transform: translateY(4px) scale(1.02); }
+  100% { transform: none; }
+}
+.toast-in {
+  animation: toast-in 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+@keyframes check-draw {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+@keyframes check-pop {
+  0% { transform: scale(0); }
+  60% { transform: scale(1.25); }
+  100% { transform: scale(1); }
+}
+.check-pop {
+  animation: check-pop 0.4s 0.1s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.check-draw {
+  stroke-dasharray: 1;
+  animation: check-draw 0.35s 0.3s ease-out both;
+}
+
+/* Progress bars fill from empty when they appear. */
+@keyframes bar-fill {
+  from { transform: scaleX(0); }
+}
+.bar-fill {
+  transform-origin: left;
+  animation: bar-fill 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* Charts: bars grow up, lines draw left to right, donuts turn in. */
+@keyframes bar-up {
+  from { transform: scaleY(0); }
+}
+.bars-grow g > path {
+  transform-box: fill-box;
+  transform-origin: bottom;
+  animation: bar-up 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.bars-grow g:nth-of-type(2) > path { animation-delay: 60ms; }
+.bars-grow g:nth-of-type(3) > path { animation-delay: 120ms; }
+.bars-grow g:nth-of-type(4) > path { animation-delay: 180ms; }
+.bars-grow g:nth-of-type(5) > path { animation-delay: 240ms; }
+.bars-grow g:nth-of-type(n + 6) > path { animation-delay: 300ms; }
+@keyframes wipe {
+  from { clip-path: inset(0 100% 0 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+.chart-wipe {
+  animation: wipe 1.1s cubic-bezier(0.45, 0, 0.2, 1) both;
+}
+@keyframes donut-in {
+  from { opacity: 0; transform: rotate(-120deg) scale(0.7); }
+}
+.donut-in {
+  animation: donut-in 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* Bottom nav: the icon of the page you open hops. FAB turns on press. */
+@keyframes hop {
+  0%, 100% { transform: none; }
+  40% { transform: translateY(-5px) scale(1.08); }
+}
+.nav-hop {
+  animation: hop 0.45s ease-out;
+}
+.fab-plus {
+  transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+button:hover > .fab-plus { transform: rotate(90deg); }
+button:active > .fab-plus { transform: rotate(180deg) scale(0.9); }
+
+/* Empty states: the icon floats gently. */
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+.float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* PIN: each digit dot pops in; a wrong PIN shakes the field. */
+@keyframes dot-pop {
+  0% { transform: scale(0); }
+  70% { transform: scale(1.3); }
+  100% { transform: scale(1); }
+}
+.dot-pop {
+  animation: dot-pop 0.25s ease-out both;
+}
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-8px); }
+  40%, 80% { transform: translateX(8px); }
+}
+.shake {
+  animation: shake 0.4s ease-in-out;
+}
+
+/* Big money: soft glow pulse when the number changes. */
+@keyframes value-flash {
+  0% { text-shadow: 0 0 0 transparent; }
+  30% { text-shadow: 0 0 18px rgb(255 255 255 / 0.65); }
+  100% { text-shadow: 0 0 0 transparent; }
+}
+.value-flash {
+  animation: value-flash 0.9s ease-out;
+}
+
+/* Landing: sections rise into view on scroll. */
+.reveal {
+  opacity: 0;
+  transform: translateY(28px);
+  transition: opacity 0.7s ease-out, transform 0.7s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition-delay: var(--d, 0ms);
+}
+.reveal.in {
+  opacity: 1;
+  transform: none;
+}
+.wiggle:hover > .wiggle-target {
+  animation: wiggle 0.5s ease-in-out;
+}
+@keyframes wiggle {
+  0%, 100% { transform: rotate(0); }
+  25% { transform: rotate(-12deg) scale(1.1); }
+  75% { transform: rotate(10deg) scale(1.1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-enter > * > *, .stagger > *, .toast-in { animation-name: fade-in; }
+  dialog[open].sheet { animation-name: fade-in; }
+  .donut-in { animation-name: fade-in; }
+  .nav-hop, .shake, .float, .wiggle:hover > .wiggle-target { animation: none; }
+  .fab-plus { transition: none; }
+  .reveal { transform: none; }
+}
+
+/* Coin burst over the ＋ button after saving (lib/motion.ts coinBurst). */
+.coin-burst {
+  pointer-events: none;
+  position: fixed;
+  left: 50%;
+  bottom: calc(max(1rem, env(safe-area-inset-bottom)) + 2.2rem);
+  z-index: 70;
+}
+.coin-burst .coin {
+  position: absolute;
+  left: -9px;
+  top: -9px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #ffe58a, #fbc93d 55%, #e0a020);
+  box-shadow: inset 0 0 0 2px #f5a524;
+  animation: coin-fly 1.1s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+.coin-burst .coin.income {
+  background: radial-gradient(circle at 35% 35%, #b7f0d6, #4fc492 55%, #1f9d6b);
+  box-shadow: inset 0 0 0 2px #1f9d6b;
+}
+@keyframes coin-fly {
+  0% { transform: translate(0, 0) scale(0.3); opacity: 0; }
+  15% { opacity: 1; }
+  60% { transform: translate(var(--x), var(--y)) rotate(var(--r)) scale(1); opacity: 1; }
+  100% { transform: translate(var(--x), calc(var(--y) + 40px)) rotate(var(--r)) scale(0.8); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .coin-burst .coin {
+    animation: coin-fade 0.9s ease-out both;
+    transform: translate(var(--x), var(--y));
+  }
+}
+@keyframes coin-fade {
+  0%, 100% { opacity: 0; }
+  30% { opacity: 1; }
 }
