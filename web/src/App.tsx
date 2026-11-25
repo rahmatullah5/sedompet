@@ -29,7 +29,7 @@ import { Notifications } from "./pages/Notifications";
 import { Achievements } from "./pages/Achievements";
 import { AchievementWatcher } from "./components/AchievementCard";
 import { PushPrompt } from "./components/PushPrompt";
-import { refreshDemo } from "./db/seed";
+import { refreshDemo, resetDemoDaily } from "./db/seed";
 import { Tour } from "./components/Tour";
 import { startTour, tourStore } from "./lib/tour";
 import { PlanBanner, READ_ONLY_MESSAGE } from "./components/PlanBanner";
@@ -123,11 +123,17 @@ export default function App() {
     document.title = dompet ? `${dompet.name} · Sedompet` : "Sedompet";
   }, [dompet]);
 
-  // Demo: keep the sample family's entries current. Regenerates the seeded
-  // entries up to today on open, and again if the date changes while open.
+  // Demo: starts fresh every day (guest changes wiped, Keluarga Santoso
+  // re-seeded up to today). Checked on open, every minute, and on tab return.
   useEffect(() => {
     if (cloudMode) return;
-    const run = () => void refreshDemo().catch(() => {});
+    const run = () =>
+      void resetDemoDaily()
+        .then(async (reset) => {
+          if (reset) toast("Demo dimulai ulang untuk hari ini");
+          else await refreshDemo();
+        })
+        .catch(() => {});
     run();
     const t = window.setInterval(run, 60_000);
     const onVisible = () => document.visibilityState === "visible" && run();

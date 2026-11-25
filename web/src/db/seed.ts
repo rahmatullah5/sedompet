@@ -8,7 +8,8 @@
 // visitor added or edited are never touched (seeded rows are recognised by
 // updated_at = "<date> 12:00:00", which an edit changes).
 
-import { all, write } from "./database";
+import { all, resetDatabase, write } from "./database";
+import { setSession } from "../lib/session";
 import { insertDompet, MEMBER_COLOURS } from "./repo";
 import { toISODate } from "../lib/format";
 
@@ -115,6 +116,37 @@ function findDemo(): DemoIds | null {
   if (Object.values(ids).some((v) => !v)) return null;
   const cat = Object.fromEntries(all<{ id: string; name: string }>("SELECT id, name FROM categories WHERE dompet_id = ? AND parent_id IS NULL", [d.id]).map((c) => [c.name, c.id]));
   return { dompetId: d.id, cat, ...(ids as Omit<DemoIds, "dompetId" | "cat">) };
+}
+
+const RESET_KEY = "sedompet.demo.reset";
+
+/**
+ * The demo starts fresh every day: on the first open of a new day the whole
+ * demo database (anything a guest added, edited or deleted, other Dompets
+ * too) is wiped and Keluarga Santoso is seeded again. The first run after
+ * this feature shipped only records the day. Returns true when it reset.
+ */
+export async function resetDemoDaily(): Promise<boolean> {
+  const today = toISODate(new Date());
+  let last: string | null = null;
+  try {
+    last = localStorage.getItem(RESET_KEY);
+    if (last === today) return false;
+    localStorage.setItem(RESET_KEY, today);
+  } catch {
+    return false; // no storage: can't tell days apart, leave the data alone
+  }
+  // Nothing to reset before the guest has opened the demo at all.
+  if (!last || all<{ n: number }>("SELECT count(*) AS n FROM dompets")[0]?.n === 0) return false;
+  await resetDatabase();
+  try {
+    for (const k of Object.keys(localStorage)) if (/^sedompet\.(demo\.day|badges|start)\./.test(k)) localStorage.removeItem(k);
+  } catch {
+    /* ignore */
+  }
+  const { dompetId, ownerId } = await seedDemo();
+  setSession({ dompetId, memberId: ownerId }, { picked: true });
+  return true;
 }
 
 /**

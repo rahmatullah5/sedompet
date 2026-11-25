@@ -85,7 +85,7 @@ const OUNCE_GRAMS = 31.1034768;
 const list = (v: string | null, re: RegExp, max: number) =>
   [...new Set((v ?? "").toUpperCase().split(",").map((s) => s.trim()).filter((s) => re.test(s)))].slice(0, max);
 
-export default async function handler(req: Request): Promise<Response> {
+async function quotes(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const fx = list(url.searchParams.get("fx"), /^[A-Z]{3}$/, 30).filter((c) => c !== "IDR");
   const stocks = list(url.searchParams.get("stocks"), /^[A-Z0-9]{2,6}$/, 60);
@@ -153,4 +153,71 @@ export default async function handler(req: Request): Promise<Response> {
       "Cache-Control": "public, max-age=60, s-maxage=300, stale-while-revalidate=600",
     },
   });
+}
+
+// ---------------------------------------------------------------------------
+// CORS + rate limit
+// ---------------------------------------------------------------------------
+/** Sites allowed to call this from a browser: production, our preview deploys, local dev. */
+function allowedOrigin(origin: string) {
+  return (
+    /^https:\/\/sedompet(-[a-z0-9-]+)?\.vercel\.app$/.test(origin) ||
+    /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)
+  );
+}
+
+function corsHeaders(origin: string | null): Record<string, string> {
+  const h: Record<string, string> = { Vary: "Origin" };
+  if (origin && allowedOrigin(origin)) {
+    h["Access-Control-Allow-Origin"] = origin;
+    h["Access-Control-Allow-Methods"] = "GET, OPTIONS";
+    h["Access-Control-Allow-Headers"] = "Content-Type";
+    h["Access-Control-Max-Age"] = "86400";
+  }
+  return h;
+}
+
+/**
+ * Fixed-window limit per client IP: 30 requests per minute. Kept in memory,
+ * so it is per edge instance (best effort); repeat requests for the same
+ * symbols are mostly answered by the CDN cache before reaching this code.
+ */
+const LIMIT = 30;
+const WINDOW_MS = 60_000;
+const hits = new Map<string, { start: number; n: number }>();
+
+function rateLimit(ip: string, now = Date.now()) {
+  if (hits.size > 5000) for (const [k, v] of hits) if (now - v.start > WINDOW_MS) hits.delete(k);
+  const e = hits.get(ip);
+  if (!e || now - e.start > WINDOW_MS) {
+    hits.set(ip, { start: now, n: 1 });
+    return { ok: true, left: LIMIT - 1, reset: Math.ceil(WINDOW_MS / 1000) };
+  }
+  e.n++;
+  const reset = Math.ceil((e.start + WINDOW_MS - now) / 1000);
+  return { ok: e.n <= LIMIT, left: Math.max(0, LIMIT - e.n), reset };
+}
+
+function json(body: unknown, status: number, headers: Record<string, string>) {
+  return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", ...headers } });
+}
+
+export default async function handler(req: Request): Promise<Response> {
+  const origin = req.headers.get("origin");
+  const cors = corsHeaders(origin);
+  // Browsers on other sites: refuse (no CORS headers either way).
+  const crossSite = req.headers.get("sec-fetch-site") === "cross-site";
+  if ((origin && !allowedOrigin(origin)) || (crossSite && !origin)) return json({ error: "origin_not_allowed" }, 403, cors);
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+  if (req.method !== "GET") return json({ error: "method_not_allowed" }, 405, { ...cors, Allow: "GET, OPTIONS" });
+
+  const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || req.headers.get("x-real-ip") || "unknown";
+  const rl = rateLimit(ip);
+  const rlHeaders = { "RateLimit-Limit": String(LIMIT), "RateLimit-Remaining": String(rl.left), "RateLimit-Reset": String(rl.reset) };
+  if (!rl.ok) return json({ error: "rate_limited", retryAfter: rl.reset }, 429, { ...cors, ...rlHeaders, "Retry-After": String(rl.reset) });
+
+  const res = await quotes(req);
+  const headers = new Headers(res.headers);
+  for (const [k, v] of Object.entries({ ...cors, ...rlHeaders })) headers.set(k, v);
+  return new Response(res.body, { status: res.status, headers });
 }
