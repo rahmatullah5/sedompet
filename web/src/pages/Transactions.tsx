@@ -138,6 +138,11 @@ function loadSort(): SortKey {
 
 const CAL_KEY = "sedompet.riwayat.calendar";
 
+/** Small white pill button, same look as the month switcher. */
+const ACTION_BASE = "inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-semibold transition hover:shadow-md active:scale-95";
+const ACTION_CHIP = `${ACTION_BASE} bg-white text-brand-700 shadow-[0_4px_14px_-8px_rgba(120,72,40,0.35)]`;
+const ACTION_CHIP_ON = `${ACTION_BASE} bg-brand-600 text-white shadow-[0_6px_16px_-8px_rgba(234,100,64,0.7)]`;
+
 export function Transactions({
   onOpenTx,
   onAddOnDate,
@@ -326,19 +331,28 @@ export function Transactions({
           )}
         </p>
       )}
-      <div className={`flex flex-wrap gap-2 text-sm ${searching ? "hidden" : ""}`}>
+      <div className={`flex flex-wrap items-center gap-2 text-sm ${searching ? "hidden" : ""}`}>
         <Badge tone="brand">Masuk {formatIDR(income)}</Badge>
         <Badge>Keluar {formatIDR(expense)}</Badge>
-        {onBulk && (
-          <button type="button" onClick={onBulk} className="ml-auto text-sm font-semibold text-brand-700">
-            Catat banyak
-          </button>
-        )}
-        {!range && (
-          <button type="button" onClick={toggleCal} aria-pressed={showCal} className={`${onBulk ? "" : "ml-auto "}text-sm font-semibold text-brand-700`}>
-            {showCal ? "Sembunyikan kalender" : "Kalender masuk-keluar"}
-          </button>
-        )}
+        <div className="ml-auto flex flex-wrap gap-2">
+          {onBulk && (
+            <button type="button" onClick={onBulk} className={ACTION_CHIP}>
+              <LineIcon name="receipt" size={16} />
+              Catat banyak
+            </button>
+          )}
+          {!range && (
+            <button
+              type="button"
+              onClick={toggleCal}
+              aria-pressed={showCal}
+              className={showCal ? ACTION_CHIP_ON : ACTION_CHIP}
+            >
+              <LineIcon name="calendar" size={16} />
+              Kalender
+            </button>
+          )}
+        </div>
       </div>
       {budget && !searching && (
         <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-sun-100 px-3 py-2 text-sm">
