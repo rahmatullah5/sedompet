@@ -10,6 +10,7 @@ import { Icon } from "../components/Icon";
 import { BudgetIcon } from "./Budgets";
 import { GoalRow } from "./Goals";
 import { StartChecklist } from "../components/StartChecklist";
+import { AchievementCard } from "../components/AchievementCard";
 import { RecapCard } from "../components/RecapCard";
 import { LineIcon } from "../components/LineIcon";
 import { useCountUp } from "../lib/motion";
@@ -189,6 +190,8 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction | null) => 
       />
 
       <StartChecklist onOpenTx={onOpenTx} />
+
+      <AchievementCard />
 
       <DueList />
 

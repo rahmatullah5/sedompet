@@ -1,3 +1,4 @@
+import { progressFor } from "../lib/achievements";
 import { startTour } from "../lib/tour";
 import { q } from "../db/repo";
 import { MadeBy } from "../components/ui";
@@ -14,6 +15,7 @@ import { InstallCard } from "../components/InstallCard";
 import { LineIcon, type LineIconName } from "../components/LineIcon";
 
 const ITEMS: { href: string; icon: LineIconName; title: string; hint: string }[] = [
+  { href: "#/pencapaian", icon: "star", title: "Pencapaian", hint: "Level, beruntun & lencana" },
   { href: "#/anggaran", icon: "piggy", title: "Anggaran", hint: "Batas belanja & uang saku" },
   { href: "#/tujuan", icon: "target", title: "Tujuan", hint: "Tabungan umroh, sekolah…" },
   { href: "#/rutin", icon: "repeat", title: "Rutin", hint: "Langganan, SPP, gaji" },
@@ -29,13 +31,15 @@ const ITEMS: { href: string; icon: LineIconName; title: string; hint: string }[]
 
 export function Menu() {
   useDbVersion();
-  const { dompet, me } = useCurrent();
+  const { dompet, me, members } = useCurrent();
+  const prog = progressFor(dompet.id, me, members);
   const due = mq.due(dompet.id, me.id).length;
   const openLoans = mq.loans(dompet.id, me.id).filter((l) => !l.settled).length;
   const accounts = q.accounts(dompet.id, me.id).length;
   const trashed = trash.list(dompet.id).length;
   const owing = q.splitBalances(dompet.id).filter((b) => b.net < -1).length;
   const badge: Record<string, string | null> = {
+    "#/pencapaian": `Lv ${prog.level.level} · ${prog.me.streak} hari beruntun`,
     "#/rutin": due ? `${due} jatuh tempo` : null,
     "#/pinjaman": openLoans ? `${openLoans} berjalan` : null,
     "#/akun": `${accounts} akun`,

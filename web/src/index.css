@@ -441,3 +441,10 @@ button:active > .fab-plus { transform: rotate(180deg) scale(0.9); }
   0%, 100% { opacity: 0; }
   30% { opacity: 1; }
 }
+
+/* Pencapaian: the streak flame breathes. */
+@keyframes streak-glow {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.08); opacity: 0.85; }
+}
+.streak-glow { animation: streak-glow 1.6s ease-in-out infinite; transform-origin: center bottom; }

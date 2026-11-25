@@ -26,6 +26,8 @@ import { Trash } from "./pages/Trash";
 import { Patungan } from "./pages/Patungan";
 import { Neraca } from "./pages/Neraca";
 import { Notifications } from "./pages/Notifications";
+import { Achievements } from "./pages/Achievements";
+import { AchievementWatcher } from "./components/AchievementCard";
 import { PushPrompt } from "./components/PushPrompt";
 import { Tour } from "./components/Tour";
 import { startTour, tourStore } from "./lib/tour";
@@ -35,7 +37,7 @@ import { setPeriodStartDay } from "./lib/format";
 import { useMarketAutoRefresh } from "./lib/market";
 import { LineIcon, type LineIconName } from "./components/LineIcon";
 
-const PAGES = ["beranda", "riwayat", "laporan", "menu", "anggaran", "keluarga", "akun", "kategori", "rutin", "pinjaman", "tujuan", "sampah", "patungan", "neraca", "notifikasi", "admin"] as const;
+const PAGES = ["beranda", "riwayat", "laporan", "menu", "anggaran", "keluarga", "akun", "kategori", "rutin", "pinjaman", "tujuan", "sampah", "patungan", "neraca", "notifikasi", "pencapaian", "admin"] as const;
 type PageId = (typeof PAGES)[number];
 
 const NAV: { id: PageId; label: string; icon: LineIconName }[] = [
@@ -246,6 +248,7 @@ export default function App() {
           {page === "patungan" && <Patungan onOpenTx={openTx} />}
           {page === "neraca" && <Neraca />}
           {page === "notifikasi" && <Notifications />}
+          {page === "pencapaian" && <Achievements />}
           {page === "admin" && cloudMode && <Admin />}
           </div>
         </main>
@@ -278,6 +281,7 @@ export default function App() {
       </nav>
 
       {cloudMode && <PushPrompt />}
+      <AchievementWatcher />
       <Tour canAdd={canAdd} onAddFirst={() => openTx(null)} />
       <TransactionForm open={txOpen} onClose={() => setTxOpen(false)} editing={editingTx} initialDate={newTxDate} bulk={bulkOpen} scanFile={scanFile} />
 

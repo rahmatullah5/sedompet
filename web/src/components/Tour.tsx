@@ -79,6 +79,12 @@ function steps(canAdd: boolean): Step[] {
       body: "Pengingat kalau seharian belum mencatat, tagihan jatuh tempo, dan anggaran yang hampir habis.",
     },
     {
+      target: "m-pencapaian",
+      page: "menu",
+      title: "Pencapaian",
+      body: "Kumpulkan XP, jaga hari beruntun, dan buka lencana bareng keluarga. Makin rajin mencatat, makin paham uang keluarga.",
+    },
+    {
       target: "dompet",
       page: "beranda",
       title: "Ganti Dompet",
