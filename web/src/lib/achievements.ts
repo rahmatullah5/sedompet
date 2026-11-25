@@ -273,17 +273,62 @@ const pen = (id: string, scope: Penalty["scope"], icon: LineIconName, title: str
 });
 
 /** Kartu kuning: just for fun, but each one is a real money habit to fix. */
-export function penalties(me: MemberStats, fam: FamilyStats): Penalty[] {
+/** Extra joke lines per kartu kuning (the first line stays in penalties()). */
+const PENALTY_JOKES: Record<string, ((me: MemberStats, fam: FamilyStats, quiet: number) => string)[]> = {
+  ghost: [
+    (_m, _f, q) => `Sudah ${q} hari tidak mencatat. Uangnya ke mana, hayo?`,
+    (_m, _f, q) => `${q} hari menghilang. Dompet sampai lapor ke RT.`,
+    (_m, _f, q) => `${q} hari tanpa catatan. Uangnya jalan-jalan sendiri?`,
+    (_m, _f, q) => `Hilang ${q} hari, seperti chat yang cuma di-read.`,
+  ],
+  broken: [
+    (m) => `Beruntun ${m.bestStreak} hari, lalu putus. Sayang sekali!`,
+    (m) => `Rekor ${m.bestStreak} hari kandas. Apinya tinggal asap.`,
+    (m) => `${m.bestStreak} hari dibangun, sehari dirobohkan. Ayo nyalakan lagi.`,
+  ],
+  impulse: [
+    (m) => `${m.maxWantsPerDay} belanja "keinginan" dalam sehari. Keranjang belanja menangis bahagia.`,
+    (m) => `${m.maxWantsPerDay} kali "cuma lihat-lihat" yang berakhir di kasir.`,
+    (m) => `Sehari ${m.maxWantsPerDay} keinginan terpenuhi. Jin lampu ajaib pun kalah.`,
+  ],
+  night: [
+    (m) => `${m.lateNight} catatan jam 12 malam ke atas. Checkout tengah malam memang menggoda.`,
+    (m) => `${m.lateNight} transaksi lewat tengah malam. Flash sale jam 00.00 lagi?`,
+    (m) => `Belanja jam segitu ${m.lateNight} kali. Kelelawar pun sudah tidur.`,
+  ],
+  snack: [
+    (m) => `${m.snacksWeek} kali jajan minggu ini. Dompet: "aku juga butuh makan."`,
+    (m) => `${m.snacksWeek} jajan dalam seminggu. Abang gorengan menyapa duluan.`,
+    (m) => `Minggu ini ${m.snacksWeek} kali jajan. Masak di rumah kapan?`,
+  ],
+  fearly: [
+    () => "90% anggaran habis padahal bulan masih panjang.",
+    () => "Tanggal masih muda, anggaran sudah sepuh.",
+    () => "Anggaran sudah 90% terpakai. Sisa hari masih banyak, sisa uang tidak.",
+  ],
+  fdeficit: [
+    () => "Bulan lalu pengeluaran lebih besar dari pemasukan.",
+    () => "Bulan lalu yang keluar lebih banyak dari yang masuk. Gali lubang, tutup lubang?",
+    () => "Pengeluaran bulan lalu menyalip pemasukan. Saatnya rem tangan.",
+  ],
+};
+
+export function penalties(me: MemberStats, fam: FamilyStats, seed = ""): Penalty[] {
   const quiet = me.entries > 0 && Number.isFinite(me.daysSinceLast) ? me.daysSinceLast : 0;
+  // Each member gets their own line, changing every month.
+  const joke = (id: string, fallback: string) => {
+    const pool = PENALTY_JOKES[id];
+    return pool ? pool[variantSeed(`${currentMonth()}:${seed}:${id}`) % pool.length](me, fam, quiet) : fallback;
+  };
   return [
-    pen("ghost", "me", "moon", "Hantu Dompet", `Sudah ${quiet} hari tidak mencatat. Uangnya ke mana, hayo?`, "Catat satu transaksi hari ini", 15, quiet >= 3),
-    pen("broken", "me", "flame", "Api Padam", `Beruntun ${me.bestStreak} hari, lalu putus. Sayang sekali!`, "Mulai beruntun lagi: catat 2 hari berturut-turut", 10, me.bestStreak >= 7 && me.streak < 2 && quiet >= 1),
-    pen("impulse", "me", "cart", "Tangan Gatal", `${me.maxWantsPerDay} belanja "keinginan" dalam sehari. Keranjang belanja menangis bahagia.`, "Seminggu tanpa 4+ keinginan dalam sehari", 10, me.maxWantsPerDay >= 4),
-    pen("night", "me", "moon", "Kalong Belanja", `${me.lateNight} catatan jam 12 malam ke atas. Checkout tengah malam memang menggoda.`, "Tidur dulu, belanjanya besok saja", 5, me.lateNight >= 3),
-    pen("snack", "me", "cup", "Raja Jajan", `${me.snacksWeek} kali jajan minggu ini. Dompet: "aku juga butuh makan."`, "Kurangi jajan jadi di bawah 10 kali seminggu", 10, me.snacksWeek >= 10),
+    pen("ghost", "me", "moon", "Hantu Dompet", joke("ghost", ""), "Catat satu transaksi hari ini", 15, quiet >= 3),
+    pen("broken", "me", "flame", "Api Padam", joke("broken", ""), "Mulai beruntun lagi: catat 2 hari berturut-turut", 10, me.bestStreak >= 7 && me.streak < 2 && quiet >= 1),
+    pen("impulse", "me", "cart", "Tangan Gatal", joke("impulse", ""), "Seminggu tanpa 4+ keinginan dalam sehari", 10, me.maxWantsPerDay >= 4),
+    pen("night", "me", "moon", "Kalong Belanja", joke("night", ""), "Tidur dulu, belanjanya besok saja", 5, me.lateNight >= 3),
+    pen("snack", "me", "cup", "Raja Jajan", joke("snack", ""), "Kurangi jajan jadi di bawah 10 kali seminggu", 10, me.snacksWeek >= 10),
     pen("fover", "family", "alert", "Anggaran Jebol", fam.overBudgets.length ? `${fam.overBudgets.slice(0, 2).join(", ")}${fam.overBudgets.length > 2 ? ` +${fam.overBudgets.length - 2}` : ""} sudah lewat batas.` : "Ada anggaran yang lewat batas.", "Rem belanjanya, atau ubah anggaran kalau memang kurang", 15, fam.overBudgets.length > 0),
-    pen("fearly", "family", "clock", "Tanggal Tua Datang Duluan", "90% anggaran habis padahal bulan masih panjang.", "Hemat sampai akhir periode", 10, fam.earlyBurn),
-    pen("fdeficit", "family", "down", "Besar Pasak daripada Tiang", "Bulan lalu pengeluaran lebih besar dari pemasukan.", "Bulan ini usahakan surplus", 15, fam.deficitLastMonth),
+    pen("fearly", "family", "clock", "Tanggal Tua Datang Duluan", joke("fearly", ""), "Hemat sampai akhir periode", 10, fam.earlyBurn),
+    pen("fdeficit", "family", "down", "Besar Pasak daripada Tiang", joke("fdeficit", ""), "Bulan ini usahakan surplus", 15, fam.deficitLastMonth),
     pen("fbill", "family", "repeat", "Tagihan Kabur", `${fam.overdueBills} tagihan rutin lewat tanggal belum dicatat.`, "Bayar & catat tagihannya di Rutin", 10, fam.overdueBills > 0),
     pen("floan", "family", "handshake", "Utang Lupa Ingatan", `${fam.overdueLoans} pinjaman sudah lewat jatuh tempo.`, "Lunasi atau atur ulang tanggalnya di Utang & Piutang", 10, fam.overdueLoans > 0),
   ];
@@ -309,7 +354,7 @@ export function progressFor(dompetId: string, member: Member, members: Member[])
   const me = memberStats(dompetId, member.id);
   const fam = familyStats(dompetId, member.id, members);
   const list = badges(me, fam);
-  const pens = penalties(me, fam);
+  const pens = penalties(me, fam, member.id);
   return { me, fam, badges: list, penalties: pens, level: levelOf(xpOf(me, list, pens)) };
 }
 
@@ -333,6 +378,77 @@ export interface Boros {
   icon: LineIconName;
   title: string;
   joke: string;
+}
+
+
+/** Vars a boros line can use. */
+interface BorosVars {
+  amt?: string;
+  date?: string;
+  n?: number;
+  pct?: number;
+  wants?: string;
+  needs?: string;
+}
+type Line = [title: string, joke: (v: BorosVars) => string];
+
+/** Several wordings per badge, so two people with the same badge read differently. */
+const BOROS_WORDS: Record<string, Line[]> = {
+  sultan: [
+    ["Sultan Sehari", (v) => `${v.amt} habis dalam sehari (${v.date}). Kaya mendadak?`],
+    ["Crazy Rich Dadakan", (v) => `Tanggal ${v.date} keluar ${v.amt}. Warisan dari mana nih?`],
+    ["Gesek Tanpa Ragu", (v) => `${v.amt} dalam satu hari. Kartunya sampai kepanasan.`],
+    ["Raja Sehari Semalam", (v) => `${v.date}: ${v.amt} melayang. Besoknya puasa, ya?`],
+    ["Dompet Kaget", (v) => `Dompetmu masih syok sejak ${v.date}. ${v.amt}, lho!`],
+  ],
+  kopi: [
+    ["Pelanggan Setia Kopi", (v) => `${v.n} kali ngopi bulan ini (${v.amt}). Baristanya sudah hafal namamu.`],
+    ["Darah Mengandung Kafein", (v) => `${v.n} gelas kopi, total ${v.amt}. Tidur kapan?`],
+    ["Investor Kedai Kopi", (v) => `Sudah setor ${v.amt} ke kedai kopi. Minta saham sekalian.`],
+    ["Barista Kenal Muka", (v) => `${v.n} kali mampir ngopi. Next: kopi sachet di rumah?`],
+  ],
+  ojol: [
+    ["Langganan Ojol", (v) => `${v.n} kali naik ojol. Kaki masih berfungsi, kan?`],
+    ["Penumpang VIP", (v) => `${v.n} perjalanan ojol, total ${v.amt}. Driver-nya sudah anggap saudara.`],
+    ["Anti Jalan Kaki", (v) => `${v.n} kali pesan ojol. Jarak 200 meter juga dipesan?`],
+    ["Sponsor Ojol", (v) => `${v.amt} untuk ojol bulan ini. Bintang 5 terus, ya.`],
+  ],
+  checkout: [
+    ["Hobi Checkout", (v) => `${v.n} kali belanja online. Kurir sampai kenal rumahnya.`],
+    ["Raja Keranjang Kuning", (v) => `${v.n} paket bulan ini. Satpam kompleks sampai bosan.`],
+    ["Jempol Lincah", (v) => `${v.n} kali checkout, ${v.amt}. Jarinya lebih cepat dari pikirannya.`],
+    ["Pelanggan Tetap Kurir", (v) => `${v.n} paket datang. "Paket!" sudah jadi lagu kebangsaan rumah.`],
+  ],
+  want: [
+    ["Hati Mau, Dompet Ragu", (v) => `Belanja keinginan ${v.wants}, lebih besar dari kebutuhan ${v.needs}.`],
+    ["Lapar Mata", (v) => `Keinginan ${v.wants} vs kebutuhan ${v.needs}. Matanya yang belanja.`],
+    ["Yang Penting Happy", (v) => `${v.wants} untuk yang bikin senang, ${v.needs} untuk yang perlu. Seimbang? Belum.`],
+    ["Self Reward Garis Keras", (v) => `Hadiah untuk diri sendiri ${v.wants}. Kerja kerasnya sepadan, kan?`],
+  ],
+  weekend: [
+    ["Pejuang Akhir Pekan", (v) => `${v.pct}% belanjanya di Sabtu-Minggu. Weekdays hemat, weekend kalap.`],
+    ["Sabtu Minggu Ceria", (v) => `${v.pct}% belanja jatuh di akhir pekan. Senin langsung insaf.`],
+    ["Healing Tiap Weekend", (v) => `Akhir pekan = ${v.pct}% pengeluaran. Healing-nya mahal juga.`],
+    ["Mall Weekend Club", (v) => `${v.pct}% belanja di weekend. Parkiran mall sudah reservasi?`],
+  ],
+  bolong: [
+    ["Kantong Bolong", (v) => `Belanja naik ${v.pct}% dari bulan lalu, padahal bulan belum habis.`],
+    ["Gas Pol Rem Blong", (v) => `Naik ${v.pct}% dibanding bulan lalu. Remnya di mana?`],
+    ["Inflasi Pribadi", (v) => `Pengeluaranmu naik ${v.pct}%. Lebih cepat dari inflasi nasional.`],
+    ["Lupa Bulan Lalu", (v) => `Bulan lalu hemat, bulan ini +${v.pct}%. Balas dendam?`],
+  ],
+  jajan: [
+    ["Juara Jajan Keluarga", (v) => `${v.amt} untuk makan & jajan bulan ini, terbanyak di keluarga. Traktir dong!`],
+    ["Duta Kuliner Rumah", (v) => `Jajan ${v.amt}, nomor satu di keluarga. Review-nya kapan?`],
+    ["Perut Karet", (v) => `${v.amt} untuk makan & jajan. Yang lain masih kalah jauh.`],
+    ["Food Vlogger Tanpa Kamera", (v) => `Rekor jajan keluarga: ${v.amt}. Tinggal bikin konten.`],
+  ],
+};
+
+function variantSeed(key: string) {
+  let h = 2166136261;
+  for (const ch of key) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0;
+  return h;
 }
 
 const rp = (n: number) => (n >= 1_000_000 ? `Rp${(n / 1_000_000).toFixed(1).replace(".", ",").replace(",0", "")}jt` : `Rp${Math.round(n / 1000)}rb`);
@@ -359,13 +475,13 @@ export function borosFor(dompetId: string, members: Member[]): Boros[] {
   );
   const bills = /listrik|air|sekolah|pendidikan|cicilan|kpr|sewa|kontrak|asuransi|pulsa|internet|zakat|arisan|tagihan|kesehatan/;
   const text = (r: (typeof rows)[number]) => `${r.note} ${r.merchant ?? ""}`.toLowerCase();
-  const out: Boros[] = [];
+  const found: { id: string; memberId: string; icon: LineIconName; vars: BorosVars }[] = [];
   const snackTotals = new Map<string, number>();
 
   for (const m of members) {
     const mine = rows.filter((r) => r.paid_by === m.id);
     if (mine.length === 0) continue;
-    const add = (id: string, icon: LineIconName, title: string, joke: string) => out.push({ id, memberId: m.id, icon, title, joke });
+    const add = (id: string, icon: LineIconName, vars: BorosVars) => found.push({ id, memberId: m.id, icon, vars });
     const total = mine.reduce((t, r) => t + r.amount, 0);
     const fun = mine.filter((r) => !bills.test(r.cat));
 
@@ -373,28 +489,28 @@ export function borosFor(dompetId: string, members: Member[]): Boros[] {
     const byDay = new Map<string, number>();
     for (const r of fun) byDay.set(r.date, (byDay.get(r.date) ?? 0) + r.amount);
     const [bigDay, bigAmt] = [...byDay.entries()].sort((a, b) => b[1] - a[1])[0] ?? ["", 0];
-    if (bigAmt >= 1_000_000) add("sultan", "star", "Sultan Sehari", `${rp(bigAmt)} habis dalam sehari (${Number(bigDay.slice(8))}/${Number(bigDay.slice(5, 7))}). Kaya mendadak?`);
+    if (bigAmt >= 1_000_000) add("sultan", "star", { amt: rp(bigAmt), date: `${Number(bigDay.slice(8))}/${Number(bigDay.slice(5, 7))}` });
 
     const coffee = mine.filter((r) => /kopi|coffee|latte|starbucks|kenangan|janji jiwa|fore|tomoro|boba|chatime|mixue/.test(text(r)));
-    if (coffee.length >= 8) add("kopi", "cup", "Pelanggan Setia Kopi", `${coffee.length} kali ngopi bulan ini (${rp(coffee.reduce((t, r) => t + r.amount, 0))}). Baristanya sudah hafal namamu.`);
+    if (coffee.length >= 8) add("kopi", "cup", { n: coffee.length, amt: rp(coffee.reduce((t, r) => t + r.amount, 0)) });
 
     const ride = mine.filter((r) => /ojol|ojek|grab|gojek|gocar|maxim|taksi|taxi/.test(text(r)));
-    if (ride.length >= 10) add("ojol", "scooter", "Langganan Ojol", `${ride.length} kali naik ojol. Kaki masih berfungsi, kan?`);
+    if (ride.length >= 10) add("ojol", "scooter", { n: ride.length, amt: rp(ride.reduce((t, r) => t + r.amount, 0)) });
 
     const online = mine.filter((r) => /shopee|tokopedia|lazada|tiktok shop|blibli|checkout|co\b/.test(text(r)));
-    if (online.length >= 5) add("checkout", "cart", "Hobi Checkout", `${online.length} kali belanja online. Kurir sampai kenal rumahnya.`);
+    if (online.length >= 5) add("checkout", "cart", { n: online.length, amt: rp(online.reduce((t, r) => t + r.amount, 0)) });
 
     const wants = mine.filter((r) => r.need === "want").reduce((t, r) => t + r.amount, 0);
     const needs = mine.filter((r) => r.need === "need").reduce((t, r) => t + r.amount, 0);
-    if (mine.filter((r) => r.need).length >= 5 && wants > needs) add("want", "heart", "Hati Mau, Dompet Ragu", `Belanja keinginan ${rp(wants)}, lebih besar dari kebutuhan ${rp(needs)}.`);
+    if (mine.filter((r) => r.need).length >= 5 && wants > needs) add("want", "heart", { wants: rp(wants), needs: rp(needs) });
 
     const weekend = fun.filter((r) => r.day === 0 || r.day === 6).reduce((t, r) => t + r.amount, 0);
     const funTotal = fun.reduce((t, r) => t + r.amount, 0);
-    if (funTotal >= 500_000 && weekend / funTotal >= 0.6) add("weekend", "sparkle", "Pejuang Akhir Pekan", `${Math.round((weekend / funTotal) * 100)}% belanjanya di Sabtu-Minggu. Weekdays hemat, weekend kalap.`);
+    if (funTotal >= 500_000 && weekend / funTotal >= 0.6) add("weekend", "sparkle", { pct: Math.round((weekend / funTotal) * 100) });
 
     const before = prevTotals.get(m.id) ?? 0;
     if (before >= 300_000 && total >= before * 1.3 && total - before >= 300_000)
-      add("bolong", "down", "Kantong Bolong", `Belanja naik ${Math.round(((total - before) / before) * 100)}% dari bulan lalu, padahal bulan belum habis.`);
+      add("bolong", "down", { pct: Math.round(((total - before) / before) * 100) });
 
     snackTotals.set(m.id, mine.filter((r) => /makan|jajan|food|minum/.test(r.cat)).reduce((t, r) => t + r.amount, 0));
   }
@@ -402,6 +518,16 @@ export function borosFor(dompetId: string, members: Member[]): Boros[] {
   // Family title: the biggest snacker (at least Rp300rb).
   const top = [...snackTotals.entries()].sort((a, b) => b[1] - a[1])[0];
   if (top && top[1] >= 250_000 && [...snackTotals.values()].filter((v) => v > 0).length >= 2)
-    out.push({ id: "jajan", memberId: top[0], icon: "cup", title: "Juara Jajan Keluarga", joke: `${rp(top[1])} untuk makan & jajan bulan ini, terbanyak di keluarga. Traktir dong!` });
-  return out;
+    found.push({ id: "jajan", memberId: top[0], icon: "cup", vars: { amt: rp(top[1]) } });
+
+  // Pick a wording per badge: rotates each month, and people sharing a badge
+  // get different lines (in member order).
+  const used = new Map<string, number>();
+  return found.map((f): Boros => {
+    const pool = BOROS_WORDS[f.id];
+    const k = used.get(f.id) ?? 0;
+    used.set(f.id, k + 1);
+    const [title, joke] = pool[(variantSeed(`${month}:${f.id}`) + k) % pool.length];
+    return { id: f.id, memberId: f.memberId, icon: f.icon, title, joke: joke(f.vars) };
+  });
 }
