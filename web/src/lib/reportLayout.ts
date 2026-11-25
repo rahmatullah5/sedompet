@@ -14,54 +14,67 @@ export interface ReportLayout {
   hidden: string[];
 }
 
-const KEY = "sedompet.reports.layout";
-const listeners = new Set<() => void>();
-
 function valid(v: unknown): v is ReportLayout {
   const o = v as ReportLayout;
   return !!o && Array.isArray(o.order) && Array.isArray(o.hidden) && [...o.order, ...o.hidden].every((x) => typeof x === "string");
 }
 
-let layout: ReportLayout | null = (() => {
-  try {
-    const v = JSON.parse(localStorage.getItem(KEY) ?? "null");
-    return valid(v) ? v : null;
-  } catch {
-    return null;
+/** A saved widget layout for one page (device + account). */
+function createLayoutStore(key: string) {
+  const listeners = new Set<() => void>();
+  let layout: ReportLayout | null = (() => {
+    try {
+      const v = JSON.parse(localStorage.getItem(key) ?? "null");
+      return valid(v) ? v : null;
+    } catch {
+      return null;
+    }
+  })();
+  let saver: ((v: ReportLayout | null) => void) | null = null;
+
+  function set(v: ReportLayout | null, save = true) {
+    layout = v;
+    try {
+      if (v) localStorage.setItem(key, JSON.stringify(v));
+      else localStorage.removeItem(key);
+    } catch {
+      /* private mode: kept for this session */
+    }
+    if (save) saver?.(v);
+    listeners.forEach((l) => l());
   }
-})();
 
-let saver: ((v: ReportLayout | null) => void) | null = null;
-/** Cloud mode saves the layout to the account too. */
-export function setReportLayoutSaver(fn: ((v: ReportLayout | null) => void) | null) {
-  saver = fn;
+  return {
+    /** Cloud mode saves the layout to the account too. */
+    setSaver(fn: ((v: ReportLayout | null) => void) | null) {
+      saver = fn;
+    },
+    /** Applies the layout stored on the account (no save back). */
+    applyFromAccount(v: unknown) {
+      if (v === null) return set(null, false);
+      if (valid(v) && JSON.stringify(v) !== JSON.stringify(layout)) set(v, false);
+    },
+    use(): [ReportLayout | null, (v: ReportLayout | null) => void] {
+      const v = useSyncExternalStore(
+        (l) => (listeners.add(l), () => listeners.delete(l)),
+        () => layout,
+      );
+      return [v, set];
+    },
+  };
 }
 
-function set(v: ReportLayout | null, save = true) {
-  layout = v;
-  try {
-    if (v) localStorage.setItem(KEY, JSON.stringify(v));
-    else localStorage.removeItem(KEY);
-  } catch {
-    /* private mode: kept for this session */
-  }
-  if (save) saver?.(v);
-  listeners.forEach((l) => l());
-}
+const reports = createLayoutStore("sedompet.reports.layout");
+const home = createLayoutStore("sedompet.home.layout");
 
-/** Applies the layout stored on the account (no save back). */
-export function applyReportLayoutFromAccount(v: unknown) {
-  if (v === null) return set(null, false);
-  if (valid(v) && JSON.stringify(v) !== JSON.stringify(layout)) set(v, false);
-}
+export const setReportLayoutSaver = reports.setSaver;
+export const applyReportLayoutFromAccount = reports.applyFromAccount;
+export const useReportLayout = () => reports.use();
 
-export function useReportLayout(): [ReportLayout | null, (v: ReportLayout | null) => void] {
-  const v = useSyncExternalStore(
-    (l) => (listeners.add(l), () => listeners.delete(l)),
-    () => layout,
-  );
-  return [v, set];
-}
+/** Beranda widgets (user_metadata.home_widgets in cloud mode). */
+export const setHomeLayoutSaver = home.setSaver;
+export const applyHomeLayoutFromAccount = home.applyFromAccount;
+export const useHomeLayout = () => home.use();
 
 /**
  * The widgets to draw: the saved order first, then any widget the saved

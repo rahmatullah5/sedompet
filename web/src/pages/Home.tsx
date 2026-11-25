@@ -14,6 +14,18 @@ import { AchievementCard } from "../components/AchievementCard";
 import { RecapCard } from "../components/RecapCard";
 import { LineIcon } from "../components/LineIcon";
 import { useCountUp } from "../lib/motion";
+import { resolveLayout, useHomeLayout } from "../lib/reportLayout";
+import { EditToggle, WidgetEditor } from "../components/WidgetEditor";
+import type { LineIconName } from "../components/LineIcon";
+
+interface HomeWidget {
+  id: string;
+  title: string;
+  hint: string;
+  icon: LineIconName;
+  defaultOn: boolean;
+  render: () => React.ReactNode;
+}
 
 /** The family total: counts up on open, glows briefly when it changes. */
 function BigBalance({ value, hidden }: { value: number; hidden: boolean }) {
@@ -67,7 +79,17 @@ function EyeIcon({ off }: { off: boolean }) {
   );
 }
 
-export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction | null) => void; goTo: (page: string) => void }) {
+export function Home({
+  onOpenTx,
+  goTo,
+  onScan,
+  onBulk,
+}: {
+  onOpenTx: (t: Transaction | null) => void;
+  goTo: (page: string) => void;
+  onScan?: (file: File) => void;
+  onBulk?: () => void;
+}) {
   useDbVersion();
   const { dompet, me, members } = useCurrent();
   const month = currentMonth();
@@ -111,14 +133,258 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction | null) => 
 
   const health = overall ? budgetHealth(overall.spent, overall.amount, days, hidden) : null;
 
+  // Widgets below the balance card: order and visibility come from "Atur".
+  const WIDGETS: HomeWidget[] = [
+    { id: "achievements", title: "Pencapaian", hint: "level, hari beruntun, lencana berikutnya", icon: "star", defaultOn: true, render: () => (
+      <>
+      <AchievementCard />
+      </>
+    ) },
+    { id: "due", title: "Tagihan jatuh tempo", hint: "rutin & utang yang perlu dibayar", icon: "repeat", defaultOn: true, render: () => (
+      <>
+      <DueList />
+      </>
+    ) },
+    { id: "budget", title: "Anggaran bulan ini", hint: "terpakai berapa dari total anggaran", icon: "piggy", defaultOn: true, render: () => (
+      <>
+      {overall && health && (
+        <Card className={cx("pop-in", health.level >= 2 && "ring-2", health.level === 2 && "ring-amber-200", health.level === 3 && "ring-red-200")}>
+          <div className="flex gap-3">
+            <span className="leading-none" style={{ color: health.colour }} aria-hidden>
+              <LineIcon name={health.icon} size={36} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="font-bold text-slate-800">
+                Bulan {formatMonth(month).split(" ")[0]} terpakai{" "}
+                <span className="num" style={{ color: health.colour }}>
+                  {hidden ? `${Math.round(health.pct * 100)}%` : formatCompact(overall.spent)}
+                </span>
+                {!hidden && <> dari {formatCompact(overall.amount)}</>}
+              </p>
+              {formatPeriodRange(month) && <p className="text-xs text-slate-400">Periode {formatPeriodRange(month)}</p>}
+              <p className="mt-0.5 text-sm text-slate-500">{health.text}</p>
+              {overall.combined > 0 && (
+                <p className="mt-1 text-xs text-slate-400">Gabungan {overall.combined} anggaran. Buat anggaran tanpa kategori untuk batas total.</p>
+              )}
+              <div className="mt-3">
+                <Progress value={overall.spent} max={overall.amount} colour={health.bar} />
+              </div>
+            </div>
+          </div>
+          {health.level >= 2 && (
+            <div role="alert" className={cx("mt-3 rounded-2xl px-4 py-3 text-sm", health.level === 3 ? "bg-red-50 text-red-800" : "bg-amber-50 text-amber-800")}>
+              <p className="font-bold">{health.level === 3 ? "Anggaran sudah terlewati" : "Anggaran hampir habis"}</p>
+              <ul className="mt-1 list-disc space-y-0.5 pl-5">
+                <li>Tunda belanja yang tidak mendesak sampai bulan depan.</li>
+                {topCats[0] && (
+                  <li>
+                    Cek pengeluaran terbesar: <b>{topCats[0].name}</b>.
+                  </li>
+                )}
+                <li>Kalau rencananya memang kurang, ubah jumlah anggaran.</li>
+              </ul>
+              <button
+                type="button"
+                onClick={() => goTo("anggaran")}
+                className={cx("mt-2 rounded-full px-3 py-1.5 text-xs font-bold text-white", health.level === 3 ? "bg-red-600" : "bg-amber-600")}
+              >
+                Atur anggaran
+              </button>
+            </div>
+          )}
+        </Card>
+      )}
+      </>
+    ) },
+    { id: "recap", title: "Rekap mingguan", hint: "belanja minggu ini vs lalu, bisa dibagikan", icon: "bars", defaultOn: true, render: () => (
+      <>
+      <RecapCard
+        budgetLine={
+          overall
+            ? `Anggaran ${formatMonth(month).split(" ")[0]}: terpakai ${Math.round((overall.spent / overall.amount) * 100)}%, ${
+                overall.amount - overall.spent >= 0
+                  ? `sisa ${formatCompact(overall.amount - overall.spent)} (±${formatCompact(Math.floor((overall.amount - overall.spent) / days))}/hari)`
+                  : `lewat ${formatCompact(overall.spent - overall.amount)}`
+              }`
+            : undefined
+        }
+      />
+      </>
+    ) },
+    { id: "goals", title: "Tujuan keluarga", hint: "progres tabungan", icon: "target", defaultOn: true, render: () => (
+      <>
+      {goals.length > 0 && (
+        <Card
+          className="pop-in"
+          title="Tujuan keluarga"
+          action={
+            <button onClick={() => goTo("tujuan")} className="text-sm font-semibold text-brand-700">
+              Lihat semua
+            </button>
+          }
+        >
+          <ul className="stagger space-y-3">
+            {goals.slice(0, 3).map((g) => (
+              <li key={g.id}>
+                <button className="w-full text-left" onClick={() => goTo("tujuan")}>
+                  <GoalRow g={g} compact />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+      </>
+    ) },
+    { id: "members", title: "Siapa belanja apa?", hint: "pengeluaran per anggota bulan ini", icon: "users", defaultOn: true, render: () => (
+      <>
+      {/* Who spent what */}
+      <section className="pop-in">
+        <div className="mb-2 flex items-end justify-between px-1">
+          <h2 className="text-lg font-bold text-slate-800">Siapa belanja apa?</h2>
+          <span className="text-xs font-medium text-slate-400">bulan ini</span>
+        </div>
+        <div className="no-scrollbar -mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-2">
+          {byMember.map((x) => {
+            const share = familySpend ? Math.round((x.total / familySpend) * 100) : 0;
+            return (
+              <div key={x.id} className="w-36 shrink-0 snap-start rounded-3xl bg-white p-4 shadow-[0_8px_24px_-14px_rgba(120,72,40,0.3)]">
+                <Avatar emoji={x.emoji} colour={x.colour} size={48} />
+                <p className="mt-3 font-bold text-slate-800">
+                  {x.name}
+                  {x.id === me.id && <span className="text-xs font-semibold text-slate-400"> (kamu)</span>}
+                </p>
+                <p className="num text-sm font-semibold text-slate-600">{hidden ? "••••" : formatCompact(x.total)}</p>
+                <div className="mt-2 h-1.5 rounded-full bg-slate-100">
+                  <div className="h-1.5 rounded-full" style={{ width: `${share}%`, background: x.colour }} />
+                </div>
+                <p className="mt-1 text-[11px] text-slate-400">{x.total ? `${share}% dari belanja keluarga` : "belum belanja"}</p>
+              </div>
+            );
+          })}
+        </div>
+        {topCats.length > 0 && (
+          <p className="px-1 text-sm text-slate-500">
+            Paling banyak untuk {topCats.map((c, i) => (
+              <span key={c.id ?? i}>
+                {i > 0 && (i === topCats.length - 1 ? " dan " : ", ")}
+                <b className="text-slate-700">
+                  <Icon value={c.icon} size={16} /> {c.name}
+                </b>
+              </span>
+            ))}
+            .
+          </p>
+        )}
+      </section>
+      </>
+    ) },
+    { id: "activity", title: "Kabar keluarga", hint: "aktivitas terbaru anggota", icon: "message", defaultOn: true, render: () => (
+      <>
+      {/* Family chat-style activity */}
+      <Card title="Kabar keluarga" className="pop-in">
+        {activity.length === 0 ? (
+          <Empty icon="" title="Belum ada kabar" />
+        ) : (
+          <ul className="stagger space-y-3">
+            {activity.map((a) => {
+              const mine = a.member_id === me.id;
+              return (
+                <li key={a.id} className={`flex items-end gap-2 ${mine ? "flex-row-reverse" : ""}`}>
+                  <Avatar emoji={a.member_emoji ?? "👤"} colour={a.member_colour ?? "#b29d8b"} size={30} />
+                  <div className={`max-w-[80%] rounded-2xl px-3.5 py-2 text-sm ${mine ? "rounded-br-md bg-brand-100 text-brand-800" : "rounded-bl-md bg-slate-100 text-slate-700"}`}>
+                    <p>
+                      <b>{mine ? "Kamu" : (a.member_name ?? "Seseorang")}</b> {a.message}
+                    </p>
+                    <p className={`mt-0.5 text-[11px] ${mine ? "text-brand-700/70" : "text-slate-400"}`}>{timeAgo(a.created_at)}</p>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </Card>
+      </>
+    ) },
+    { id: "jars", title: "Anggaran per kategori", hint: "sisa tiap anggaran", icon: "piggy", defaultOn: true, render: () => (
+      <>
+      {/* Budget jars */}
+      {jars.length > 0 && (
+        <section className="pop-in">
+          <div className="mb-2 flex items-end justify-between px-1">
+            <h2 className="text-lg font-bold text-slate-800">Anggaran keluarga</h2>
+            <button className="text-sm font-semibold text-brand-700" onClick={() => goTo("anggaran")}>
+              Semua →
+            </button>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {jars.map((b) => {
+              const left = b.limit - b.spent;
+              return (
+                <button key={b.id} onClick={() => goTo("anggaran")} className="rounded-3xl bg-white p-4 text-left shadow-[0_8px_24px_-14px_rgba(120,72,40,0.3)]">
+                  <BudgetIcon b={b} />
+                  <p className="mt-1 truncate font-bold text-slate-800">{b.name}</p>
+                  {b.period !== "monthly" && <p className="text-[11px] font-semibold text-brand-700">{b.periodLabel.split(" (")[0]}</p>}
+                  <p className={`num text-xs font-semibold ${left < 0 ? "text-red-600" : "text-slate-500"}`}>
+                    {hidden ? `${Math.round((b.spent / Math.max(1, b.limit)) * 100)}% terpakai` : left < 0 ? `lewat ${formatCompact(-left)}` : `sisa ${formatCompact(left)}`}
+                  </p>
+                  <div className="mt-2">
+                    <Progress value={b.spent} max={b.limit} />
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
+      </>
+    ) },
+    { id: "recent", title: "Catatan terakhir", hint: "4 transaksi terbaru", icon: "book", defaultOn: true, render: () => (
+      <>
+      <Card
+        title="Catatan terakhir"
+        className="pop-in"
+        action={
+          <button className="text-sm font-semibold text-brand-700" onClick={() => goTo("riwayat")}>
+            Riwayat →
+          </button>
+        }
+      >
+        {recent.length === 0 ? (
+          <Empty icon="" title="Belum ada catatan">
+            Tekan tombol <b>+</b> di bawah untuk mencatat.
+          </Empty>
+        ) : (
+          <ul className="stagger -mx-2">
+            {recent.map((t) => (
+              <TxRow key={t.id} t={t} onClick={() => onOpenTx(t)} />
+            ))}
+          </ul>
+        )}
+      </Card>
+      </>
+    ) },
+    { id: "shortcuts", title: "Pintasan", hint: "tombol cepat: scan struk, catat banyak, transfer", icon: "sparkle", defaultOn: false, render: () => <Shortcuts onOpenTx={onOpenTx} onScan={onScan} onBulk={onBulk} goTo={goTo} /> },
+    { id: "topcats", title: "Kategori terbesar", hint: "5 pengeluaran terbesar bulan ini", icon: "pie", defaultOn: false, render: () => <TopCategories month={month} hidden={hidden} /> },
+  ];
+  const [savedLayout, setSavedLayout] = useHomeLayout();
+  const [editing, setEditing] = useState(false);
+  const widgets = resolveLayout(WIDGETS, savedLayout);
+
+
   return (
     <div className="space-y-5">
-      <div className="pop-in">
-        <h1 className="text-2xl font-extrabold tracking-tight text-slate-800">
-          {greeting()}, {me.name}
-        </h1>
-        <p className="text-slate-500">Begini kabar dompet keluarga hari ini.</p>
+      <div className="pop-in flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-extrabold tracking-tight text-slate-800">
+            {editing ? "Atur Beranda" : `${greeting()}, ${me.name}`}
+          </h1>
+          <p className="text-slate-500">{editing ? "Tahan dan geser untuk mengurutkan, sembunyikan, atau tambah widget." : "Begini kabar dompet keluarga hari ini."}</p>
+        </div>
+        <EditToggle editing={editing} onClick={() => setEditing((e) => !e)} />
       </div>
+      {!editing && (
+      <>
 
       {/* The shared wallet */}
       <div className="pop-in relative" data-tour="balance">
@@ -191,207 +457,14 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction | null) => 
 
       <StartChecklist onOpenTx={onOpenTx} />
 
-      <AchievementCard />
-
-      <DueList />
-
-      {overall && health && (
-        <Card className={cx("pop-in", health.level >= 2 && "ring-2", health.level === 2 && "ring-amber-200", health.level === 3 && "ring-red-200")}>
-          <div className="flex gap-3">
-            <span className="leading-none" style={{ color: health.colour }} aria-hidden>
-              <LineIcon name={health.icon} size={36} />
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="font-bold text-slate-800">
-                Bulan {formatMonth(month).split(" ")[0]} terpakai{" "}
-                <span className="num" style={{ color: health.colour }}>
-                  {hidden ? `${Math.round(health.pct * 100)}%` : formatCompact(overall.spent)}
-                </span>
-                {!hidden && <> dari {formatCompact(overall.amount)}</>}
-              </p>
-              {formatPeriodRange(month) && <p className="text-xs text-slate-400">Periode {formatPeriodRange(month)}</p>}
-              <p className="mt-0.5 text-sm text-slate-500">{health.text}</p>
-              {overall.combined > 0 && (
-                <p className="mt-1 text-xs text-slate-400">Gabungan {overall.combined} anggaran. Buat anggaran tanpa kategori untuk batas total.</p>
-              )}
-              <div className="mt-3">
-                <Progress value={overall.spent} max={overall.amount} colour={health.bar} />
-              </div>
-            </div>
-          </div>
-          {health.level >= 2 && (
-            <div role="alert" className={cx("mt-3 rounded-2xl px-4 py-3 text-sm", health.level === 3 ? "bg-red-50 text-red-800" : "bg-amber-50 text-amber-800")}>
-              <p className="font-bold">{health.level === 3 ? "Anggaran sudah terlewati" : "Anggaran hampir habis"}</p>
-              <ul className="mt-1 list-disc space-y-0.5 pl-5">
-                <li>Tunda belanja yang tidak mendesak sampai bulan depan.</li>
-                {topCats[0] && (
-                  <li>
-                    Cek pengeluaran terbesar: <b>{topCats[0].name}</b>.
-                  </li>
-                )}
-                <li>Kalau rencananya memang kurang, ubah jumlah anggaran.</li>
-              </ul>
-              <button
-                type="button"
-                onClick={() => goTo("anggaran")}
-                className={cx("mt-2 rounded-full px-3 py-1.5 text-xs font-bold text-white", health.level === 3 ? "bg-red-600" : "bg-amber-600")}
-              >
-                Atur anggaran
-              </button>
-            </div>
-          )}
-        </Card>
+      </>
+      )}
+      {editing ? (
+        <WidgetEditor widgets={widgets} saved={savedLayout} setSaved={setSavedLayout} />
+      ) : (
+        widgets.filter((w) => w.on).map((w) => <div key={w.id}>{w.render()}</div>)
       )}
 
-      <RecapCard
-        budgetLine={
-          overall
-            ? `Anggaran ${formatMonth(month).split(" ")[0]}: terpakai ${Math.round((overall.spent / overall.amount) * 100)}%, ${
-                overall.amount - overall.spent >= 0
-                  ? `sisa ${formatCompact(overall.amount - overall.spent)} (±${formatCompact(Math.floor((overall.amount - overall.spent) / days))}/hari)`
-                  : `lewat ${formatCompact(overall.spent - overall.amount)}`
-              }`
-            : undefined
-        }
-      />
-
-      {goals.length > 0 && (
-        <Card
-          className="pop-in"
-          title="Tujuan keluarga"
-          action={
-            <button onClick={() => goTo("tujuan")} className="text-sm font-semibold text-brand-700">
-              Lihat semua
-            </button>
-          }
-        >
-          <ul className="stagger space-y-3">
-            {goals.slice(0, 3).map((g) => (
-              <li key={g.id}>
-                <button className="w-full text-left" onClick={() => goTo("tujuan")}>
-                  <GoalRow g={g} compact />
-                </button>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
-
-      {/* Who spent what */}
-      <section className="pop-in">
-        <div className="mb-2 flex items-end justify-between px-1">
-          <h2 className="text-lg font-bold text-slate-800">Siapa belanja apa?</h2>
-          <span className="text-xs font-medium text-slate-400">bulan ini</span>
-        </div>
-        <div className="no-scrollbar -mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-2">
-          {byMember.map((x) => {
-            const share = familySpend ? Math.round((x.total / familySpend) * 100) : 0;
-            return (
-              <div key={x.id} className="w-36 shrink-0 snap-start rounded-3xl bg-white p-4 shadow-[0_8px_24px_-14px_rgba(120,72,40,0.3)]">
-                <Avatar emoji={x.emoji} colour={x.colour} size={48} />
-                <p className="mt-3 font-bold text-slate-800">
-                  {x.name}
-                  {x.id === me.id && <span className="text-xs font-semibold text-slate-400"> (kamu)</span>}
-                </p>
-                <p className="num text-sm font-semibold text-slate-600">{hidden ? "••••" : formatCompact(x.total)}</p>
-                <div className="mt-2 h-1.5 rounded-full bg-slate-100">
-                  <div className="h-1.5 rounded-full" style={{ width: `${share}%`, background: x.colour }} />
-                </div>
-                <p className="mt-1 text-[11px] text-slate-400">{x.total ? `${share}% dari belanja keluarga` : "belum belanja"}</p>
-              </div>
-            );
-          })}
-        </div>
-        {topCats.length > 0 && (
-          <p className="px-1 text-sm text-slate-500">
-            Paling banyak untuk {topCats.map((c, i) => (
-              <span key={c.id ?? i}>
-                {i > 0 && (i === topCats.length - 1 ? " dan " : ", ")}
-                <b className="text-slate-700">
-                  <Icon value={c.icon} size={16} /> {c.name}
-                </b>
-              </span>
-            ))}
-            .
-          </p>
-        )}
-      </section>
-
-      {/* Family chat-style activity */}
-      <Card title="Kabar keluarga" className="pop-in">
-        {activity.length === 0 ? (
-          <Empty icon="" title="Belum ada kabar" />
-        ) : (
-          <ul className="stagger space-y-3">
-            {activity.map((a) => {
-              const mine = a.member_id === me.id;
-              return (
-                <li key={a.id} className={`flex items-end gap-2 ${mine ? "flex-row-reverse" : ""}`}>
-                  <Avatar emoji={a.member_emoji ?? "👤"} colour={a.member_colour ?? "#b29d8b"} size={30} />
-                  <div className={`max-w-[80%] rounded-2xl px-3.5 py-2 text-sm ${mine ? "rounded-br-md bg-brand-100 text-brand-800" : "rounded-bl-md bg-slate-100 text-slate-700"}`}>
-                    <p>
-                      <b>{mine ? "Kamu" : (a.member_name ?? "Seseorang")}</b> {a.message}
-                    </p>
-                    <p className={`mt-0.5 text-[11px] ${mine ? "text-brand-700/70" : "text-slate-400"}`}>{timeAgo(a.created_at)}</p>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </Card>
-
-      {/* Budget jars */}
-      {jars.length > 0 && (
-        <section className="pop-in">
-          <div className="mb-2 flex items-end justify-between px-1">
-            <h2 className="text-lg font-bold text-slate-800">Anggaran keluarga</h2>
-            <button className="text-sm font-semibold text-brand-700" onClick={() => goTo("anggaran")}>
-              Semua →
-            </button>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            {jars.map((b) => {
-              const left = b.limit - b.spent;
-              return (
-                <button key={b.id} onClick={() => goTo("anggaran")} className="rounded-3xl bg-white p-4 text-left shadow-[0_8px_24px_-14px_rgba(120,72,40,0.3)]">
-                  <BudgetIcon b={b} />
-                  <p className="mt-1 truncate font-bold text-slate-800">{b.name}</p>
-                  {b.period !== "monthly" && <p className="text-[11px] font-semibold text-brand-700">{b.periodLabel.split(" (")[0]}</p>}
-                  <p className={`num text-xs font-semibold ${left < 0 ? "text-red-600" : "text-slate-500"}`}>
-                    {hidden ? `${Math.round((b.spent / Math.max(1, b.limit)) * 100)}% terpakai` : left < 0 ? `lewat ${formatCompact(-left)}` : `sisa ${formatCompact(left)}`}
-                  </p>
-                  <div className="mt-2">
-                    <Progress value={b.spent} max={b.limit} />
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </section>
-      )}
-
-      <Card
-        title="Catatan terakhir"
-        className="pop-in"
-        action={
-          <button className="text-sm font-semibold text-brand-700" onClick={() => goTo("riwayat")}>
-            Riwayat →
-          </button>
-        }
-      >
-        {recent.length === 0 ? (
-          <Empty icon="" title="Belum ada catatan">
-            Tekan tombol <b>+</b> di bawah untuk mencatat.
-          </Empty>
-        ) : (
-          <ul className="stagger -mx-2">
-            {recent.map((t) => (
-              <TxRow key={t.id} t={t} onClick={() => onOpenTx(t)} />
-            ))}
-          </ul>
-        )}
-      </Card>
     </div>
   );
 }
@@ -491,5 +564,88 @@ function BalanceExplainer(p: {
         )}
       </div>
     </Modal>
+  );
+}
+
+/** Quick buttons for the things people do most. */
+function Shortcuts({
+  onOpenTx,
+  onScan,
+  onBulk,
+  goTo,
+}: {
+  onOpenTx: (t: Transaction | null) => void;
+  onScan?: (file: File) => void;
+  onBulk?: () => void;
+  goTo: (page: string) => void;
+}) {
+  const tile = "flex flex-col items-center gap-1.5 rounded-3xl bg-white px-2 py-3 text-xs font-semibold text-slate-700 shadow-[0_8px_24px_-14px_rgba(120,72,40,0.3)] transition active:scale-95";
+  const ico = "flex h-10 w-10 items-center justify-center rounded-2xl bg-brand-50 text-brand-700";
+  return (
+    <div className="pop-in grid grid-cols-4 gap-2">
+      <button type="button" className={tile} onClick={() => onOpenTx(null)}>
+        <span className={ico}><LineIcon name="plus" size={20} /></span>
+        Catat
+      </button>
+      {onScan ? (
+        <label className={cx(tile, "cursor-pointer")}>
+          <span className={ico}><LineIcon name="camera" size={20} /></span>
+          Scan struk
+          <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = "";
+              if (f) onScan(f);
+            }}
+          />
+        </label>
+      ) : (
+        <button type="button" className={tile} onClick={() => goTo("riwayat")}>
+          <span className={ico}><LineIcon name="book" size={20} /></span>
+          Riwayat
+        </button>
+      )}
+      <button type="button" className={tile} onClick={() => (onBulk ? onBulk() : onOpenTx(null))}>
+        <span className={ico}><LineIcon name="receipt" size={20} /></span>
+        Catat banyak
+      </button>
+      <button type="button" className={tile} onClick={() => goTo("anggaran")}>
+        <span className={ico}><LineIcon name="piggy" size={20} /></span>
+        Anggaran
+      </button>
+    </div>
+  );
+}
+
+/** The five biggest spending categories this month, with bars. */
+function TopCategories({ month, hidden }: { month: string; hidden: boolean }) {
+  const { dompet, me } = useCurrent();
+  const cats = q.spendingByCategory(dompet.id, me.id, month).slice(0, 5);
+  const max = Math.max(1, ...cats.map((c) => c.total));
+  const sum = cats.reduce((t, c) => t + c.total, 0);
+  return (
+    <Card title="Kategori terbesar" className="pop-in" action={<a href="#/laporan" className="text-sm font-semibold text-brand-700">Laporan →</a>}>
+      {cats.length === 0 ? (
+        <p className="py-2 text-sm text-slate-400">Belum ada pengeluaran bulan ini.</p>
+      ) : (
+        <ul className="space-y-2.5">
+          {cats.map((c, i) => (
+            <li key={c.id ?? i}>
+              <div className="flex items-center gap-2 text-sm">
+                <Icon value={c.icon} size={18} />
+                <span className="min-w-0 flex-1 truncate font-semibold text-slate-700">{c.name}</span>
+                <span className="num font-semibold text-slate-600">{hidden ? `${Math.round((c.total / Math.max(1, sum)) * 100)}%` : formatCompact(c.total)}</span>
+              </div>
+              <div className="mt-1 h-1.5 rounded-full bg-slate-100">
+                <div className="h-1.5 rounded-full bg-brand-500" style={{ width: `${(c.total / max) * 100}%` }} />
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
   );
 }

@@ -15,7 +15,7 @@ import { friendlyError, getPendingInvite, inviteCodeFromUrl, normalizePhone, pho
 import { setSession } from "../lib/session";
 import { applyHiddenFromAccount, setHiddenSaver } from "../lib/hooks";
 import { applyTourDoneFromAccount, setTourSaver } from "../lib/tour";
-import { applyReportLayoutFromAccount, setReportLayoutSaver } from "../lib/reportLayout";
+import { applyHomeLayoutFromAccount, applyReportLayoutFromAccount, setHomeLayoutSaver, setReportLayoutSaver } from "../lib/reportLayout";
 import type { Role } from "../lib/permissions";
 
 // Local table -> server table. Order matters for uploads of new rows.
@@ -444,6 +444,7 @@ async function onSession(session: Session | null) {
     channel = null;
     setHiddenSaver(null);
     setReportLayoutSaver(null);
+    setHomeLayoutSaver(null);
     await applyRemote((run) => {
       run("DELETE FROM dompets");
       run("DELETE FROM outbox");
@@ -462,6 +463,10 @@ async function onSession(session: Session | null) {
   const savedLayout = session.user.user_metadata?.reports_widgets;
   if (savedLayout !== undefined) applyReportLayoutFromAccount(savedLayout);
   setReportLayoutSaver((v) => void sb.auth.updateUser({ data: { reports_widgets: v } }));
+  // And the Beranda layout.
+  const savedHome = session.user.user_metadata?.home_widgets;
+  if (savedHome !== undefined) applyHomeLayoutFromAccount(savedHome);
+  setHomeLayoutSaver((v) => void sb.auth.updateUser({ data: { home_widgets: v } }));
   // And whether the first-use tour was seen.
   if (session.user.user_metadata?.tour_done === true) applyTourDoneFromAccount();
   setTourSaver(() => void sb.auth.updateUser({ data: { tour_done: true } }));

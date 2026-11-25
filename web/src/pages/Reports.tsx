@@ -7,9 +7,8 @@ import { Card, cx } from "../components/ui";
 import { cashFlow, netWorth, type MoveItem } from "../db/networth";
 import { netWorthTrend } from "./Neraca";
 import { Icon } from "../components/Icon";
-import { LineIcon } from "../components/LineIcon";
 import { resolveLayout, useReportLayout } from "../lib/reportLayout";
-import { SortableList } from "../components/SortableList";
+import { EditToggle, WidgetEditor } from "../components/WidgetEditor";
 import { AccountPieCard, AssetSummaryCard, BudgetPieCard, CategoryPieCard, InvestmentPieCard } from "./ReportWidgets";
 
 // Chart colours (validated: lightness/chroma pass; CVD 7.4 => secondary
@@ -239,21 +238,6 @@ export function Reports() {
   const [editing, setEditing] = useState(false);
   const widgets = resolveLayout(WIDGETS, saved);
   const shown = widgets.filter((w) => w.on);
-  const off = widgets.filter((w) => !w.on);
-
-  const save = (list: { id: string; on: boolean }[]) => setSaved({ order: list.map((w) => w.id), hidden: list.filter((w) => !w.on).map((w) => w.id) });
-  // Reorders the visible widgets; hidden ones keep their slots in between.
-  const reorder = (ids: string[]) => {
-    const byId = new Map(widgets.map((w) => [w.id, w]));
-    let k = 0;
-    save(widgets.map((w) => (w.on ? byId.get(ids[k++])! : w)));
-  };
-  const toggle = (id: string, on: boolean) => {
-    const list = widgets.filter((w) => w.id !== id);
-    const w = widgets.find((x) => x.id === id)!;
-    // An added widget goes to the bottom of the page.
-    save(on ? [...list, { ...w, on }] : widgets.map((x) => (x.id === id ? { ...x, on } : x)));
-  };
 
   return (
     <div className="space-y-5">
@@ -262,63 +246,11 @@ export function Reports() {
           <h1 className="text-2xl font-extrabold tracking-tight text-slate-800">Laporan</h1>
           <p className="text-sm text-slate-500">{editing ? "Tahan dan geser untuk mengatur urutan, sembunyikan, atau tambah widget." : "Ke mana uang keluarga pergi, dan perkiraan ke depan."}</p>
         </div>
-        <button
-          type="button"
-          onClick={() => setEditing((e) => !e)}
-          className={cx("flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-semibold", editing ? "bg-slate-800 text-white" : "bg-white text-slate-700 shadow-sm")}
-        >
-          <LineIcon name={editing ? "check" : "settings"} size={16} />
-          {editing ? "Selesai" : "Atur"}
-        </button>
+        <EditToggle editing={editing} onClick={() => setEditing((e) => !e)} />
       </div>
 
       {editing ? (
-        <>
-          <Card title="Ditampilkan">
-            <SortableList
-              items={shown}
-              onReorder={reorder}
-              label={(w) => w.title}
-              className="divide-y divide-slate-100"
-              render={(w) => (
-                <>
-                  <span className="min-w-0 flex-1 py-2">
-                    <span className="block truncate text-sm font-semibold text-slate-700">{w.title}</span>
-                    <span className="block truncate text-xs text-slate-400">{w.hint}</span>
-                  </span>
-                  <IconButton label={`Sembunyikan ${w.title}`} icon="eyeOff" onClick={() => toggle(w.id, false)} />
-                </>
-              )}
-            />
-            {shown.length === 0 && <p className="py-3 text-center text-sm text-slate-400">Belum ada widget. Tambahkan dari daftar di bawah.</p>}
-          </Card>
-          <Card title="Tambah widget">
-            {off.length ? (
-              <ul className="divide-y divide-slate-100">
-                {off.map((w) => (
-                  <li key={w.id} className="flex items-center gap-2 py-2">
-                    <LineIcon name={w.id.startsWith("pie-") ? "pie" : "chart"} size={18} className="shrink-0 text-slate-400" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-semibold text-slate-700">{w.title}</span>
-                      <span className="block truncate text-xs text-slate-400">{w.hint}</span>
-                    </span>
-                    <button type="button" onClick={() => toggle(w.id, true)} className="flex shrink-0 items-center gap-1 rounded-full bg-brand-50 px-3 py-1.5 text-xs font-bold text-brand-700 hover:bg-brand-100">
-                      <LineIcon name="plus" size={14} />
-                      Tambah
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="py-2 text-sm text-slate-400">Semua widget sudah ditampilkan.</p>
-            )}
-          </Card>
-          {saved && (
-            <button type="button" onClick={() => setSaved(null)} className="w-full rounded-full py-2 text-sm font-semibold text-slate-500 hover:bg-white">
-              Kembalikan tampilan awal
-            </button>
-          )}
-        </>
+        <WidgetEditor widgets={widgets.map((w) => ({ ...w, icon: w.id.startsWith("pie-") ? ("pie" as const) : ("chart" as const) }))} saved={saved} setSaved={setSaved} />
       ) : (
         <>
           {shown.map((w) => (
@@ -335,13 +267,6 @@ export function Reports() {
   );
 }
 
-function IconButton({ label, icon, onClick, disabled }: { label: string; icon: "eyeOff"; onClick: () => void; disabled?: boolean }) {
-  return (
-    <button type="button" aria-label={label} title={label} disabled={disabled} onClick={onClick} className="rounded-full p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-25">
-      <LineIcon name={icon} size={18} />
-    </button>
-  );
-}
 
 function ForecastCard({ f }: { f: Forecast }) {
   const overBudget = f.overall && f.overall.projected > f.overall.amount;

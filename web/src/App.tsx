@@ -233,7 +233,7 @@ export default function App() {
         <main className="pt-2">
           <PlanBanner sub={sub} isOwner={me.role === "owner"} />
           <div key={page} className="page-enter">
-          {page === "beranda" && <Home onOpenTx={openTx} goTo={goTo} />}
+          {page === "beranda" && <Home onOpenTx={openTx} goTo={goTo} onScan={canAdd ? (f) => openTx(null, undefined, false, f) : undefined} onBulk={canAdd ? () => openTx(null, undefined, true) : undefined} />}
           {page === "riwayat" && <Transactions onOpenTx={openTx} onAddOnDate={canAdd ? (d) => openTx(null, d) : undefined} onBulk={canAdd ? () => openTx(null, undefined, true) : undefined} onScan={canAdd ? (f) => openTx(null, undefined, false, f) : undefined} />}
           {page === "anggaran" && <Budgets />}
           {page === "tujuan" && <Goals />}
