@@ -27,11 +27,42 @@ function Hero({ subtitle }: { subtitle: string }) {
   );
 }
 
+/** Loading lines, shown one after another so the wait feels alive. */
+const LOADING_LINES = [
+  "Menyiapkan dompet keluarga…",
+  "Membuka resleting dompet…",
+  "Menghitung receh di laci…",
+  "Merapikan struk belanja…",
+  "Menyamakan catatan Ayah & Ibu…",
+  "Mengecek sisa anggaran bulan ini…",
+  "Menyortir kategori pengeluaran…",
+  "Menghitung uang jajan anak…",
+  "Mengintip tagihan yang jatuh tempo…",
+  "Menjumlahkan tabungan keluarga…",
+  "Menyinkronkan semua HP keluarga…",
+  "Mengunci brankas digital…",
+  "Sebentar lagi, kopinya masih panas…",
+];
+
 export function CloudLoading() {
+  const [line, setLine] = useState(0);
+  useEffect(() => {
+    // First line stays put; after that a random next one, never the same twice.
+    const t = window.setInterval(() => {
+      setLine((cur) => {
+        let next = cur;
+        while (next === cur || next === 0) next = Math.floor(Math.random() * LOADING_LINES.length);
+        return next;
+      });
+    }, 1800);
+    return () => window.clearInterval(t);
+  }, []);
   return (
     <div role="status" className="flex min-h-screen flex-col items-center justify-center gap-4 text-slate-500">
       <LoadingLogo />
-      <p className="text-sm font-semibold">Menyiapkan dompet keluarga…</p>
+      <p key={line} className="pop-in h-5 text-sm font-semibold">
+        {LOADING_LINES[line]}
+      </p>
       <div className="ll-bar" />
     </div>
   );
