@@ -97,9 +97,9 @@ export function AchievementWatcher() {
       const shame = boros.filter((b) => !prevBoros.includes(`${currentMonth()}:${b.id}`));
       if (given.length || lifted.length || shame.length)
         window.setTimeout(() => {
-          for (const b of shame.slice(0, 2)) toast(`Lencana boros: ${b.title}. Hayo, keluarga bisa lihat!`, "error");
-          for (const p of given.slice(0, 2)) toast(`Kartu kuning! ${p.title} (−${p.xp} XP)`, "error");
-          for (const p of lifted.slice(0, 2)) toast(`Kartu kuning ${p.title} dicabut. Mantap!`);
+          for (const b of shame.slice(0, 2)) toast(`Lencana boros: ${b.title}. Eits, sekeluarga bisa lihat lho!`, "error");
+          for (const p of given.slice(0, 2)) toast(`Priiit! Kartu kuning: ${p.title} (−${p.xp} XP)`, "error");
+          for (const p of lifted.slice(0, 2)) toast(`Kartu kuning ${p.title} dicabut. Mantap, XP balik!`);
         }, 1400);
       if (fresh.length === 0 && level.level <= seen.level) return save();
       save();

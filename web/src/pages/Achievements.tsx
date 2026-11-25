@@ -87,7 +87,7 @@ export function Achievements() {
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-mint-50 text-mint-600">
               <LineIcon name="check" size={22} />
             </span>
-            <p className="text-sm text-slate-600">Tidak ada kartu kuning. Dompet keluarga sedang tertib, pertahankan!</p>
+            <p className="text-sm text-slate-600">Bersih dari kartu kuning! Dompet keluarga lagi rapi jali, pertahankan ya.</p>
           </div>
         ) : (
           <ul className="space-y-2">
@@ -108,14 +108,14 @@ export function Achievements() {
               </li>
             ))}
           </ul>
-          <p className="mt-2 text-slate-400">Cuma bercanda, tapi beneran mengingatkan. Kartu otomatis dicabut begitu kebiasaannya beres, XP-nya kembali.</p>
+          <p className="mt-2 text-slate-400">Bercanda kok, tapi beneran ngingetin. Begitu kebiasaannya beres, kartunya dicabut otomatis dan XP-nya balik.</p>
         </details>
       </Card>
 
       {/* Lencana boros: monthly joke badges */}
       <Card title="Lencana boros bulan ini" action={<span className="text-xs font-semibold text-slate-400">reset tiap bulan</span>}>
         {boros.length === 0 ? (
-          <p className="text-sm text-slate-600">Belum ada yang dapat lencana boros bulan ini. Keluarga hemat, dompet senang!</p>
+          <p className="text-sm text-slate-600">Belum ada yang dapet lencana boros bulan ini. Keluarga hemat, dompet senyum lebar!</p>
         ) : (
           <ul className="space-y-2">
             {boros.map((b) => {
@@ -141,7 +141,7 @@ export function Achievements() {
           </ul>
         )}
         <p className="mt-3 text-[11px] text-slate-400">
-          Cuma bercanda, tidak mengurangi XP. Dihitung dari belanja akun bersama yang dibayar tiap anggota, jadi akun pribadi tetap rahasia.
+          Cuma buat seru-seruan, XP aman. Dihitung dari belanja akun bersama, jadi akun pribadi tetap rahasia.
         </p>
       </Card>
 
