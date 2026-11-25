@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { all } from "../db/database";
-import { boardFor, LEVELS, progressFor, type Badge } from "../lib/achievements";
+import { boardFor, borosFor, LEVELS, progressFor, type Badge, type Penalty } from "../lib/achievements";
 import { useCurrent, useDbVersion } from "../lib/hooks";
 import { todayISO, toISODate } from "../lib/format";
 import { LineIcon } from "../components/LineIcon";
@@ -23,7 +23,10 @@ function weekDates() {
 export function Achievements() {
   useDbVersion();
   const { dompet, me, members } = useCurrent();
-  const { me: stats, fam, badges, level } = progressFor(dompet.id, me, members);
+  const { me: stats, fam, badges, penalties, level } = progressFor(dompet.id, me, members);
+  const cards = penalties.filter((p) => p.active);
+  const boros = borosFor(dompet.id, members);
+  const minus = cards.reduce((t, p) => t + p.xp, 0);
   const board = boardFor(dompet.id, members.filter((m) => m.role !== "viewer"), fam);
   const [tab, setTab] = useState<"me" | "family">("me");
   const shown = badges.filter((b) => b.scope === tab);
@@ -73,6 +76,75 @@ export function Achievements() {
         )}
       </div>
 
+      {/* Kartu kuning: playful penalties */}
+      <Card
+        title="Kartu kuning"
+        className={cards.length ? "ring-2 ring-amber-200" : undefined}
+        action={cards.length ? <span className="text-xs font-bold text-amber-700">−{minus} XP</span> : <span className="text-xs font-bold text-mint-600">Bersih</span>}
+      >
+        {cards.length === 0 ? (
+          <div className="flex items-center gap-3">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-mint-50 text-mint-600">
+              <LineIcon name="check" size={22} />
+            </span>
+            <p className="text-sm text-slate-600">Tidak ada kartu kuning. Dompet keluarga sedang tertib, pertahankan!</p>
+          </div>
+        ) : (
+          <ul className="space-y-2">
+            {cards.map((p) => (
+              <PenaltyRow key={p.id} p={p} />
+            ))}
+          </ul>
+        )}
+        <details className="mt-3 text-xs text-slate-500">
+          <summary className="cursor-pointer font-semibold">Daftar pelanggaran ({penalties.length})</summary>
+          <ul className="mt-2 space-y-1.5">
+            {penalties.map((p) => (
+              <li key={p.id} className="flex gap-2">
+                <LineIcon name={p.icon} size={14} className={cx("mt-0.5 shrink-0", p.active ? "text-amber-600" : "text-slate-300")} />
+                <span>
+                  <b className="text-slate-700">{p.title}</b> {p.scope === "family" && <span className="text-slate-400">(keluarga)</span>} · −{p.xp} XP · {p.fix}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-slate-400">Cuma bercanda, tapi beneran mengingatkan. Kartu otomatis dicabut begitu kebiasaannya beres, XP-nya kembali.</p>
+        </details>
+      </Card>
+
+      {/* Lencana boros: monthly joke badges */}
+      <Card title="Lencana boros bulan ini" action={<span className="text-xs font-semibold text-slate-400">reset tiap bulan</span>}>
+        {boros.length === 0 ? (
+          <p className="text-sm text-slate-600">Belum ada yang dapat lencana boros bulan ini. Keluarga hemat, dompet senang!</p>
+        ) : (
+          <ul className="space-y-2">
+            {boros.map((b) => {
+              const who = members.find((m) => m.id === b.memberId);
+              return (
+                <li key={`${b.memberId}-${b.id}`} className="flex gap-3 rounded-2xl bg-rose-50 p-3">
+                  <span className="relative shrink-0">
+                    {who && <Avatar emoji={who.emoji} colour={who.colour} size={40} />}
+                    <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-white ring-2 ring-rose-50">
+                      <LineIcon name={b.icon} size={11} />
+                    </span>
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-extrabold text-slate-800">
+                      {b.title}
+                      <span className="ml-1.5 text-xs font-semibold text-rose-600">{who?.id === me.id ? "kamu" : who?.name}</span>
+                    </p>
+                    <p className="text-xs text-slate-600">{b.joke}</p>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        <p className="mt-3 text-[11px] text-slate-400">
+          Cuma bercanda, tidak mengurangi XP. Dihitung dari belanja akun bersama yang dibayar tiap anggota, jadi akun pribadi tetap rahasia.
+        </p>
+      </Card>
+
       {/* Weekly family mission */}
       <Card
         title="Misi keluarga minggu ini"
@@ -83,7 +155,7 @@ export function Achievements() {
           <div className={cx("h-full rounded-full transition-[width] duration-700", questPct >= 100 ? "bg-mint-600" : "bg-brand-500")} style={{ width: `${Math.min(100, questPct)}%` }} />
         </div>
         <ul className="mt-4 space-y-3">
-          {board.map(({ member, stats: s, level: l }) => {
+          {board.map(({ member, stats: s, level: l, cards: yellow }) => {
             const active = new Set(
               days.filter((d) => d <= todayISO()).filter((d) => s.weekDays > 0 && dayHasEntry(dompet.id, member.id, d)),
             );
@@ -99,6 +171,12 @@ export function Achievements() {
                         Lv {l.level} · {l.title}
                       </span>
                     </p>
+                    {yellow > 0 && (
+                      <span title={`${yellow} kartu kuning`} className="flex h-5 shrink-0 items-center gap-0.5 rounded-md bg-amber-100 px-1.5 text-[10px] font-extrabold text-amber-700">
+                        <span className="h-2.5 w-2 rounded-[2px] bg-amber-400" />
+                        {yellow}
+                      </span>
+                    )}
                     <span className={cx("flex shrink-0 items-center gap-0.5 text-sm font-extrabold", s.streak > 0 ? "text-brand-600" : "text-slate-300")}>
                       <LineIcon name="flame" size={15} />
                       {s.streak}
@@ -166,10 +244,32 @@ export function Achievements() {
           <li>• +2 XP tiap catatan, +5 kalau ada foto struk</li>
           <li>• +2 XP tiap tanda Kebutuhan/Keinginan</li>
           <li>• +25 XP tiap lencanamu, +15 tiap lencana keluarga</li>
+          <li>• −5 sampai −15 XP tiap kartu kuning yang masih aktif (kembali saat dicabut)</li>
         </ul>
         <p className="mt-2 text-xs text-slate-400">Hanya jumlah catatan yang dihitung, bukan nominalnya. Catatan akun pribadi tetap tidak terlihat orang lain.</p>
       </details>
     </div>
+  );
+}
+
+function PenaltyRow({ p }: { p: Penalty }) {
+  return (
+    <li className="flex gap-3 rounded-2xl bg-amber-50 p-3">
+      <span className="relative flex h-11 w-9 shrink-0 -rotate-6 items-center justify-center rounded-md bg-amber-400 text-white shadow-sm">
+        <LineIcon name={p.icon} size={18} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="flex items-baseline justify-between gap-2">
+          <span className="text-sm font-extrabold text-slate-800">
+            {p.title}
+            {p.scope === "family" && <span className="ml-1 text-[10px] font-semibold text-amber-700">keluarga</span>}
+          </span>
+          <span className="shrink-0 text-xs font-bold text-amber-700">−{p.xp} XP</span>
+        </p>
+        <p className="text-xs text-slate-600">{p.joke}</p>
+        <p className="mt-1 text-[11px] font-semibold text-amber-800">Cara lepas: {p.fix}</p>
+      </div>
+    </li>
   );
 }
 

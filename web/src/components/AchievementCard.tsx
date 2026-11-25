@@ -1,7 +1,8 @@
 import { useEffect } from "react";
-import { progressFor } from "../lib/achievements";
+import { borosFor, progressFor } from "../lib/achievements";
 import { useCurrent, useDbVersion } from "../lib/hooks";
 import { coinBurst } from "../lib/motion";
+import { currentMonth } from "../lib/format";
 import { LineIcon } from "./LineIcon";
 import { Card, cx, toast } from "./ui";
 
@@ -10,7 +11,8 @@ export function AchievementCard() {
   useDbVersion();
   const { dompet, me, members } = useCurrent();
   if (me.role === "viewer") return null;
-  const { me: s, badges, level } = progressFor(dompet.id, me, members);
+  const { me: s, badges, penalties, level } = progressFor(dompet.id, me, members);
+  const cards = penalties.filter((p) => p.active);
   const pct = level.to ? Math.round(((level.xp - level.from) / (level.to - level.from)) * 100) : 100;
   const next = badges
     .filter((b) => !b.unlocked && b.scope === "me")
@@ -34,6 +36,12 @@ export function AchievementCard() {
             <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-slate-100">
               <div className="h-full rounded-full bg-brand-500" style={{ width: `${pct}%` }} />
             </div>
+            {cards.length > 0 && (
+              <p className="mt-1 flex items-center gap-1.5 truncate text-xs font-semibold text-amber-700">
+                <span className="h-3 w-2.5 shrink-0 -rotate-6 rounded-[2px] bg-amber-400" />
+                {cards.length === 1 ? `Kartu kuning: ${cards[0].title}` : `${cards.length} kartu kuning aktif`} (−{cards.reduce((t, p) => t + p.xp, 0)} XP)
+              </p>
+            )}
             <p className="mt-1 truncate text-xs text-slate-500">
               {!s.recordedToday
                 ? s.streak > 0
@@ -60,10 +68,13 @@ export function AchievementWatcher() {
   useEffect(() => {
     if (me.role === "viewer") return;
     const t = window.setTimeout(() => {
-      const { badges, level } = progressFor(dompet.id, me, members);
+      const { badges, penalties, level } = progressFor(dompet.id, me, members);
+      const cards = penalties.filter((p) => p.active).map((p) => p.id);
+      const boros = borosFor(dompet.id, members).filter((b) => b.memberId === me.id);
+      const borosIds = boros.map((b) => `${currentMonth()}:${b.id}`);
       const key = `sedompet.badges.${dompet.id}.${me.id}`;
       const now = badges.filter((b) => b.unlocked).map((b) => b.id);
-      let seen: { ids: string[]; level: number } | null = null;
+      let seen: { ids: string[]; level: number; cards?: string[]; boros?: string[] } | null = null;
       try {
         seen = JSON.parse(localStorage.getItem(key) ?? "null");
       } catch {
@@ -71,13 +82,25 @@ export function AchievementWatcher() {
       }
       const save = () => {
         try {
-          localStorage.setItem(key, JSON.stringify({ ids: now, level: level.level }));
+          localStorage.setItem(key, JSON.stringify({ ids: now, level: level.level, cards, boros: borosIds }));
         } catch {
           /* ignore */
         }
       };
       if (!seen) return save();
       const fresh = badges.filter((b) => b.unlocked && !seen!.ids.includes(b.id));
+      // First run with penalties: remember them quietly.
+      const prevCards = seen.cards ?? cards;
+      const given = penalties.filter((p) => p.active && !prevCards.includes(p.id));
+      const lifted = penalties.filter((p) => !p.active && prevCards.includes(p.id));
+      const prevBoros = seen.boros ?? borosIds;
+      const shame = boros.filter((b) => !prevBoros.includes(`${currentMonth()}:${b.id}`));
+      if (given.length || lifted.length || shame.length)
+        window.setTimeout(() => {
+          for (const b of shame.slice(0, 2)) toast(`Lencana boros: ${b.title}. Hayo, keluarga bisa lihat!`, "error");
+          for (const p of given.slice(0, 2)) toast(`Kartu kuning! ${p.title} (−${p.xp} XP)`, "error");
+          for (const p of lifted.slice(0, 2)) toast(`Kartu kuning ${p.title} dicabut. Mantap!`);
+        }, 1400);
       if (fresh.length === 0 && level.level <= seen.level) return save();
       save();
       window.setTimeout(() => {

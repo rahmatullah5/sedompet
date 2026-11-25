@@ -61,7 +61,8 @@ function generateDays(run: Run, ids: DemoIds, from: Date, to: Date) {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           uid(), dompetId, account, cat[category] ?? null, kind, amount, iso, note, payer, payer, payer,
-          `${iso} ${String(8 + Math.floor(rand() * 12)).padStart(2, "0")}:${String(Math.floor(rand() * 60)).padStart(2, "0")}:00`,
+          // created_at is UTC in the app (SQLite datetime('now')): 08:00-19:59 local.
+          new Date(day.getFullYear(), day.getMonth(), day.getDate(), 8 + Math.floor(rand() * 12), Math.floor(rand() * 60)).toISOString().slice(0, 19).replace("T", " "),
           `${iso} 12:00:00`,
         ],
       );
@@ -78,6 +79,8 @@ function generateDays(run: Run, ids: DemoIds, from: Date, to: Date) {
     if (dom === 10) tx("expense", 500000, cashId, "Arisan", ibu, "Arisan RT");
     if (dom === 15) tx("expense", 300000, bca, "Zakat & Sedekah", ayah, "Infaq masjid");
     if (dom === 2) tx("income", 2000000, tabungan, "Bonus", ayah, "Sisihkan ke tabungan");
+    // Kakak's monthly splurge (shows the "Sultan Sehari" boros badge in the demo).
+    if (dom === 12) tx("expense", 1150000, bca, "Hiburan", kakak, "Sepatu sneakers baru");
 
     // Daily-ish items
     if (rand() < 0.55) tx("expense", round(80000 + rand() * 220000), pick([gopay, cashId]), "Belanja Dapur", ibu, pick(["Pasar pagi", "Sayur & lauk", "Indomaret", "Beras 5kg + telur"]));
