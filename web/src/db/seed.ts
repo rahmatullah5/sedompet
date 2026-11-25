@@ -78,7 +78,6 @@ function generateDays(run: Run, ids: DemoIds, from: Date, to: Date) {
     if (dom === 7) tx("expense", 350000, gopay, "Pulsa & Internet", ibu, "IndiHome + paket data");
     if (dom === 10) tx("expense", 500000, cashId, "Arisan", ibu, "Arisan RT");
     if (dom === 15) tx("expense", 300000, bca, "Zakat & Sedekah", ayah, "Infaq masjid");
-    if (dom === 2) tx("income", 2000000, tabungan, "Bonus", ayah, "Sisihkan ke tabungan");
     // Kakak's monthly splurge (shows the "Sultan Sehari" boros badge in the demo).
     if (dom === 12) tx("expense", 1150000, bca, "Hiburan", kakak, "Sepatu sneakers baru");
 
@@ -219,7 +218,28 @@ export async function seedDemo(): Promise<{ dompetId: string; ownerId: string }>
     budget("Belanja Dapur", 3500000, "Belanja Dapur", null);
     budget("Makan di luar", 1500000, "Makan & Minum", null);
     budget("Transportasi", 900000, "Transportasi", null);
-    budget("Uang saku Kakak", 800000, null, kakak);
+    budget("Uang saku Kakak", 2500000, null, kakak);
+
+    // Rutin: the monthly items the generator records, so forecasts and the
+    // bill calendar know salary is coming. next_date = next occurrence after today.
+    const now = new Date();
+    const nextOn = (dom: number) => {
+      const d = new Date(now.getFullYear(), now.getMonth() + (now.getDate() >= dom ? 1 : 0), dom);
+      return toISODate(d);
+    };
+    const rutin = (name: string, icon: string, kind: string, amount: number, account: string, category: string, payer: string, dom: number) =>
+      run(
+        `INSERT INTO recurring (id, dompet_id, name, icon, kind, amount, account_id, category_id, paid_by, frequency, every, next_date, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'monthly', 1, ?, ?)`,
+        [uid(), dompetId, name, icon, kind, amount, account, cat[category] ?? null, payer, nextOn(dom), ayah],
+      );
+    rutin("Gaji Ayah", "💼", "income", 14500000, bca, "Gaji", ayah, 1);
+    rutin("Hasil kue pesanan", "🧁", "income", 6000000, bca, "Usaha", ibu, 1);
+    rutin("Token PLN + PDAM", "💡", "expense", 850000, bca, "Listrik & Air", ayah, 3);
+    rutin("SPP Kakak & Adik", "🎓", "expense", 1250000, bca, "Sekolah", ibu, 5);
+    rutin("IndiHome + paket data", "📶", "expense", 350000, gopay, "Pulsa & Internet", ibu, 7);
+    rutin("Arisan RT", "🤝", "expense", 500000, cashId, "Arisan", ibu, 10);
+    rutin("Infaq masjid", "🕌", "expense", 300000, bca, "Zakat & Sedekah", ayah, 15);
 
     // Savings goals
     const goal = (name: string, icon: string, target: number, date: string | null, account: string | null, saved: number) =>
