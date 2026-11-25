@@ -612,6 +612,21 @@ export const q = {
     );
   },
 
+  /** Category used most often before for this shop / note (scan fills it in). */
+  categoryForMerchant(dompetId: string, name: string, kind: Kind) {
+    const n = name.trim().toLowerCase();
+    if (n.length < 2) return null;
+    return (
+      get<{ category_id: string }>(
+        `SELECT category_id FROM transactions
+         WHERE dompet_id = ? AND kind = ? AND flag IS NULL AND category_id IS NOT NULL
+           AND (lower(merchant) = ? OR lower(note) = ?)
+         GROUP BY category_id ORDER BY count(*) DESC, max(date) DESC LIMIT 1`,
+        [dompetId, kind, n, n],
+      )?.category_id ?? null
+    );
+  },
+
   /** Shop names used before (most used first), for the "Tempat beli" suggestions. */
   merchants(dompetId: string) {
     return all<{ merchant: string }>(

@@ -69,6 +69,7 @@ export default function App() {
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
   const [newTxDate, setNewTxDate] = useState<string | undefined>(undefined);
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [scanFile, setScanFile] = useState<File | undefined>(undefined);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [newDompetOpen, setNewDompetOpen] = useState(false);
@@ -171,7 +172,8 @@ export default function App() {
     );
   }
 
-  const openTx = (t: Transaction | null, date?: string, bulk = false) => {
+  const openTx = (t: Transaction | null, date?: string, bulk = false, scan?: File) => {
+    setScanFile(scan);
     setEditingTx(t);
     setNewTxDate(date);
     setBulkOpen(bulk);
@@ -186,6 +188,7 @@ export default function App() {
       setEditingTx(null);
       setNewTxDate(undefined);
       setBulkOpen(false);
+      setScanFile(undefined);
       setTxOpen(true);
     }
   }
@@ -229,7 +232,7 @@ export default function App() {
           <PlanBanner sub={sub} isOwner={me.role === "owner"} />
           <div key={page} className="page-enter">
           {page === "beranda" && <Home onOpenTx={openTx} goTo={goTo} />}
-          {page === "riwayat" && <Transactions onOpenTx={openTx} onAddOnDate={canAdd ? (d) => openTx(null, d) : undefined} onBulk={canAdd ? () => openTx(null, undefined, true) : undefined} />}
+          {page === "riwayat" && <Transactions onOpenTx={openTx} onAddOnDate={canAdd ? (d) => openTx(null, d) : undefined} onBulk={canAdd ? () => openTx(null, undefined, true) : undefined} onScan={canAdd ? (f) => openTx(null, undefined, false, f) : undefined} />}
           {page === "anggaran" && <Budgets />}
           {page === "tujuan" && <Goals />}
           {page === "keluarga" && <Members />}
@@ -276,7 +279,7 @@ export default function App() {
 
       {cloudMode && <PushPrompt />}
       <Tour canAdd={canAdd} onAddFirst={() => openTx(null)} />
-      <TransactionForm open={txOpen} onClose={() => setTxOpen(false)} editing={editingTx} initialDate={newTxDate} bulk={bulkOpen} />
+      <TransactionForm open={txOpen} onClose={() => setTxOpen(false)} editing={editingTx} initialDate={newTxDate} bulk={bulkOpen} scanFile={scanFile} />
 
       <Modal open={switcherOpen} onClose={() => setSwitcherOpen(false)} title="Dompet kamu">
         <ul className="space-y-2">

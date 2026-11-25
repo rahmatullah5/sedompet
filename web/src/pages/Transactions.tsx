@@ -147,10 +147,13 @@ export function Transactions({
   onOpenTx,
   onAddOnDate,
   onBulk,
+  onScan,
 }: {
   onOpenTx: (t: Transaction) => void;
   onAddOnDate?: (iso: string) => void;
   onBulk?: () => void;
+  /** Open the add form and read this receipt photo. */
+  onScan?: (file: File) => void;
 }) {
   useDbVersion();
   const { dompet, me, members } = useCurrent();
@@ -335,6 +338,22 @@ export function Transactions({
         <Badge tone="brand">Masuk {formatIDR(income)}</Badge>
         <Badge>Keluar {formatIDR(expense)}</Badge>
         <div className="ml-auto flex flex-wrap gap-2">
+          {onScan && (
+            <label className={`${ACTION_CHIP} cursor-pointer`}>
+              <LineIcon name="camera" size={16} />
+              Scan struk
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = "";
+                  if (f) onScan(f);
+                }}
+              />
+            </label>
+          )}
           {onBulk && (
             <button type="button" onClick={onBulk} className={ACTION_CHIP}>
               <LineIcon name="receipt" size={16} />
@@ -346,10 +365,12 @@ export function Transactions({
               type="button"
               onClick={toggleCal}
               aria-pressed={showCal}
+              aria-label="Kalender masuk-keluar"
+              title="Kalender masuk-keluar"
               className={showCal ? ACTION_CHIP_ON : ACTION_CHIP}
             >
               <LineIcon name="calendar" size={16} />
-              Kalender
+              <span className="hidden sm:inline">Kalender</span>
             </button>
           )}
         </div>

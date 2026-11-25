@@ -3,6 +3,8 @@ import { deleteWithUndo } from "../lib/undo";
 import { isInvestmentMove, m, parseSplit, q, type Kind, type Transaction } from "../db/repo";
 import { computeSplit, initialSplit, SplitEditor, type SplitState } from "./SplitEditor";
 import { LineIcon } from "./LineIcon";
+import { ReceiptScanner } from "./ReceiptScanner";
+import type { ScanResult } from "../lib/receiptScan";
 import { receiptValue, TxDetails, type PhotoDraft } from "./TxDetails";
 import { CategoryLines, linesTotal, newLine, type Line } from "./CategoryLines";
 import { can } from "../lib/permissions";
@@ -25,6 +27,7 @@ export function TransactionForm({
   editing,
   initialDate,
   bulk,
+  scanFile,
 }: {
   open: boolean;
   onClose: () => void;
@@ -32,11 +35,13 @@ export function TransactionForm({
   initialDate?: string;
   /** Open straight in "Catat banyak sekaligus". */
   bulk?: boolean;
+  /** Start by scanning this receipt photo. */
+  scanFile?: File;
 }) {
   return (
     <Modal open={open} onClose={onClose} title={editing?.flag === "adjustment" ? "Ubah koreksi saldo" : editing ? "Ubah transaksi" : "Catat transaksi"}>
       {/* Remount per transaction so the form starts from fresh values. */}
-      {open && <SheetBody key={editing?.id ?? `new${initialDate ?? ""}${bulk ? "bulk" : ""}`} onClose={onClose} editing={editing ?? null} initialDate={initialDate} bulk={bulk} />}
+      {open && <SheetBody key={editing?.id ?? `new${initialDate ?? ""}${bulk ? "bulk" : ""}${scanFile ? scanFile.name + scanFile.lastModified : ""}`} onClose={onClose} editing={editing ?? null} initialDate={initialDate} bulk={bulk} scanFile={scanFile} />}
     </Modal>
   );
 }
@@ -75,10 +80,10 @@ export function ModeSwitch({ value, onPick }: { value: Kind | "transfer"; onPick
 }
 
 /** Chooses between the normal transaction form and the transfer form. */
-function SheetBody({ onClose, editing, initialDate, bulk }: { onClose: () => void; editing: Transaction | null; initialDate?: string; bulk?: boolean }) {
+function SheetBody({ onClose, editing, initialDate, bulk, scanFile }: { onClose: () => void; editing: Transaction | null; initialDate?: string; bulk?: boolean; scanFile?: File }) {
   // A correction is not income or spending: it gets its own small editor.
   if (editing?.flag === "adjustment") return <AdjustmentBody tx={editing} onClose={onClose} />;
-  return <EntryBody onClose={onClose} editing={editing} initialDate={initialDate} bulk={bulk} />;
+  return <EntryBody onClose={onClose} editing={editing} initialDate={initialDate} bulk={bulk} scanFile={scanFile} />;
 }
 
 /** Edit a Koreksi saldo (or the cash leg of an investment buy/sell): signed amount, date, note. */
@@ -140,7 +145,7 @@ function AdjustmentBody({ tx, onClose }: { tx: Transaction; onClose: () => void 
   );
 }
 
-function EntryBody({ onClose, editing, initialDate, bulk }: { onClose: () => void; editing: Transaction | null; initialDate?: string; bulk?: boolean }) {
+function EntryBody({ onClose, editing, initialDate, bulk, scanFile }: { onClose: () => void; editing: Transaction | null; initialDate?: string; bulk?: boolean; scanFile?: File }) {
   const [mode, setMode] = useState<Kind | "transfer" | "bulk">(editing?.transfer_id ? "transfer" : (editing?.kind ?? (bulk ? "bulk" : "expense")));
   if (mode === "bulk") {
     return (
@@ -164,6 +169,7 @@ function EntryBody({ onClose, editing, initialDate, bulk }: { onClose: () => voi
       editing={editing}
       initialKind={mode}
       initialDate={initialDate}
+      scanFile={mode === "expense" || mode === "income" ? scanFile : undefined}
       onPickMode={editing ? undefined : setMode}
       onBulk={editing ? undefined : () => setMode("bulk")}
     />
@@ -177,11 +183,13 @@ function FormBody({
   initialDate,
   onPickMode,
   onBulk,
+  scanFile,
 }: {
   onClose: () => void;
   editing: Transaction | null;
   initialKind: Kind;
   initialDate?: string;
+  scanFile?: File;
   onBulk?: () => void;
   onPickMode?: (k: Kind | "transfer") => void;
 }) {
@@ -230,6 +238,40 @@ function FormBody({
       setPayerTouched(true);
     }
     setShowSuggest(false);
+  };
+
+  // Scan struk: fill what the receipt says; the person checks and saves.
+  const applyScan = (r: ScanResult) => {
+    const d = r.draft;
+    const filled: string[] = [];
+    if (d.kind !== kind) {
+      setKind(d.kind);
+      setCategoryId(null);
+      setLines(null);
+    }
+    if (d.amount) {
+      setAmountText(String(d.amount));
+      filled.push("jumlah");
+    }
+    if (d.date) {
+      setDate(d.date);
+      filled.push("tanggal");
+    }
+    if (d.merchant) {
+      setMerchant(d.merchant);
+      if (!note.trim()) setNote(d.merchant);
+      filled.push("toko");
+    }
+    const cats = q.categories(dompet.id, d.kind);
+    const fromHistory = d.merchant ? q.categoryForMerchant(dompet.id, d.merchant, d.kind) : null;
+    const pick = fromHistory ?? cats.find((c) => d.categoryHints.some((h) => c.name.toLowerCase().includes(h)))?.id ?? null;
+    if (pick && cats.some((c) => c.id === pick)) {
+      setCategoryId(pick);
+      filled.push("kategori");
+    }
+    setPhoto(r.photo);
+    setPhotoRemoved(false);
+    return filled;
   };
 
   const categories = q.categories(dompet.id, kind);
@@ -313,6 +355,7 @@ function FormBody({
             Catat banyak sekaligus
           </button>
         )}
+        {!editing && !multi && <ReceiptScanner initialFile={scanFile} onResult={applyScan} />}
 
         <div className="relative">
           <Field label="Apa ini?">
