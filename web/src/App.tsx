@@ -26,6 +26,7 @@ import { Trash } from "./pages/Trash";
 import { Patungan } from "./pages/Patungan";
 import { Neraca } from "./pages/Neraca";
 import { Notifications } from "./pages/Notifications";
+import { PushPrompt } from "./components/PushPrompt";
 import { PlanBanner, READ_ONLY_MESSAGE } from "./components/PlanBanner";
 import { setWriteGuard } from "./db/database";
 import { setPeriodStartDay } from "./lib/format";
@@ -42,8 +43,12 @@ const NAV: { id: PageId; label: string; icon: LineIconName }[] = [
   { id: "menu", label: "Menu", icon: "menu" },
 ];
 
+/** "#/catat" (used by the reminder notification) opens the add form on Beranda. */
+const ADD_HASH = "catat";
+const hashName = () => location.hash.replace(/^#\/?/, "");
+
 function pageFromHash(): PageId {
-  const h = location.hash.replace(/^#\/?/, "");
+  const h = hashName();
   return (PAGES.find((p) => p === h) ?? "beranda") as PageId;
 }
 
@@ -66,9 +71,13 @@ export default function App() {
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [newDompetOpen, setNewDompetOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [addFromLink, setAddFromLink] = useState(() => hashName() === ADD_HASH);
 
   useEffect(() => {
-    const onHash = () => setPage(pageFromHash());
+    const onHash = () => {
+      if (hashName() === ADD_HASH) setAddFromLink(true);
+      setPage(pageFromHash());
+    };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
@@ -157,6 +166,17 @@ export default function App() {
     setTxOpen(true);
   };
   const canAdd = can.addTransaction(me.role) && !readOnly;
+  if (addFromLink) {
+    // Opened from the reminder: show the add form once, then a normal Beranda URL.
+    setAddFromLink(false);
+    history.replaceState(null, "", "#/beranda");
+    if (canAdd) {
+      setEditingTx(null);
+      setNewTxDate(undefined);
+      setBulkOpen(false);
+      setTxOpen(true);
+    }
+  }
 
   return (
     <CurrentContext.Provider value={{ dompet, me, members }}>
@@ -240,6 +260,7 @@ export default function App() {
         </div>
       </nav>
 
+      {cloudMode && <PushPrompt />}
       <TransactionForm open={txOpen} onClose={() => setTxOpen(false)} editing={editingTx} initialDate={newTxDate} bulk={bulkOpen} />
 
       <Modal open={switcherOpen} onClose={() => setSwitcherOpen(false)} title="Dompet kamu">

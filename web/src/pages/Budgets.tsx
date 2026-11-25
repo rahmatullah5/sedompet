@@ -105,6 +105,7 @@ export function Budgets() {
                             ? `Semua kecuali ${parseIds(b.exclude_category_ids).length} kategori`
                             : "Semua pengeluaran")}
                         </Badge>
+                        {b.carry_from && <Badge tone="amber">Sisa terbawa</Badge>}
                         {b.member_name && (
                           <Badge tone="violet">
                             {b.member_emoji} Uang saku {b.member_name}
@@ -124,6 +125,11 @@ export function Budgets() {
                       {over ? `lebih ${formatIDR(-left)}` : `sisa ${formatIDR(left)}`}
                     </span>
                   </div>
+                  {b.carry > 0 && (
+                    <p className="mt-1 text-xs text-slate-500">
+                      Batas {formatIDR(b.amount)} + sisa {period.value === "daily" ? "hari" : period.value === "weekly" ? "minggu" : "bulan"} sebelumnya {formatIDR(b.carry)}
+                    </p>
+                  )}
                   {days > 1 && !over && (
                     <p className="mt-1 text-xs text-slate-400">
                       ≈ {formatIDR(Math.floor(left / days))}/hari untuk {days} hari lagi
@@ -160,6 +166,7 @@ function BudgetFormBody({ budget, onClose }: { budget: Budget | null; onClose: (
   );
   const [memberId, setMemberId] = useState(budget?.member_id ?? "");
   const [period, setPeriod] = useState<BudgetPeriod>(budget?.period ?? "monthly");
+  const [carry, setCarry] = useState(!!budget?.carry_from);
   const [excludes, setExcludes] = useState<string[]>(() => {
     try {
       return JSON.parse(budget?.exclude_category_ids ?? "[]");
@@ -181,6 +188,7 @@ function BudgetFormBody({ budget, onClose }: { budget: Budget | null; onClose: (
           member_id: memberId || null,
           exclude_category_ids: excludes,
           period,
+          carry,
         }),
       "Anggaran disimpan",
     );
@@ -216,6 +224,17 @@ function BudgetFormBody({ budget, onClose }: { budget: Budget | null; onClose: (
       <Field label={`Batas per ${perLabel(period)}`} hint={amount > 0 ? formatIDR(amount) : period === "daily" ? "Contoh: 50rb" : period === "weekly" ? "Contoh: 500rb" : "Contoh: 3jt, 750rb"}>
         <Input inputMode="decimal" value={amountText} onChange={(e) => setAmountText(e.target.value)} />
       </Field>
+      <label className="flex cursor-pointer items-start gap-3 rounded-2xl bg-slate-50 px-3 py-2.5">
+        <input type="checkbox" className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--color-brand-600)]" checked={carry} onChange={(e) => setCarry(e.target.checked)} />
+        <span className="min-w-0">
+          <span className="block text-sm font-semibold text-slate-700">Sisa terbawa ke {perLabel(period)} berikutnya</span>
+          <span className="block text-xs text-slate-500">
+            {amount > 0
+              ? `Mis. batas ${formatIDR(amount)}, terpakai ${formatIDR(Math.round(amount * 0.6))} → ${perLabel(period)} depan bisa pakai ${formatIDR(amount + amount - Math.round(amount * 0.6))}.`
+              : `Yang tidak terpakai menambah batas ${perLabel(period)} berikutnya.`}{budget && !budget.carry_from && ` Dihitung mulai ${perLabel(period)} lalu.`}
+          </span>
+        </span>
+      </label>
       <Field label="Kategori (bisa pilih beberapa)" hint={categoryIds.length ? `${categoryIds.length} kategori dipilih` : "Kosong = semua pengeluaran"}>
         <div className="space-y-1.5">
           <button

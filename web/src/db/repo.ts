@@ -3,7 +3,7 @@
 import { all, get, write } from "./database";
 import { putInTrash, snapshot } from "./trash";
 import { can, PermissionError, type Role } from "../lib/permissions";
-import { currentMonth, formatIDR, parseAmount, periodDay, periodKeyFromStart, periodRange, periodStartSql, toISODate, todayISO } from "../lib/format";
+import { currentMonth, formatIDR, parseAmount, periodDay, periodKeyFromStart, periodOf, periodRange, periodStartSql, toISODate, todayISO } from "../lib/format";
 import { baseSql, CURRENCIES, formatMoney, holdingsSql, isBase, rateSql, toBase } from "../lib/currency";
 
 // ---------------------------------------------------------------------------
@@ -228,11 +228,37 @@ export interface Budget {
   member_name: string | null;
   member_emoji: string | null;
   period: BudgetPeriod;
+  /** Leftover rolls into the next period, counted from periods starting this date. NULL = off. */
+  carry_from: string | null;
   /** Spent within the period shown (today / this week / this month). */
   spent: number;
-  /** Limit for the period shown (scaled for weekly/daily in past months). */
+  /** Limit for the period shown (scaled for weekly/daily in past months; includes `carry`). */
   limit: number;
+  /** Leftover brought in from earlier periods (current period only). */
+  carry: number;
   periodLabel: string;
+}
+
+/** First day of the budget period (day / Mon-Sun week / payday month) holding `iso`. */
+export function budgetPeriodStart(period: BudgetPeriod, iso: string) {
+  if (period === "daily") return iso;
+  if (period === "monthly") return periodRange(periodOf(iso)).from;
+  const d = new Date(iso + "T00:00");
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return toISODate(d);
+}
+
+/** Start of the period after the one starting `start`. */
+function nextBudgetPeriodStart(period: BudgetPeriod, start: string) {
+  if (period === "monthly") {
+    const r = periodRange(periodOf(start));
+    const d = new Date(r.to + "T00:00");
+    d.setDate(d.getDate() + 1);
+    return toISODate(d);
+  }
+  const d = new Date(start + "T00:00");
+  d.setDate(d.getDate() + (period === "daily" ? 1 : 7));
+  return toISODate(d);
 }
 
 export type BudgetPeriod = "daily" | "weekly" | "monthly";
@@ -323,6 +349,41 @@ const monthParams = (month: string | null | undefined) => {
 
 // A transaction is visible when its account is shared, or private and yours.
 const VISIBLE_ACCOUNT = `(a.visibility = 'shared' OR a.owner_member_id = $me)`;
+
+/**
+ * Leftover brought into the period holding `today`: every finished period
+ * since carry_from adds (limit + what it carried in - spent), never below 0,
+ * so overspending uses up the carried amount but doesn't cut the next limit.
+ */
+function budgetCarry(
+  b: Pick<Budget, "dompet_id" | "amount" | "period" | "carry_from" | "category_id" | "category_ids" | "exclude_category_ids" | "member_id">,
+  today: string,
+) {
+  if (!b.carry_from) return 0;
+  const current = budgetPeriodStart(b.period, today);
+  let start = budgetPeriodStart(b.period, b.carry_from);
+  if (start >= current) return 0;
+  const rows = all<{ date: string; amount: number; category_id: string | null; parent_id: string | null; paid_by: string | null }>(
+    `SELECT t.date, ${BASE_AMOUNT} AS amount, t.category_id, c.parent_id, t.paid_by
+     FROM transactions t
+     JOIN accounts a ON a.id = t.account_id AND a.visibility = 'shared'
+     LEFT JOIN categories c ON c.id = t.category_id
+     WHERE t.dompet_id = $d AND t.kind = 'expense' AND ${REAL} AND t.date >= $from AND t.date < $to`,
+    { $d: b.dompet_id, $from: start, $to: current },
+  );
+  const spentBy = new Map<string, number>();
+  for (const t of rows) {
+    if (!budgetCovers(b, t.category_id, t.parent_id, t.paid_by)) continue;
+    const key = budgetPeriodStart(b.period, t.date);
+    spentBy.set(key, (spentBy.get(key) ?? 0) + t.amount);
+  }
+  let carry = 0;
+  for (let guard = 0; start < current && guard < 400; guard++) {
+    carry = Math.max(0, carry + b.amount - (spentBy.get(start) ?? 0));
+    start = nextBudgetPeriodStart(b.period, start);
+  }
+  return Math.round(carry);
+}
 
 // ---------------------------------------------------------------------------
 // Queries
@@ -669,7 +730,7 @@ export const q = {
     const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - ((now.getDay() + 6) % 7));
     const weekFrom = toISODate(monday);
     const weekTo = toISODate(new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6));
-    const rows = all<Omit<Budget, "limit" | "periodLabel">>(
+    const rows = all<Omit<Budget, "limit" | "periodLabel" | "carry">>(
       `SELECT b.*, COALESCE(c.name, (SELECT group_concat(x.name, ', ') FROM json_each(b.category_ids) j JOIN categories x ON x.id = j.value)) AS category_name,
               c.icon AS category_icon,
               (SELECT json_group_array(x.icon) FROM json_each(b.category_ids) j JOIN categories x ON x.id = j.value) AS category_icons,
@@ -708,17 +769,21 @@ export const q = {
         $rangeFrom: opts.range?.from ?? null, $rangeTo: opts.range?.to ?? null, $noRec: opts.excludeRecurring ? 1 : 0 },
     );
     const dayFmt = new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short" });
+    // Carry-over only applies to the live view of the current period.
+    const withCarry = isCurrent && !opts.range && !opts.excludeRecurring;
     return rows.map((b): Budget => {
       const period = (b.period ?? "monthly") as BudgetPeriod;
-      if (period === "monthly") return { ...b, period, limit: b.amount, periodLabel: "Bulan ini" };
+      const carry = withCarry && b.carry_from ? budgetCarry({ ...b, period }, today) : 0;
+      if (period === "monthly") return { ...b, period, carry, limit: b.amount + carry, periodLabel: "Bulan ini" };
       if (!isCurrent) {
         const factor = period === "weekly" ? daysInMonth / 7 : daysInMonth;
-        return { ...b, period, limit: Math.round(b.amount * factor), periodLabel: "Sebulan (setara)" };
+        return { ...b, period, carry: 0, limit: Math.round(b.amount * factor), periodLabel: "Sebulan (setara)" };
       }
       return {
         ...b,
         period,
-        limit: b.amount,
+        carry,
+        limit: b.amount + carry,
         periodLabel: period === "daily" ? "Hari ini" : `Minggu ini (${dayFmt.format(monday)}–${dayFmt.format(new Date(weekTo + "T00:00"))})`,
       };
     });
@@ -1677,7 +1742,7 @@ export const m = {
   },
 
   // --- budgets -------------------------------------------------------------
-  saveBudget(actorId: string, data: { id?: string; name: string; amount: number; category_id: string | null; member_id: string | null; category_ids?: string[]; exclude_category_ids?: string[]; period?: BudgetPeriod }) {
+  saveBudget(actorId: string, data: { id?: string; name: string; amount: number; category_id: string | null; member_id: string | null; category_ids?: string[]; exclude_category_ids?: string[]; period?: BudgetPeriod; carry?: boolean }) {
     const actor = actorOf(actorId);
     if (!can.manage(actor.role)) throw new PermissionError("Hanya pemilik/admin yang bisa mengatur anggaran.");
     const period: BudgetPeriod = data.period ?? "monthly";
@@ -1689,15 +1754,31 @@ export const m = {
     const categoryId = cats.length === 1 ? cats[0] : null;
     const categoryIds = cats.length > 1 ? JSON.stringify(cats) : null;
     const excludes = cats.length === 0 && data.exclude_category_ids?.length ? JSON.stringify(data.exclude_category_ids) : null;
+    // Carry-over starts with the previous period (so last period's leftover
+    // shows right away), but never before the budget existed. Keeping it on
+    // keeps its start; changing the period restarts it.
+    const old = data.id ? get<{ period: BudgetPeriod; carry_from: string | null; created_at: string }>("SELECT period, carry_from, created_at FROM budgets WHERE id = ?", [data.id]) : null;
+    let carryFrom: string | null = null;
+    if (data.carry) {
+      if (old?.carry_from && old.period === period) carryFrom = old.carry_from;
+      else {
+        const today = todayISO();
+        const prev = new Date(budgetPeriodStart(period, today) + "T00:00");
+        prev.setDate(prev.getDate() - 1);
+        const since = budgetPeriodStart(period, toISODate(prev));
+        const born = old ? budgetPeriodStart(period, old.created_at.slice(0, 10)) : budgetPeriodStart(period, today);
+        carryFrom = since > born ? since : born;
+      }
+    }
     return write((run) => {
       if (data.id) {
-        run("UPDATE budgets SET name = ?, amount = ?, category_id = ?, category_ids = ?, member_id = ?, exclude_category_ids = ?, period = ? WHERE id = ? AND dompet_id = ?", [
-          name, data.amount, categoryId, categoryIds, data.member_id, excludes, period, data.id, actor.dompet_id,
+        run("UPDATE budgets SET name = ?, amount = ?, category_id = ?, category_ids = ?, member_id = ?, exclude_category_ids = ?, period = ?, carry_from = ? WHERE id = ? AND dompet_id = ?", [
+          name, data.amount, categoryId, categoryIds, data.member_id, excludes, period, carryFrom, data.id, actor.dompet_id,
         ]);
         log(run, actor, `mengubah anggaran ${name} menjadi ${formatIDR(data.amount)}/${per}`);
       } else {
-        run("INSERT INTO budgets (id, dompet_id, name, amount, category_id, category_ids, member_id, exclude_category_ids, period, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [
-          uid(), actor.dompet_id, name, data.amount, categoryId, categoryIds, data.member_id, excludes, period, actor.id,
+        run("INSERT INTO budgets (id, dompet_id, name, amount, category_id, category_ids, member_id, exclude_category_ids, period, carry_from, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [
+          uid(), actor.dompet_id, name, data.amount, categoryId, categoryIds, data.member_id, excludes, period, carryFrom, actor.id,
         ]);
         log(run, actor, `membuat anggaran ${name} ${formatIDR(data.amount)}/${per}`);
       }

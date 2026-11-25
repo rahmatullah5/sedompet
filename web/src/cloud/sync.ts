@@ -129,6 +129,8 @@ function toServer(t: Synced, r: Row): Row {
         category_ids: r.category_ids ? JSON.parse(String(r.category_ids)) : [],
         // Only sent when not monthly, so servers without the period migration keep working.
         ...(r.period && r.period !== "monthly" ? { period: r.period } : {}),
+        // Carry-over: always once the server has the column (so turning it off syncs).
+        ...(serverHasCarry || r.carry_from ? { carry_from: r.carry_from ?? null } : {}),
       };
     case "loans":
       return { ...pick(r, ["id", "dompet_id", "direction", "counterparty", "amount", "account_id", "start_date", "due_date", "note", "created_by"]), settled: !!r.settled };
@@ -165,6 +167,7 @@ let serverHasPeriodStart = false;
 let serverHasSplit = false;
 /** Set by pullAll: whether the server has transactions.need/merchant/receipt_path (migration 20261124). */
 let serverHasDetails = false;
+let serverHasCarry = false;
 /** Set by pullAll: whether the server has accounts.parent_id/fx_auto (migration 20261128). */
 let serverHasPockets = false;
 let uploading: Promise<void> | null = null;
@@ -389,13 +392,15 @@ export async function pullAll(): Promise<void> {
           (t.need as string) ?? null, (t.merchant as string) ?? null, (t.receipt_path as string) ?? null,
           t.paid_by, t.created_by, t.updated_by, sqliteTime(t.created_at), sqliteTime(t.updated_at)] as (string | number | null)[],
       );
+    if (budgets.length > 0) serverHasCarry = "carry_from" in budgets[0];
     for (const b of budgets)
-      run("INSERT INTO budgets (id, dompet_id, name, amount, category_id, category_ids, member_id, exclude_category_ids, period, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [
+      run("INSERT INTO budgets (id, dompet_id, name, amount, category_id, category_ids, member_id, exclude_category_ids, period, carry_from, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [
         b.id, b.dompet_id, b.name, b.amount, b.category_id,
         Array.isArray(b.category_ids) && b.category_ids.length ? JSON.stringify(b.category_ids) : null,
         b.member_id,
         Array.isArray(b.exclude_category_ids) && b.exclude_category_ids.length ? JSON.stringify(b.exclude_category_ids) : null,
         (b.period as string) || "monthly",
+        (b.carry_from as string | null | undefined) ?? null,
         b.created_by, sqliteTime(b.created_at),
       ] as (string | number | null)[]);
     for (const g of goals)
@@ -557,6 +562,8 @@ export interface PushPrefs {
   budget: boolean;
   weekly: boolean;
   plan: boolean;
+  /** "Belum mencatat 24 jam" reminder. */
+  reminder: boolean;
 }
 
 export interface AppPhone {

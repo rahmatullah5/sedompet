@@ -3,10 +3,11 @@ import { getMode } from "../cloud/client";
 import { cloud, type PushPrefs } from "../cloud/sync";
 import { Button, Card, cx, toast } from "../components/ui";
 import { LineIcon, type LineIconName } from "../components/LineIcon";
+import { DEFAULT_PUSH_PREFS, enablePush, isIos, isStandalone, pushSupported } from "../lib/push";
 
-const DEFAULT_PREFS: PushPrefs = { entries: true, bills: true, budget: true, weekly: true, plan: true };
 
 const ITEMS: { key: keyof PushPrefs; icon: LineIconName; title: string; hint: string }[] = [
+  { key: "reminder", icon: "bell", title: "Pengingat mencatat", hint: "Kalau 24 jam belum ada catatan darimu (jam 7 pagi–10 malam)" },
   { key: "entries", icon: "adjust", title: "Catatan anggota lain", hint: "“Ibu mencatat pengeluaran · Pasar · Rp 85.000”" },
   { key: "bills", icon: "repeat", title: "Tagihan & utang jatuh tempo", hint: "Sehari sebelum dan di hari jatuh tempo, jam 7 pagi" },
   { key: "budget", icon: "piggy", title: "Anggaran total bulanan", hint: "Saat terpakai 80% dan saat terlewati" },
@@ -14,28 +15,17 @@ const ITEMS: { key: keyof PushPrefs; icon: LineIconName; title: string; hint: st
   { key: "plan", icon: "clock", title: "Masa langganan", hint: "7 hari, 1 hari sebelum, dan saat berakhir" },
 ];
 
-function urlBase64ToUint8Array(base64: string) {
-  const padding = "=".repeat((4 - (base64.length % 4)) % 4);
-  const raw = atob((base64 + padding).replace(/-/g, "+").replace(/_/g, "/"));
-  return Uint8Array.from(raw, (c) => c.charCodeAt(0));
-}
-
-const supported = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
-const isIos = () => /iphone|ipad|ipod/i.test(navigator.userAgent);
-const standalone = () =>
-  window.matchMedia?.("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
-
 /** Notifikasi: turn web push on/off for this device and choose what to get. */
 export function Notifications() {
   const cloudMode = getMode() === "cloud";
   const [endpoint, setEndpoint] = useState<string | null>(null);
-  const [prefs, setPrefs] = useState<PushPrefs>(DEFAULT_PREFS);
+  const [prefs, setPrefs] = useState<PushPrefs>(DEFAULT_PUSH_PREFS);
   const [ready, setReady] = useState(false);
   const [serverKey, setServerKey] = useState<string | null | undefined>(undefined);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (!cloudMode || !supported()) return setReady(true);
+    if (!cloudMode || !pushSupported()) return setReady(true);
     (async () => {
       try {
         setServerKey(await cloud.pushPublicKey());
@@ -43,7 +33,7 @@ export function Notifications() {
         const sub = await reg?.pushManager.getSubscription();
         if (sub) {
           setEndpoint(sub.endpoint);
-          setPrefs({ ...DEFAULT_PREFS, ...((await cloud.pushPrefs(sub.endpoint)) ?? {}) });
+          setPrefs({ ...DEFAULT_PUSH_PREFS, ...((await cloud.pushPrefs(sub.endpoint)) ?? {}) });
         }
       } catch (e) {
         toast(e instanceof Error ? e.message : String(e), "error");
@@ -56,16 +46,7 @@ export function Notifications() {
   async function enable() {
     setBusy(true);
     try {
-      if (!serverKey) throw new Error("Server belum siap untuk notifikasi. Admin perlu menyelesaikan pengaturan push.");
-      const permission = await Notification.requestPermission();
-      if (permission !== "granted") throw new Error("Izin notifikasi ditolak. Aktifkan lewat pengaturan browser untuk situs ini.");
-      const reg = (await navigator.serviceWorker.getRegistration()) ?? (await navigator.serviceWorker.register("/sw.js"));
-      await navigator.serviceWorker.ready;
-      const sub =
-        (await reg.pushManager.getSubscription()) ??
-        (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(serverKey) }));
-      await cloud.pushSubscribe(sub.toJSON(), prefs);
-      setEndpoint(sub.endpoint);
+      setEndpoint(await enablePush(serverKey, prefs));
       toast("Notifikasi aktif di perangkat ini");
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), "error");
@@ -105,8 +86,8 @@ export function Notifications() {
 
   let blocker: string | null = null;
   if (!cloudMode) blocker = "Notifikasi hanya untuk akun online. Demo berjalan di browser saja, jadi tidak bisa menerima pesan.";
-  else if (isIos() && !standalone()) blocker = "Di iPhone/iPad, pasang Sedompet dulu: di Safari ketuk Bagikan → “Tambah ke Layar Utama”, lalu buka dari ikonnya.";
-  else if (!supported()) blocker = "Browser ini belum mendukung notifikasi web. Coba Chrome, Edge, Firefox, atau Safari terbaru.";
+  else if (isIos() && !isStandalone()) blocker = "Di iPhone/iPad, pasang Sedompet dulu: di Safari ketuk Bagikan → “Tambah ke Layar Utama”, lalu buka dari ikonnya.";
+  else if (!pushSupported()) blocker = "Browser ini belum mendukung notifikasi web. Coba Chrome, Edge, Firefox, atau Safari terbaru.";
   else if (ready && serverKey === null) blocker = "Server belum siap untuk notifikasi. Admin perlu menyelesaikan pengaturan push (lihat SETUP-PUSH.md).";
 
   return (
