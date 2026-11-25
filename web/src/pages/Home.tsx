@@ -120,7 +120,7 @@ export function Home({ onOpenTx, goTo }: { onOpenTx: (t: Transaction | null) => 
       </div>
 
       {/* The shared wallet */}
-      <div className="pop-in relative">
+      <div className="pop-in relative" data-tour="balance">
       <button onClick={() => goTo("akun")} className="relative block w-full overflow-hidden rounded-[2rem] bg-brand-600 p-6 text-left text-white">
         <span className="relative flex items-center justify-between">
           <span className="text-sm font-semibold text-brand-100">Uang keluarga sekarang</span>

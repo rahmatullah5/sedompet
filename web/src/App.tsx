@@ -27,6 +27,8 @@ import { Patungan } from "./pages/Patungan";
 import { Neraca } from "./pages/Neraca";
 import { Notifications } from "./pages/Notifications";
 import { PushPrompt } from "./components/PushPrompt";
+import { Tour } from "./components/Tour";
+import { startTour, tourStore } from "./lib/tour";
 import { PlanBanner, READ_ONLY_MESSAGE } from "./components/PlanBanner";
 import { setWriteGuard } from "./db/database";
 import { setPeriodStartDay } from "./lib/format";
@@ -117,6 +119,16 @@ export default function App() {
     document.title = dompet ? `${dompet.name} · Sedompet` : "Sedompet";
   }, [dompet]);
 
+  // First use: guided tour once the app (and the demo profile) is on screen.
+  const appReady = !!dompet && !!me && (!cloudMode ? hasPickedInTab() && !pickerOpen : cloudState.status === "ready");
+  useEffect(() => {
+    if (!appReady || tourStore.get().done || tourStore.get().running) return;
+    const t = window.setTimeout(() => {
+      if (!tourStore.get().done) startTour();
+    }, 900);
+    return () => window.clearTimeout(t);
+  }, [appReady]);
+
   // Paid plans (cloud only): an ended plan makes this Dompet read-only.
   const sub = cloudMode && dompet ? cloudState.subs[dompet.id] : undefined;
   const readOnly = !!sub && !sub.isActive;
@@ -183,6 +195,7 @@ export default function App() {
       <div className="mx-auto min-h-screen max-w-2xl px-4 pb-32">
         <header className="flex items-center justify-between gap-3 pb-2 pt-5">
           <button
+            data-tour="dompet"
             onClick={() => setSwitcherOpen(true)}
             className="flex min-w-0 items-center gap-2.5 rounded-full py-1 pl-1 pr-3 text-left transition hover:bg-white/70"
             aria-label="Ganti Dompet"
@@ -245,6 +258,7 @@ export default function App() {
             <NavItem key={n.id} {...n} active={page === n.id} />
           ))}
           <button
+            data-tour="add"
             onClick={() => (canAdd ? openTx(null) : toast(readOnly ? READ_ONLY_MESSAGE : "Peranmu 'Hanya lihat'. Minta orang tua untuk mencatat ya"))}
             className={cx(
               "-mt-9 flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-full border-4 border-[#fff8f1] text-3xl font-light text-white shadow-lg transition active:scale-95",
@@ -261,6 +275,7 @@ export default function App() {
       </nav>
 
       {cloudMode && <PushPrompt />}
+      <Tour canAdd={canAdd} onAddFirst={() => openTx(null)} />
       <TransactionForm open={txOpen} onClose={() => setTxOpen(false)} editing={editingTx} initialDate={newTxDate} bulk={bulkOpen} />
 
       <Modal open={switcherOpen} onClose={() => setSwitcherOpen(false)} title="Dompet kamu">
@@ -320,6 +335,7 @@ function NavItem({ id, label, icon, active }: { id: string; label: string; icon:
   return (
     <a
       href={`#/${id}`}
+      data-tour={id}
       aria-current={active ? "page" : undefined}
       className={cx(
         "flex w-16 flex-col items-center gap-0.5 rounded-2xl py-1.5 text-[11px] font-semibold transition",

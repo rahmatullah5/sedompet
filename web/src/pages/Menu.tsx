@@ -1,3 +1,4 @@
+import { startTour } from "../lib/tour";
 import { q } from "../db/repo";
 import { MadeBy } from "../components/ui";
 import { mq } from "../db/money";
@@ -59,6 +60,7 @@ export function Menu() {
           <a
             key={it.href}
             href={it.href}
+            data-tour={"m-" + it.href.slice(2)}
             className="rounded-3xl bg-white p-4 shadow-[0_8px_24px_-14px_rgba(120,72,40,0.3)] transition hover:-translate-y-0.5"
           >
             <span className="text-brand-700">
@@ -70,6 +72,22 @@ export function Menu() {
           </a>
         ))}
       </div>
+      <button
+        onClick={() => {
+          location.hash = "/beranda";
+          window.scrollTo({ top: 0 });
+          startTour();
+        }}
+        className="flex w-full items-center gap-3 rounded-3xl bg-white p-4 text-left shadow-[0_8px_24px_-14px_rgba(120,72,40,0.3)] transition hover:-translate-y-0.5"
+      >
+        <span className="text-brand-700">
+          <LineIcon name="book" size={26} />
+        </span>
+        <span>
+          <span className="block font-bold text-slate-800">Lihat tutorial lagi</span>
+          <span className="block text-xs text-slate-500">Keliling singkat fitur utama Sedompet</span>
+        </span>
+      </button>
       <InstallCard />
       <a
         href={WA_FEEDBACK}

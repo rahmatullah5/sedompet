@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { cloud } from "../cloud/sync";
 import { currentPushSubscription, DEFAULT_PUSH_PREFS, enablePush, isIos, isStandalone, pushSupported } from "../lib/push";
 import { LineIcon } from "./LineIcon";
+import { tourStore } from "../lib/tour";
 import { Button, Modal, toast } from "./ui";
 
 const KEY = "sedompet:push-prompt";
@@ -46,6 +47,8 @@ export function PushPrompt() {
     const check = async () => {
       const st = load();
       if (Notification.permission === "denied" || st.asks >= MAX_ASKS || Date.now() < st.next) return;
+      // Not on top of the first-use tour; asked right after it ends instead.
+      if (!tourStore.get().done || tourStore.get().running) return;
       try {
         if (await currentPushSubscription()) return;
         const key = await cloud.pushPublicKey();
@@ -60,7 +63,14 @@ export function PushPrompt() {
     // while it stays open (so "after a few hours" also works without a reload).
     timer = window.setTimeout(check, 3000);
     const every = window.setInterval(check, 15 * 60 * 1000);
+    let wasRunning = tourStore.get().running;
+    const unsub = tourStore.subscribe(() => {
+      const { running } = tourStore.get();
+      if (wasRunning && !running) timer = window.setTimeout(check, 1500);
+      wasRunning = running;
+    });
     return () => {
+      unsub();
       cancelled = true;
       window.clearTimeout(timer);
       window.clearInterval(every);

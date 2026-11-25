@@ -14,6 +14,7 @@ import { MEMBER_COLOURS } from "../db/repo";
 import { friendlyError, getPendingInvite, inviteCodeFromUrl, normalizePhone, phoneEmail, requireSupabase, setPendingInvite, stripInviteFromUrl } from "./client";
 import { setSession } from "../lib/session";
 import { applyHiddenFromAccount, setHiddenSaver } from "../lib/hooks";
+import { applyTourDoneFromAccount, setTourSaver } from "../lib/tour";
 import { applyReportLayoutFromAccount, setReportLayoutSaver } from "../lib/reportLayout";
 import type { Role } from "../lib/permissions";
 
@@ -461,6 +462,9 @@ async function onSession(session: Session | null) {
   const savedLayout = session.user.user_metadata?.reports_widgets;
   if (savedLayout !== undefined) applyReportLayoutFromAccount(savedLayout);
   setReportLayoutSaver((v) => void sb.auth.updateUser({ data: { reports_widgets: v } }));
+  // And whether the first-use tour was seen.
+  if (session.user.user_metadata?.tour_done === true) applyTourDoneFromAccount();
+  setTourSaver(() => void sb.auth.updateUser({ data: { tour_done: true } }));
   if (switchedUser) await applyRemote((run) => run("DELETE FROM outbox"));
   // Link any Dompet the admin pre-assigned to this phone number.
   const { error: claimError } = await sb.rpc("claim_phone_membership");
