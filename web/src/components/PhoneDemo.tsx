@@ -159,7 +159,7 @@ export function PhoneDemo() {
           <p className="text-lg font-extrabold text-slate-800">Laporan</p>
           <p className="text-[11px] text-slate-500">Ke mana uang keluarga pergi bulan ini</p>
           <div className="mt-3 rounded-2xl bg-white p-3 shadow-sm">
-            <p className="text-[11px] font-bold text-slate-500">Pengeluaran November</p>
+            <p className="text-[11px] font-bold text-slate-500">Pengeluaran {new Intl.DateTimeFormat("id-ID", { month: "long" }).format(new Date())}</p>
             <p className="num text-xl font-extrabold text-slate-800">Rp {(spent / 1e6).toFixed(1).replace(".", ",")} jt</p>
             <div className="mt-3 space-y-2.5 text-[11px]">
               {[

@@ -7,3 +7,6 @@
 # Private seeds generated from personal backups
 /supabase/seed_private/
 /supabase/.db-url
+
+# Local secrets (push keys etc.), never commit
+/.secrets/
