@@ -2,7 +2,7 @@ import { useState } from "react";
 import { m, q, type Category, type Kind } from "../db/repo";
 import { can } from "../lib/permissions";
 import { useCurrent, useDbVersion } from "../lib/hooks";
-import { attempt, Button, Card, cx, Field, Input, Modal, Select, STICKY_ACTIONS } from "../components/ui";
+import { askConfirm, attempt, Button, Card, cx, Field, Input, Modal, Select, STICKY_ACTIONS } from "../components/ui";
 import { Icon, IconPicker } from "../components/Icon";
 
 const COLOURS = ["#f47c5a", "#f5a524", "#2fb67c", "#22a6b3", "#4f8ef7", "#8b74e8", "#e5689b", "#8a7563"];
@@ -162,7 +162,7 @@ function CategoryForm({ editing, parents, onClose }: { editing: NonNullable<Edit
             <Button
               variant="danger"
               onClick={async () => {
-                if (!confirm(`Hapus ${c.name}?${hasSubs ? " Subkategorinya ikut terhapus." : ""} Transaksinya jadi "Tanpa kategori".`)) return;
+                if (!await askConfirm(`Hapus ${c.name}?${hasSubs ? " Subkategorinya ikut terhapus." : ""} Transaksinya jadi "Tanpa kategori".`)) return;
                 if (await attempt(() => m.deleteCategory(me.id, c.id), "Kategori dihapus")) onClose();
               }}
             >
@@ -234,7 +234,7 @@ function MergeSection({ category: c, onDone }: { category: Category; onDone: () 
           disabled={!target}
           onClick={async () => {
             if (!target) return;
-            if (!confirm(`Gabungkan ${c.name} ke ${target.name}? ${txCount} transaksi pindah ke ${target.name}. Tidak bisa dibatalkan.`)) return;
+            if (!await askConfirm(`Gabungkan ${c.name} ke ${target.name}? ${txCount} transaksi pindah ke ${target.name}. Tidak bisa dibatalkan.`)) return;
             if (await attempt(() => m.mergeCategory(me.id, c.id, target.id), `${c.name} digabung ke ${target.name}`)) onDone();
           }}
         >

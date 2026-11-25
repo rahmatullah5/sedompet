@@ -3,7 +3,7 @@ import { trash, TRASH_DAYS } from "../db/trash";
 import { can } from "../lib/permissions";
 import { useCurrent, useDbVersion } from "../lib/hooks";
 import { timeAgo } from "../lib/format";
-import { attempt, Button, Card, Empty } from "../components/ui";
+import { askConfirm, attempt, Button, Card, Empty } from "../components/ui";
 
 /** "Sampah": things deleted on this device in the last 30 days, restorable. */
 export function Trash() {
@@ -57,7 +57,7 @@ export function Trash() {
                     className="px-2"
                     disabled={!allowed}
                     aria-label={`Hapus permanen ${it.label}`}
-                    onClick={() => confirm(`Hapus permanen "${it.label}"? Tidak bisa dipulihkan lagi.`) && attempt(() => trash.purge(dompet.id, it.id))}
+                    onClick={async () => await askConfirm(`Hapus permanen "${it.label}"? Tidak bisa dipulihkan lagi.`) && attempt(() => trash.purge(dompet.id, it.id))}
                   >
                     ✕
                   </Button>

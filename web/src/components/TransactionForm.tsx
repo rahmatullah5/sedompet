@@ -2,13 +2,14 @@ import { useMemo, useState } from "react";
 import { deleteWithUndo } from "../lib/undo";
 import { isInvestmentMove, m, parseSplit, q, type Kind, type Transaction } from "../db/repo";
 import { computeSplit, initialSplit, SplitEditor, type SplitState } from "./SplitEditor";
+import { LineIcon } from "./LineIcon";
 import { receiptValue, TxDetails, type PhotoDraft } from "./TxDetails";
 import { CategoryLines, linesTotal, newLine, type Line } from "./CategoryLines";
 import { can } from "../lib/permissions";
 import { formatCompact, todayISO } from "../lib/format";
 import { currencyInfo, formatMoney, isBase, moneyInputText, parseMoney } from "../lib/currency";
 import { useCurrent, useDbVersion, getMainAccount } from "../lib/hooks";
-import { attempt, Avatar, Button, cx, Field, Input, Modal, STICKY_ACTIONS } from "./ui";
+import { askConfirm, attempt, Avatar, Button, cx, Field, Input, Modal, STICKY_ACTIONS } from "./ui";
 import { DatePicker } from "./DatePicker";
 import { AccountPicker, CategoryPicker } from "./Pickers";
 import { TransferBody } from "./TransferForm";
@@ -234,7 +235,7 @@ function FormBody({
   const categories = q.categories(dompet.id, kind);
   const currency = accounts.find((a) => a.id === accountId)?.currency ?? "IDR";
   const multi = !editing && lines !== null;
-  const linesInfo = multi ? linesTotal(lines!, currency) : null;
+  const linesInfo = multi ? linesTotal(lines!, currency, amountText) : null;
   const amount = multi ? linesInfo!.total : parseMoney(amountText, currency);
   const isMine = !editing || editing.created_by === me.id;
   const allowed = editing ? can.editTransaction(me.role, isMine, editing.account_holder_id === me.id) : can.addTransaction(me.role);
@@ -274,7 +275,7 @@ function FormBody({
   }
 
   async function remove() {
-    if (!editing || !confirm("Hapus transaksi ini?")) return;
+    if (!editing || !await askConfirm("Hapus transaksi ini?")) return;
     if (await deleteWithUndo(() => m.deleteTransaction(me.id, editing.id), "Transaksi dihapus", me)) onClose();
   }
 
@@ -331,7 +332,7 @@ function FormBody({
         </div>
 
         {multi ? (
-          <CategoryLines lines={lines!} setLines={setLines} categories={categories} currency={currency} />
+          <CategoryLines lines={lines!} setLines={setLines} categories={categories} currency={currency} totalText={amountText} setTotalText={setAmountText} />
         ) : (
         <>
         <Field label={isBase(currency) ? "Berapa?" : `Berapa? (${currencyInfo(currency).flag} ${currency})`} hint={Number.isFinite(amount) && amount > 0 ? formatMoney(amount, currency) : undefined}>
@@ -362,10 +363,11 @@ function FormBody({
         {!editing && kind === "expense" && !split.on && (
           <button
             type="button"
-            className="text-sm font-semibold text-brand-700"
-            onClick={() => setLines(multi ? null : [newLine(categoryId, amountText), newLine()])}
+            className="inline-flex items-center gap-1.5 rounded-full bg-brand-50 px-3.5 py-1.5 text-sm font-semibold text-brand-800 hover:bg-brand-100"
+            onClick={() => setLines(multi ? null : [newLine(categoryId), newLine()])}
           >
-            {multi ? "← Satu kategori saja" : "Pecah ke beberapa kategori"}
+            <LineIcon name={multi ? "undo" : "split"} size={15} />
+            {multi ? "Satu kategori saja" : "Pecah ke beberapa kategori"}
           </button>
         )}
 

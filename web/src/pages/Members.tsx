@@ -11,7 +11,7 @@ import { InviteCard } from "../cloud/CloudScreens";
 
 const CLOUD = getMode() === "cloud";
 import { useCurrent, useDbVersion } from "../lib/hooks";
-import { attempt, Avatar, Badge, Button, Card, Field, Input, Select, toast } from "../components/ui";
+import { askConfirm, attempt, Avatar, Badge, Button, Card, Field, Input, Select, toast } from "../components/ui";
 import { LineIcon } from "../components/LineIcon";
 import { periodOf, periodRange, todayISO } from "../lib/format";
 
@@ -81,8 +81,8 @@ export function Members() {
                       variant="ghost"
                       className="px-2 text-red-600"
                       aria-label={`Keluarkan ${mem.name}`}
-                      onClick={() =>
-                        confirm(`Keluarkan ${mem.name} dari ${dompet.name}? Akun pribadinya ikut terhapus.`) &&
+                      onClick={async () =>
+                        await askConfirm(`Keluarkan ${mem.name} dari ${dompet.name}? Akun pribadinya ikut terhapus.`) &&
                         attempt(
                           () =>
                             CLOUD
@@ -112,8 +112,8 @@ export function Members() {
           <Button
             variant="danger"
             className="w-full"
-            onClick={() =>
-              confirm(`Keluar dari ${dompet.name}? Kamu tidak bisa melihat datanya lagi kecuali diundang ulang.`) &&
+            onClick={async () =>
+              await askConfirm(`Keluar dari ${dompet.name}? Kamu tidak bisa melihat datanya lagi kecuali diundang ulang.`) &&
               attempt(() => cloud.leaveDompet(dompet.id), "Kamu sudah keluar dari Dompet")
             }
           >
@@ -273,7 +273,7 @@ function DompetSettings() {
           variant="danger"
           className="mt-3"
           onClick={async () => {
-            if (!confirm(`Hapus Dompet "${dompet.name}" beserta SEMUA datanya? Ini tidak bisa dibatalkan.`)) return;
+            if (!await askConfirm(`Hapus Dompet "${dompet.name}" beserta SEMUA datanya? Ini tidak bisa dibatalkan.`)) return;
             if (await attempt(() => m.deleteDompet(me.id), "Dompet dihapus")) setSession({ dompetId: null, memberId: null });
           }}
         >
@@ -395,7 +395,7 @@ export function DataTools() {
           <Button onClick={() => setMode("cloud")}>Pakai akun & sinkron keluarga</Button>
         )}
         {CLOUD && (
-          <Button variant="ghost" onClick={() => confirm("Buka demo offline? Data akunmu tetap aman di server.") && setMode("demo")}>
+          <Button variant="ghost" onClick={async () => await askConfirm("Buka demo offline? Data akunmu tetap aman di server.") && setMode("demo")}>
             Buka demo offline
           </Button>
         )}
@@ -403,7 +403,7 @@ export function DataTools() {
           hidden={CLOUD}
           variant="danger"
           onClick={async () => {
-            if (!confirm("Hapus SEMUA data di browser ini dan mulai dari awal?")) return;
+            if (!await askConfirm("Hapus SEMUA data di browser ini dan mulai dari awal?")) return;
             await resetDatabase();
             setSession({ dompetId: null, memberId: null });
             toast("Data dihapus");
@@ -420,7 +420,7 @@ export function DataTools() {
             const file = e.target.files?.[0];
             e.target.value = "";
             if (!file) return;
-            if (!confirm(`Ganti semua data di browser ini dengan isi ${file.name}?`)) return;
+            if (!await askConfirm(`Ganti semua data di browser ini dengan isi ${file.name}?`)) return;
             if (await attempt(async () => importFile(new Uint8Array(await file.arrayBuffer())), "Data diimpor"))
               setSession({ dompetId: null, memberId: null });
           }}

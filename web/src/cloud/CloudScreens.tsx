@@ -6,7 +6,7 @@ import { LoadingLogo } from "../components/LoadingLogo";
 import { ROLE_HINT, ROLE_LABEL, type Role } from "../lib/permissions";
 import { useCurrent } from "../lib/hooks";
 import { WA_ACTIVATE } from "../lib/contact";
-import { attempt, Avatar, Badge, Button, Card, Field, Input, toast, MadeBy } from "../components/ui";
+import { askConfirm, attempt, Avatar, Badge, Button, Card, Field, Input, toast, MadeBy } from "../components/ui";
 
 function Hero({ subtitle }: { subtitle: string }) {
   return (
@@ -445,8 +445,15 @@ export function AccountSheet({ onClose }: { onClose: () => void }) {
         </Button>
         <Button
           variant="danger"
-          onClick={() => {
-            if (confirm("Keluar dari akun di perangkat ini?")) {
+          onClick={async () => {
+            const ok = await askConfirm({
+              title: "Keluar dari Sedompet?",
+              body: "Untuk masuk lagi kamu perlu nomor HP dan PIN. Data keluarga tetap aman di server.",
+              ok: "Keluar",
+              tone: "danger",
+              icon: "user",
+            });
+            if (ok) {
               onClose();
               void cloud.signOut();
             }

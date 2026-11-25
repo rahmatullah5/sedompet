@@ -5,7 +5,7 @@ import { can } from "../lib/permissions";
 import { formatCompact, todayISO } from "../lib/format";
 import { currencyInfo, formatMoney, isBase, minorFactor, moneyInputText, parseMoney } from "../lib/currency";
 import { useCurrent, useDbVersion } from "../lib/hooks";
-import { attempt, Button, cx, Field, Input, STICKY_ACTIONS } from "./ui";
+import { askConfirm, attempt, Button, cx, Field, Input, STICKY_ACTIONS } from "./ui";
 import { AccountPicker } from "./Pickers";
 import { DatePicker } from "./DatePicker";
 
@@ -74,7 +74,7 @@ export function TransferBody({
   }
 
   async function remove() {
-    if (!transferId || !confirm("Hapus transfer ini (kedua sisinya)?")) return;
+    if (!transferId || !await askConfirm("Hapus transfer ini (kedua sisinya)?")) return;
     if (await deleteWithUndo(() => m.deleteTransfer(me.id, transferId), "Transfer dihapus", me)) onClose();
   }
 

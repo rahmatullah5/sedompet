@@ -10,7 +10,7 @@ import { useCurrent, useDbVersion } from "../lib/hooks";
 import { liveRate, priceTime, refreshMarket, useMarketStatus } from "../lib/market";
 import { HoldingLines, StockPanel } from "../components/StockPanel";
 import { ChangePct, CurrencyCode, LineIcon } from "../components/LineIcon";
-import { attempt, Avatar, Button, Card, Field, Input, Modal, Money, Select, STICKY_ACTIONS } from "../components/ui";
+import { askConfirm, attempt, Avatar, Button, Card, Field, Input, Modal, Money, Select, STICKY_ACTIONS } from "../components/ui";
 import { getMode } from "../cloud/client";
 import { cloud } from "../cloud/sync";
 
@@ -644,7 +644,7 @@ function AccountFormBody({
               variant="danger"
               onClick={async () => {
                 const kids = q.accounts(account.dompet_id, me.id).filter((x) => x.parent_id === account.id).length;
-                if (confirm(`Hapus ${isChild ? `${account.currency} dari dompet valas` : `akun ${account.name}`}? Semua transaksinya${kids ? ` dan ${kids} mata uang lainnya` : ""} ikut terhapus.`) && (await attempt(() => m.deleteAccount(me.id, account.id), "Akun dihapus")))
+                if (await askConfirm(`Hapus ${isChild ? `${account.currency} dari dompet valas` : `akun ${account.name}`}? Semua transaksinya${kids ? ` dan ${kids} mata uang lainnya` : ""} ikut terhapus.`) && (await attempt(() => m.deleteAccount(me.id, account.id), "Akun dihapus")))
                   onClose();
               }}
             >

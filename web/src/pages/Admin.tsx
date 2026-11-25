@@ -1,7 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { cloud, cloudStore, type ActivationCode, type AppPhone, type PlanChoice } from "../cloud/sync";
 import { displayPhone, inviteLink } from "../cloud/client";
-import { attempt, Badge, Button, Card, cx, Field, Input, Select, toast } from "../components/ui";
+import { askConfirm, attempt, Badge, Button, Card, cx, Field, Input, Select, toast } from "../components/ui";
 import { LineIcon } from "../components/LineIcon";
 
 const fmt = new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", year: "numeric" });
@@ -173,7 +173,7 @@ export function Admin() {
                 <Button
                   variant="ghost"
                   className="px-2 text-red-600"
-                  onClick={() => confirm(`Batalkan kode ${c.code}?`) && attempt(async () => (await cloud.revokeActivationCode(c.code), await reload()), "Kode dibatalkan")}
+                  onClick={async () => await askConfirm(`Batalkan kode ${c.code}?`) && attempt(async () => (await cloud.revokeActivationCode(c.code), await reload()), "Kode dibatalkan")}
                 >
                   ✕
                 </Button>
@@ -236,14 +236,14 @@ export function Admin() {
                           "rounded-full px-2.5 py-0.5 text-xs font-semibold",
                           plan === "berhenti" ? "text-red-600 hover:bg-red-50" : "bg-slate-100 text-slate-600 hover:bg-slate-200",
                         )}
-                        onClick={() => {
+                        onClick={async () => {
                           const ask =
                             plan === "berhenti"
                               ? `Akhiri paket ${displayPhone(p.phone)} sekarang? Dompet miliknya jadi hanya bisa dilihat.`
                               : plan === "gratis"
                                 ? `Jadikan ${displayPhone(p.phone)} gratis tanpa batas?`
                                 : `Tambah ${months} bulan untuk ${displayPhone(p.phone)}? Dihitung dari sisa masa aktif.`;
-                          if (confirm(ask)) void attempt(async () => (await cloud.setSubscription(p.phone, plan, months), await reload()), "Paket diperbarui");
+                          if (await askConfirm(ask)) void attempt(async () => (await cloud.setSubscription(p.phone, plan, months), await reload()), "Paket diperbarui");
                         }}
                       >
                         {label}

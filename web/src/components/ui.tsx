@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { formatMoney } from "../lib/currency";
 import { editTyped, groupTyped } from "../lib/format";
-import { LineIcon } from "./LineIcon";
+import { LineIcon, type LineIconName } from "./LineIcon";
 import { Icon } from "./Icon";
 
 /** Save/cancel row that stays pinned to the bottom of a scrolling sheet. */
@@ -249,6 +249,8 @@ export function Toasts() {
     () => toasts,
   );
   return (
+    <>
+    <ConfirmHost />
     <div className="pointer-events-none fixed inset-x-0 top-4 z-[60] flex flex-col items-center gap-2 px-4" aria-live="polite">
       {list.map((t) => (
         <div
@@ -279,6 +281,107 @@ export function Toasts() {
         </div>
       ))}
     </div>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Confirm dialog: a styled replacement for window.confirm().
+//   if (await askConfirm("Hapus anggaran X?")) ...
+//   askConfirm({ title, body, ok: "Keluar", tone: "danger", icon: "user" })
+// ---------------------------------------------------------------------------
+export interface ConfirmOptions {
+  title: string;
+  body?: ReactNode;
+  /** Label of the confirm button. */
+  ok?: string;
+  cancel?: string;
+  tone?: "danger" | "brand";
+  icon?: LineIconName;
+}
+type PendingConfirm = ConfirmOptions & { id: number; resolve: (v: boolean) => void };
+let pendingConfirm: PendingConfirm | null = null;
+let confirmSeq = 0;
+const confirmListeners = new Set<() => void>();
+
+/** Asks yes/no in the app's own dialog. A plain string becomes the title. */
+export function askConfirm(opts: string | ConfirmOptions): Promise<boolean> {
+  const o: ConfirmOptions = typeof opts === "string" ? { title: opts } : opts;
+  const destructive = /^(hapus|keluar|keluarkan|batalkan|ganti semua|gabungkan)/i.test(o.title);
+  pendingConfirm?.resolve(false);
+  return new Promise((resolve) => {
+    pendingConfirm = {
+      tone: destructive ? "danger" : "brand",
+      ok: destructive ? (o.title.split(/\s/)[0] ?? "Ya") : "Ya, lanjut",
+      cancel: "Batal",
+      icon: destructive ? (/^hapus/i.test(o.title) ? "trash" : "alert") : "info",
+      ...o,
+      id: ++confirmSeq,
+      resolve,
+    };
+    confirmListeners.forEach((l) => l());
+  });
+}
+
+function ConfirmHost() {
+  const c = useSyncExternalStore(
+    (l) => {
+      confirmListeners.add(l);
+      return () => confirmListeners.delete(l);
+    },
+    () => pendingConfirm,
+  );
+  const ref = useRef<HTMLDialogElement>(null);
+  const close = (v: boolean) => {
+    if (!pendingConfirm) return;
+    pendingConfirm.resolve(v);
+    pendingConfirm = null;
+    confirmListeners.forEach((l) => l());
+  };
+  useEffect(() => {
+    const d = ref.current;
+    if (!d) return;
+    if (c && !d.open) {
+      d.showModal();
+      d.querySelector<HTMLElement>("[data-confirm-ok]")?.focus();
+    }
+    if (!c && d.open) d.close();
+  }, [c]);
+  const danger = c?.tone === "danger";
+  return (
+    <dialog
+      ref={ref}
+      onClose={() => close(false)}
+      onClick={(e) => e.target === ref.current && close(false)}
+      className="sheet mx-auto mb-0 mt-auto w-full max-w-none rounded-t-[2rem] bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-slate-900/40 backdrop:backdrop-blur-[2px] sm:m-auto sm:max-w-sm sm:rounded-[2rem]"
+    >
+      {c && (
+        <div key={c.id} className="pop-in px-6 pb-6 pt-6 text-center">
+          <span
+            className={cx(
+              "mx-auto flex h-14 w-14 items-center justify-center rounded-2xl",
+              danger ? "bg-red-50 text-red-600" : "bg-brand-50 text-brand-700",
+            )}
+          >
+            <LineIcon name={c.icon ?? "info"} size={28} />
+          </span>
+          <h2 className="mt-4 text-lg font-extrabold leading-snug tracking-tight text-slate-800">{c.title}</h2>
+          {c.body && <div className="mt-1.5 text-sm leading-relaxed text-slate-500">{c.body}</div>}
+          <div className="mt-6 grid grid-cols-2 gap-2">
+            <Button variant="secondary" onClick={() => close(false)}>
+              {c.cancel}
+            </Button>
+            <Button
+              data-confirm-ok
+              onClick={() => close(true)}
+              className={danger ? "!bg-red-600 !text-white !shadow-red-600/30 hover:!bg-red-700" : undefined}
+            >
+              {c.ok}
+            </Button>
+          </div>
+        </div>
+      )}
+    </dialog>
   );
 }
 

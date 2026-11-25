@@ -8,7 +8,7 @@ import { can } from "../lib/permissions";
 import { formatDay, formatIDR, todayISO } from "../lib/format";
 import { formatMoney, isBase, moneyInputText, parseMoney, toBase } from "../lib/currency";
 import { useCurrent, useDbVersion } from "../lib/hooks";
-import { attempt, Badge, Button, Card, cx, Empty, Field, Input, Modal, Progress, STICKY_ACTIONS } from "../components/ui";
+import { askConfirm, attempt, Badge, Button, Card, cx, Empty, Field, Input, Modal, Progress, STICKY_ACTIONS } from "../components/ui";
 
 export function Loans() {
   useDbVersion();
@@ -131,7 +131,7 @@ function LoanCard({ loan, onPay }: { loan: Loan; onPay?: () => void }) {
           <Button
             variant="ghost"
             className="text-red-600"
-            onClick={() => confirm("Hapus pinjaman ini beserta semua cicilannya?") && deleteWithUndo(() => mm.deleteLoan(me.id, loan.id), "Pinjaman dihapus", me)}
+            onClick={async () => await askConfirm("Hapus pinjaman ini beserta semua cicilannya?") && deleteWithUndo(() => mm.deleteLoan(me.id, loan.id), "Pinjaman dihapus", me)}
           >
             Hapus
           </Button>

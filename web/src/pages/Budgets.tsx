@@ -5,7 +5,7 @@ import { m, q, type Budget, type BudgetPeriod } from "../db/repo";
 import { can } from "../lib/permissions";
 import { currentMonth, formatIDR, parseAmount, periodRange, todayISO } from "../lib/format";
 import { useCurrent, useDbVersion } from "../lib/hooks";
-import { attempt, Avatar, Badge, Button, Card, Empty, Field, Input, Modal, Progress, STICKY_ACTIONS } from "../components/ui";
+import { askConfirm, attempt, Avatar, Badge, Button, Card, Empty, Field, Input, Modal, Progress, STICKY_ACTIONS } from "../components/ui";
 import { MonthNav } from "./Transactions";
 import { Icon } from "../components/Icon";
 
@@ -308,7 +308,7 @@ function BudgetFormBody({ budget, onClose }: { budget: Budget | null; onClose: (
             <Button
               variant="danger"
               onClick={async () => {
-                if (confirm(`Hapus anggaran ${budget.name}?`) && (await deleteWithUndo(() => m.deleteBudget(me.id, budget.id), "Anggaran dihapus", me))) onClose();
+                if (await askConfirm(`Hapus anggaran ${budget.name}?`) && (await deleteWithUndo(() => m.deleteBudget(me.id, budget.id), "Anggaran dihapus", me))) onClose();
               }}
             >
               Hapus

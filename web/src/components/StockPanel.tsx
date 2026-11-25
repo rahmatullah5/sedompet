@@ -5,7 +5,7 @@ import { formatCompact, formatIDR, parseAmount, todayISO } from "../lib/format";
 import { formatMoney, formatRate } from "../lib/currency";
 import { liveRate, lookupStock, priceTime, refreshMarket, stockPrice, useMarketStatus } from "../lib/market";
 import { useCurrent, useDbVersion } from "../lib/hooks";
-import { attempt, Button, cx, Field, Input, Select, STICKY_ACTIONS } from "./ui";
+import { askConfirm, attempt, Button, cx, Field, Input, Select, STICKY_ACTIONS } from "./ui";
 import { DatePicker } from "./DatePicker";
 import { ChangePct, LineIcon } from "./LineIcon";
 
@@ -504,7 +504,7 @@ function SetHoldingForm({ account, holding, onDone }: { account: Account; holdin
             <Button
               variant="danger"
               onClick={async () => {
-                if (confirm(`Hapus ${label(holding)} dari ${account.name}? Saldo kas tidak berubah.`) && (await save(0))) onDone();
+                if (await askConfirm(`Hapus ${label(holding)} dari ${account.name}? Saldo kas tidak berubah.`) && (await save(0))) onDone();
               }}
             >
               Hapus

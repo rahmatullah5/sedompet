@@ -8,7 +8,7 @@ import { can } from "../lib/permissions";
 import { formatCompact, formatDay, formatIDR, getPeriodStartDay, toISODate, todayISO } from "../lib/format";
 import { formatMoney, isBase, moneyInputText, parseMoney } from "../lib/currency";
 import { useCurrent, useDbVersion, useHideBalance } from "../lib/hooks";
-import { attempt, Badge, Button, Card, cx, Empty, Field, Input, Modal, Select, STICKY_ACTIONS } from "../components/ui";
+import { askConfirm, attempt, Badge, Button, Card, cx, Empty, Field, Input, Modal, Select, STICKY_ACTIONS } from "../components/ui";
 import { Icon, IconPicker } from "../components/Icon";
 import { LineIcon, type LineIconName } from "../components/LineIcon";
 import { SuggestionList, type Suggestion } from "../components/Suggestions";
@@ -566,7 +566,7 @@ function RecurringForm({ item, kind, onClose }: { item: Rec | null; kind: Kind; 
       <div className={`${STICKY_ACTIONS} justify-between`}>
         <div>
           {item && (
-            <Button variant="danger" onClick={async () => confirm(`Hapus ${item.name}?`) && (await deleteWithUndo(() => mm.deleteRecurring(me.id, item.id), "Dihapus", me)) && onClose()}>
+            <Button variant="danger" onClick={async () => await askConfirm(`Hapus ${item.name}?`) && (await deleteWithUndo(() => mm.deleteRecurring(me.id, item.id), "Dihapus", me)) && onClose()}>
               Hapus
             </Button>
           )}
